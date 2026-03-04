@@ -21,7 +21,29 @@ uv sync
 
 - `gutenbit/catalog.py` — CSV catalog fetch and search
 - `gutenbit/download.py` — Text download and header/footer stripping
-- `gutenbit/db.py` — SQLite storage
+- `gutenbit/chunker.py` — Text chunking with kind-labelled preservation of all blocks
+- `gutenbit/db.py` — SQLite storage with FTS5 search
+
+### Chunker design
+
+Every text block separated by blank lines is preserved as a `Chunk` with a `kind` label:
+
+- `"paragraph"` — substantive prose (≥ 50 chars)
+- `"heading"` — chapter/section headings (also updates the running chapter label)
+- `"short"` — short text that isn't a heading or separator (dialogue, brief paragraphs)
+- `"separator"` — decorative rules, dinkuses (`* * *`, `---`, etc.)
+
+Nothing is discarded. Users can reconstruct the full original text from all chunks
+in position order, or filter to just `paragraph` + `short` for clean prose, etc.
+
+## Test corpus
+
+Tests use excerpts from four Dickens novels (Project Gutenberg IDs):
+
+- **The Pickwick Papers** — PG 580
+- **Oliver Twist** — PG 730
+- **The Old Curiosity Shop** — PG 700
+- **Nicholas Nickleby** — PG 967
 
 ## Style
 

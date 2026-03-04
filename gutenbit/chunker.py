@@ -1,4 +1,16 @@
-"""Split book text into searchable paragraph chunks with chapter detection."""
+"""Split book text into labelled chunks with chapter detection.
+
+Every text block separated by blank lines is preserved and labelled with a
+*kind* so that downstream consumers can reconstruct the full original text
+or filter to just the content they need.
+
+Chunk kinds
+-----------
+- ``"paragraph"`` — substantive prose (≥ 50 chars)
+- ``"heading"``   — chapter / section headings
+- ``"short"``     — short text that is not a heading or separator (e.g. dialogue)
+- ``"separator"`` — decorative rules and dinkuses (``* * *``, ``---``, …)
+"""
 
 from __future__ import annotations
 
@@ -13,26 +25,40 @@ _HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Minimum character length for a chunk to be worth indexing.
+# Matches decorative separators / dinkuses.
+# Covers patterns like: * * *, ***, ---, ===, ~~~, _ _ _, -----, etc.
+_SEPARATOR_RE = re.compile(
+    r"^[\s*\-=_~.#·•]+$",
+)
+
+# Minimum character length for a block to be classified as a full paragraph.
 _MIN_CHUNK_LEN = 50
 
 
 @dataclass(frozen=True, slots=True)
 class Chunk:
-    """A discrete paragraph extracted from a book's text."""
+    """A discrete text block extracted from a book, labelled by kind."""
 
     position: int
     chapter: str
     content: str
+    kind: str  # "paragraph", "heading", "short", or "separator"
 
 
 def chunk_text(text: str) -> list[Chunk]:
-    """Split *text* into paragraph chunks, tracking chapter headings.
+    """Split *text* into labelled chunks, tracking chapter headings.
 
-    Paragraphs are blocks separated by one or more blank lines. Short blocks
-    (< 50 chars) that look like headings update the current chapter label but
-    are not emitted as standalone chunks. Short blocks that aren't headings are
-    discarded as noise (decorative rules, stray numbers, etc.).
+    Paragraphs are blocks separated by one or more blank lines.  Every block
+    is preserved and assigned a *kind*:
+
+    - Blocks that match a heading pattern → ``"heading"`` (also updates the
+      running chapter label for subsequent chunks).
+    - Blocks that consist only of punctuation / decoration → ``"separator"``.
+    - Short blocks (< 50 chars) that aren't headings or separators → ``"short"``.
+    - Everything else → ``"paragraph"``.
+
+    Returns chunks in document order so that
+    ``"\\n\\n".join(c.content for c in chunks)`` reproduces the text.
     """
     blocks = re.split(r"\n\s*\n", text)
     chunks: list[Chunk] = []
@@ -44,16 +70,17 @@ def chunk_text(text: str) -> list[Chunk]:
         if not block:
             continue
 
-        # Check if this block is a chapter heading.
         if _is_heading(block):
             chapter = _normalise_heading(block)
-            continue
+            kind = "heading"
+        elif _is_separator(block):
+            kind = "separator"
+        elif len(block) < _MIN_CHUNK_LEN:
+            kind = "short"
+        else:
+            kind = "paragraph"
 
-        # Skip very short blocks (noise).
-        if len(block) < _MIN_CHUNK_LEN:
-            continue
-
-        chunks.append(Chunk(position=position, chapter=chapter, content=block))
+        chunks.append(Chunk(position=position, chapter=chapter, content=block, kind=kind))
         position += 1
 
     return chunks
@@ -61,12 +88,19 @@ def chunk_text(text: str) -> list[Chunk]:
 
 def _is_heading(block: str) -> bool:
     """Return True if *block* looks like a chapter/section heading."""
-    # Multi-line blocks are never headings.
     lines = block.splitlines()
     if len(lines) > 3:
         return False
     first = lines[0].strip()
     return bool(_HEADING_RE.match(first))
+
+
+def _is_separator(block: str) -> bool:
+    """Return True if *block* is a decorative rule or dinkus."""
+    # Must be a single line and match the separator pattern.
+    if "\n" in block:
+        return False
+    return bool(_SEPARATOR_RE.fullmatch(block))
 
 
 def _normalise_heading(block: str) -> str:

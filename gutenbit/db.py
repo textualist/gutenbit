@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     chapter TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL,
     content TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'paragraph',
     UNIQUE(book_id, position)
 );
 
@@ -73,7 +74,7 @@ END;
 
 _SEARCH_SQL = """\
 SELECT
-    c.id, c.book_id, c.chapter, c.position, c.content,
+    c.id, c.book_id, c.chapter, c.position, c.content, c.kind,
     b.title, b.authors, b.language, b.subjects,
     rank
 FROM chunks_fts
@@ -96,6 +97,7 @@ class SearchResult:
     chapter: str
     position: int
     content: str
+    kind: str
     score: float
 
 
@@ -163,6 +165,42 @@ class Database:
     # Full-text search
     # ------------------------------------------------------------------
 
+    def chunks(
+        self,
+        book_id: int,
+        *,
+        kinds: list[str] | None = None,
+    ) -> list[tuple[int, str, str, str]]:
+        """Return chunks for a book as ``(position, chapter, content, kind)`` tuples.
+
+        If *kinds* is given, only chunks with a matching kind are returned.
+        Useful for reconstructing text::
+
+            # Full raw reconstruction
+            "\\n\\n".join(content for _, _, content, _ in db.chunks(book_id))
+
+            # Prose only (paragraphs + short dialogue)
+            "\\n\\n".join(
+                content for _, _, content, kind in db.chunks(book_id)
+                if kind in ("paragraph", "short")
+            )
+        """
+        if kinds:
+            placeholders = ",".join("?" * len(kinds))
+            sql = (
+                f"SELECT position, chapter, content, kind FROM chunks"
+                f" WHERE book_id = ? AND kind IN ({placeholders})"
+                f" ORDER BY position"
+            )
+            rows = self._conn.execute(sql, [book_id, *kinds]).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT position, chapter, content, kind FROM chunks"
+                " WHERE book_id = ? ORDER BY position",
+                (book_id,),
+            ).fetchall()
+        return [(r["position"], r["chapter"], r["content"], r["kind"]) for r in rows]
+
     def search(
         self,
         query: str,
@@ -172,13 +210,16 @@ class Database:
         language: str | None = None,
         subject: str | None = None,
         book_id: int | None = None,
+        kind: str | None = None,
         limit: int = 20,
     ) -> list[SearchResult]:
         """Search chunks via FTS5 with BM25 ranking.
 
         *query* is an FTS5 match expression (e.g. ``"moby dick"`` or
         ``whale OR sea``).  Optional keyword filters narrow results by book
-        metadata using case-insensitive substring matching.
+        metadata using case-insensitive substring matching.  *kind* filters
+        by chunk kind (``"paragraph"``, ``"heading"``, ``"short"``,
+        ``"separator"``).
         """
         sql = _SEARCH_SQL
         params: list[object] = [query]
@@ -198,6 +239,9 @@ class Database:
         if book_id is not None:
             sql += " AND c.book_id = ?"
             params.append(book_id)
+        if kind is not None:
+            sql += " AND c.kind = ?"
+            params.append(kind)
 
         sql += " ORDER BY rank LIMIT ?"
         params.append(limit)
@@ -214,6 +258,7 @@ class Database:
                 chapter=row["chapter"],
                 position=row["position"],
                 content=row["content"],
+                kind=row["kind"],
                 score=-row["rank"],  # FTS5 rank is negative; negate for intuitive scoring
             )
             for row in rows
@@ -253,8 +298,9 @@ class Database:
             # Clear any existing chunks for this book before re-inserting.
             self._conn.execute("DELETE FROM chunks WHERE book_id = ?", (book.id,))
             self._conn.executemany(
-                "INSERT INTO chunks (book_id, chapter, position, content) VALUES (?, ?, ?, ?)",
-                [(book.id, c.chapter, c.position, c.content) for c in chunks],
+                "INSERT INTO chunks (book_id, chapter, position, content, kind)"
+                " VALUES (?, ?, ?, ?, ?)",
+                [(book.id, c.chapter, c.position, c.content, c.kind) for c in chunks],
             )
 
     def close(self) -> None:

@@ -68,19 +68,75 @@ def _make_db(tmp_path):
     return db
 
 
+# ------------------------------------------------------------------
+# Chunk storage
+# ------------------------------------------------------------------
+
+
 def test_chunks_stored(tmp_path):
     db = _make_db(tmp_path)
     rows = db._conn.execute("SELECT COUNT(*) as n FROM chunks").fetchone()
-    assert rows["n"] == 4  # 3 paragraphs from _TEXT + 1 from _TEXT2
+    # 5 from _TEXT (heading, para, para, heading, para) + 2 from _TEXT2 (heading, para)
+    assert rows["n"] == 7
 
 
 def test_chunks_have_chapters(tmp_path):
     db = _make_db(tmp_path)
     rows = db._conn.execute(
-        "SELECT chapter FROM chunks WHERE book_id = ? ORDER BY position", (1,)
+        "SELECT chapter FROM chunks WHERE book_id = ? AND kind = 'paragraph' ORDER BY position",
+        (1,),
     ).fetchall()
     chapters = [r["chapter"] for r in rows]
     assert chapters == ["CHAPTER 1", "CHAPTER 1", "CHAPTER 2"]
+
+
+def test_chunks_have_kinds(tmp_path):
+    db = _make_db(tmp_path)
+    rows = db._conn.execute(
+        "SELECT kind FROM chunks WHERE book_id = ? ORDER BY position", (1,)
+    ).fetchall()
+    kinds = [r["kind"] for r in rows]
+    assert kinds == ["heading", "paragraph", "paragraph", "heading", "paragraph"]
+
+
+def test_heading_chunks_stored(tmp_path):
+    db = _make_db(tmp_path)
+    rows = db._conn.execute(
+        "SELECT content FROM chunks WHERE book_id = ? AND kind = 'heading' ORDER BY position",
+        (1,),
+    ).fetchall()
+    assert [r["content"] for r in rows] == ["CHAPTER 1", "CHAPTER 2"]
+
+
+# ------------------------------------------------------------------
+# Database.chunks() method
+# ------------------------------------------------------------------
+
+
+def test_chunks_method_returns_all(tmp_path):
+    db = _make_db(tmp_path)
+    chunks = db.chunks(1)
+    assert len(chunks) == 5
+
+
+def test_chunks_method_filters_by_kind(tmp_path):
+    db = _make_db(tmp_path)
+    paragraphs = db.chunks(1, kinds=["paragraph"])
+    assert len(paragraphs) == 3
+    assert all(k == "paragraph" for _, _, _, k in paragraphs)
+
+
+def test_chunks_method_reconstruct_text(tmp_path):
+    db = _make_db(tmp_path)
+    chunks = db.chunks(1)
+    reconstructed = "\n\n".join(content for _, _, content, _ in chunks)
+    assert "Call me Ishmael" in reconstructed
+    assert "CHAPTER 1" in reconstructed
+
+
+# ------------------------------------------------------------------
+# Search
+# ------------------------------------------------------------------
 
 
 def test_search_returns_results(tmp_path):
@@ -99,6 +155,7 @@ def test_search_result_fields(tmp_path):
     assert r.title == "Moby Dick"
     assert r.authors == "Melville, Herman"
     assert r.chapter == "CHAPTER 1"
+    assert r.kind == "paragraph"
     assert r.score > 0
 
 
@@ -155,3 +212,89 @@ def test_search_no_results(tmp_path):
     db = _make_db(tmp_path)
     results = db.search("xyzzyplugh")
     assert results == []
+
+
+def test_search_filter_by_kind(tmp_path):
+    db = _make_db(tmp_path)
+    # Search for "CHAPTER" but filter to heading kind only
+    results = db.search("CHAPTER", kind="heading")
+    assert len(results) >= 1
+    assert all(r.kind == "heading" for r in results)
+
+
+# ------------------------------------------------------------------
+# Dickens integration — realistic multi-chapter text with dialogue
+# ------------------------------------------------------------------
+
+_DICKENS_BOOK = BookRecord(
+    id=3,
+    title="Oliver Twist",
+    authors="Dickens, Charles",
+    language="en",
+    subjects="Orphans; London; Social conditions",
+    locc="PR",
+    bookshelves="Best Books Ever Listings",
+    issued="1996-01-01",
+    type="Text",
+)
+
+_DICKENS_TEXT = (
+    "CHAPTER I\n"
+    "\n"
+    "Among other public buildings in a certain town, which for many reasons\n"
+    "it will be prudent to refrain from mentioning, and to which I will\n"
+    "assign no fictitious name, there is one anciently common to most towns,\n"
+    "great or small: to wit, a workhouse.\n"
+    "\n"
+    "'What's your name?'\n"
+    "\n"
+    "The boy hesitated.\n"
+    "\n"
+    "'Oliver Twist.'\n"
+    "\n"
+    "* * *\n"
+    "\n"
+    "CHAPTER II\n"
+    "\n"
+    "For the next eight or ten months, Oliver was the victim of a\n"
+    "systematic course of treachery and deception. He was brought up by\n"
+    "hand. The hungry and destitute situation of the infant orphan was duly\n"
+    "reported by the workhouse authorities to the parish authorities.\n"
+)
+
+
+def test_dickens_short_dialogue_preserved(tmp_path):
+    db = Database(tmp_path / "test.db")
+    db._store(_DICKENS_BOOK, _DICKENS_TEXT)
+
+    all_chunks = db.chunks(3)
+    contents = [content for _, _, content, _ in all_chunks]
+    assert any("Oliver Twist" in c for c in contents)
+    assert any("What's your name" in c for c in contents)
+    assert any("boy hesitated" in c for c in contents)
+
+
+def test_dickens_reconstruct_full_text(tmp_path):
+    db = Database(tmp_path / "test.db")
+    db._store(_DICKENS_BOOK, _DICKENS_TEXT)
+
+    all_chunks = db.chunks(3)
+    reconstructed = "\n\n".join(content for _, _, content, _ in all_chunks)
+    # Every meaningful block from the original should appear
+    assert "workhouse" in reconstructed
+    assert "Oliver Twist" in reconstructed
+    assert "* * *" in reconstructed
+    assert "CHAPTER II" in reconstructed
+
+
+def test_dickens_filter_prose_only(tmp_path):
+    db = Database(tmp_path / "test.db")
+    db._store(_DICKENS_BOOK, _DICKENS_TEXT)
+
+    prose = db.chunks(3, kinds=["paragraph", "short"])
+    kinds = [k for _, _, _, k in prose]
+    assert "heading" not in kinds
+    assert "separator" not in kinds
+    # But short dialogue is still present
+    contents = [c for _, _, c, _ in prose]
+    assert any("Oliver Twist" in c for c in contents)
