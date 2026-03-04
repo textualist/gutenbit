@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import time
-from dataclasses import dataclass
+from dataclasses import astuple, dataclass
 from pathlib import Path
 
 from gutenbit.catalog import BookRecord
@@ -139,20 +139,7 @@ class Database:
     def books(self) -> list[BookRecord]:
         """Return all stored books as BookRecords."""
         rows = self._conn.execute("SELECT * FROM books ORDER BY id").fetchall()
-        return [
-            BookRecord(
-                id=row["id"],
-                title=row["title"],
-                authors=row["authors"],
-                language=row["language"],
-                subjects=row["subjects"],
-                locc=row["locc"],
-                bookshelves=row["bookshelves"],
-                issued=row["issued"],
-                type=row["type"],
-            )
-            for row in rows
-        ]
+        return [BookRecord(**row) for row in rows]
 
     def text(self, book_id: int) -> str | None:
         """Return the clean text for a book, or None if not found."""
@@ -223,18 +210,16 @@ class Database:
         sql = _SEARCH_SQL
         params: list[object] = [query]
 
-        if author is not None:
-            sql += " AND b.authors LIKE ?"
-            params.append(f"%{author}%")
-        if title is not None:
-            sql += " AND b.title LIKE ?"
-            params.append(f"%{title}%")
-        if language is not None:
-            sql += " AND b.language LIKE ?"
-            params.append(f"%{language}%")
-        if subject is not None:
-            sql += " AND b.subjects LIKE ?"
-            params.append(f"%{subject}%")
+        like_filters = {
+            "b.authors": author,
+            "b.title": title,
+            "b.language": language,
+            "b.subjects": subject,
+        }
+        for column, value in like_filters.items():
+            if value is not None:
+                sql += f" AND {column} LIKE ?"
+                params.append(f"%{value}%")
         if book_id is not None:
             sql += " AND c.book_id = ?"
             params.append(book_id)
@@ -278,17 +263,7 @@ class Database:
                 "INSERT OR REPLACE INTO books"
                 " (id, title, authors, language, subjects, locc, bookshelves, issued, type)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    book.id,
-                    book.title,
-                    book.authors,
-                    book.language,
-                    book.subjects,
-                    book.locc,
-                    book.bookshelves,
-                    book.issued,
-                    book.type,
-                ),
+                astuple(book),
             )
             self._conn.execute(
                 "INSERT OR REPLACE INTO texts (book_id, content) VALUES (?, ?)",

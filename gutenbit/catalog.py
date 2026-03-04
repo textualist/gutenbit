@@ -72,16 +72,14 @@ class Catalog:
     ) -> list[BookRecord]:
         """Search for books matching all given criteria (case-insensitive substring match)."""
         results = self.records
-        if author:
-            q = author.lower()
-            results = [b for b in results if q in b.authors.lower()]
-        if title:
-            q = title.lower()
-            results = [b for b in results if q in b.title.lower()]
-        if language:
-            q = language.lower()
-            results = [b for b in results if q in b.language.lower()]
-        if subject:
-            q = subject.lower()
-            results = [b for b in results if q in b.subjects.lower()]
+        filters = {
+            "authors": author,
+            "title": title,
+            "language": language,
+            "subjects": subject,
+        }
+        for field, value in filters.items():
+            if value:
+                q = value.lower()
+                results = [b for b in results if q in getattr(b, field).lower()]
         return results
