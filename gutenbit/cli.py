@@ -14,53 +14,196 @@ DEFAULT_DB = "gutenbit.db"
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="gutenbit", description="Project Gutenberg ETL tool")
+    fmt = argparse.RawDescriptionHelpFormatter
+    p = argparse.ArgumentParser(
+        prog="gutenbit",
+        formatter_class=fmt,
+        description="Project Gutenberg ETL — download, chunk, and search public-domain books.",
+        epilog="""\
+typical workflow:
+  1. gutenbit catalog --author Dickens         # find book IDs
+  2. gutenbit ingest 46 730                    # download & store
+  3. gutenbit books                            # list stored books
+  4. gutenbit toc 46                           # view table of contents
+  5. gutenbit search "Marley ghost" --book-id 46  # full-text search
+
+chunk kinds:  front_matter, heading, paragraph, end_matter
+division hierarchy:  div1 (BOOK/PART) > div2 (CHAPTER) > div3 (SECTION) > div4
+
+all data is stored in a local SQLite database (default: gutenbit.db).""",
+    )
     p.add_argument("--db", default=DEFAULT_DB, help="SQLite database path (default: %(default)s)")
     p.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
     sub = p.add_subparsers(dest="command")
 
     # --- catalog ---
-    cat = sub.add_parser("catalog", help="search the Project Gutenberg catalog")
-    cat.add_argument("--author", default="", help="filter by author")
-    cat.add_argument("--title", default="", help="filter by title")
-    cat.add_argument("--language", default="", help="filter by language")
-    cat.add_argument("--subject", default="", help="filter by subject")
+    cat = sub.add_parser(
+        "catalog",
+        formatter_class=fmt,
+        help="search the Project Gutenberg catalog",
+        description="Search the full Project Gutenberg catalog (downloaded on each run).",
+        epilog="""\
+examples:
+  gutenbit catalog --author Tolstoy
+  gutenbit catalog --title "War and Peace"
+  gutenbit catalog --language en --subject Philosophy -n 50
+
+output columns:  ID  AUTHORS  TITLE
+all filters use case-insensitive substring matching (AND logic).""",
+    )
+    cat.add_argument("--author", default="", help="filter by author (substring match)")
+    cat.add_argument("--title", default="", help="filter by title (substring match)")
+    cat.add_argument("--language", default="", help="filter by language code, e.g. 'en'")
+    cat.add_argument("--subject", default="", help="filter by subject (substring match)")
     cat.add_argument("-n", "--limit", type=int, default=20, help="max results (default: 20)")
 
     # --- ingest ---
-    ing = sub.add_parser("ingest", help="download and store books by PG id")
+    ing = sub.add_parser(
+        "ingest",
+        formatter_class=fmt,
+        help="download and store books by PG id",
+        description=(
+            "Download books from Project Gutenberg by ID, parse HTML into chunks, "
+            "and store everything in the SQLite database. Already-downloaded books "
+            "are skipped."
+        ),
+        epilog="""\
+examples:
+  gutenbit ingest 2600                  # War and Peace
+  gutenbit ingest 46 730 967            # multiple books
+  gutenbit ingest 2600 --delay 2.0      # polite crawling""",
+    )
     ing.add_argument("ids", nargs="+", type=int, help="Project Gutenberg book IDs")
-    ing.add_argument("--delay", type=float, default=1.0, help="seconds between downloads")
+    ing.add_argument(
+        "--delay",
+        type=float,
+        default=1.0,
+        help="seconds between downloads (default: 1.0)",
+    )
 
     # --- books ---
-    sub.add_parser("books", help="list books stored in the database")
+    sub.add_parser(
+        "books",
+        formatter_class=fmt,
+        help="list books stored in the database",
+        description="List all books that have been ingested into the database.",
+        epilog="""\
+example:
+  gutenbit books
+  gutenbit --db my.db books
+
+output columns:  ID  AUTHORS  TITLE""",
+    )
 
     # --- chunks ---
-    ch = sub.add_parser("chunks", help="show chunks for a stored book")
+    ch = sub.add_parser(
+        "chunks",
+        formatter_class=fmt,
+        help="show chunks for a stored book",
+        description=(
+            "Display individual chunks (paragraphs, headings, etc.) for a stored book. "
+            "Each chunk has a position, div path, kind, and content preview."
+        ),
+        epilog="""\
+examples:
+  gutenbit chunks 2600                              # all chunks
+  gutenbit chunks 2600 --kind heading               # headings only
+  gutenbit chunks 2600 --kind paragraph -n 10       # first 10 paragraphs
+  gutenbit chunks 46 --kind front_matter end_matter # bookend material
+
+output columns:  POSITION  [KIND]  DIV_PATH  CONTENT_PREVIEW
+chunk kinds:  front_matter, heading, paragraph, end_matter""",
+    )
     ch.add_argument("book_id", type=int, help="Project Gutenberg book ID")
     ch.add_argument(
         "--kind",
         nargs="+",
         choices=["front_matter", "heading", "paragraph", "end_matter"],
-        help="filter by chunk kind",
+        help="filter by chunk kind(s)",
     )
     ch.add_argument("-n", "--limit", type=int, default=0, help="max chunks to show (0=all)")
 
     # --- search ---
-    se = sub.add_parser("search", help="full-text search across stored books")
-    se.add_argument("query", help="FTS5 search query")
-    se.add_argument("--author", help="filter by author")
-    se.add_argument("--title", help="filter by title")
-    se.add_argument("--book-id", type=int, help="restrict to a single book")
-    se.add_argument("--kind", help="filter by chunk kind")
+    se = sub.add_parser(
+        "search",
+        formatter_class=fmt,
+        help="full-text search across stored books",
+        description=(
+            "Full-text search using SQLite FTS5 with BM25 ranking. "
+            "Searches across all stored books unless filtered. "
+            "Supports standard FTS5 query syntax: quoted phrases, "
+            "AND/OR/NOT operators, prefix queries (word*)."
+        ),
+        epilog="""\
+examples:
+  gutenbit search "battle"                            # across all books
+  gutenbit search "Marley ghost" --book-id 46         # one book
+  gutenbit search "freedom" --kind paragraph          # paragraphs only
+  gutenbit search "prince" --author Tolstoy -n 5      # by author, top 5
+  gutenbit search '"to be or not"'                    # exact phrase (FTS5)
+
+output fields:  [BOOK_ID] TITLE  DIV_PATH
+                score  kind  char_count
+                CONTENT_PREVIEW
+
+tip: use 'gutenbit toc <id>' first to see a book's structure, then
+     narrow searches with --book-id and --kind.""",
+    )
+    se.add_argument("query", help="FTS5 search query (supports phrases, AND/OR/NOT, prefix*)")
+    se.add_argument("--author", help="filter results by author (substring match)")
+    se.add_argument("--title", help="filter results by title (substring match)")
+    se.add_argument("--book-id", type=int, help="restrict to a single book by PG ID")
+    se.add_argument(
+        "--kind",
+        help="filter by chunk kind (front_matter|heading|paragraph|end_matter)",
+    )
     se.add_argument("-n", "--limit", type=int, default=20, help="max results (default: 20)")
 
     # --- toc ---
-    toc = sub.add_parser("toc", help="print the table of contents for a stored book")
+    toc = sub.add_parser(
+        "toc",
+        formatter_class=fmt,
+        help="print the table of contents for a stored book",
+        description=(
+            "Print the hierarchical table of contents for a stored book. "
+            "Shows each section heading with its div path, paragraph count, "
+            "and character count. Use this to understand a book's structure "
+            "before searching."
+        ),
+        epilog="""\
+example:
+  gutenbit toc 2600
+
+output per section:
+  HEADING_TEXT                         (indented by hierarchy depth)
+    div=DIV1/DIV2  (N paragraphs, M chars)
+
+division hierarchy:
+  div1 — broad divisions (BOOK, PART, VOLUME)
+  div2 — chapters (CHAPTER, STAVE, SCENE)
+  div3 — sub-sections (SECTION)
+  div4 — reserved
+
+workflow: run 'toc' to identify sections, then use the div values
+with 'search --book-id <id>' to target specific parts of a book.""",
+    )
     toc.add_argument("book_id", type=int, help="Project Gutenberg book ID")
 
     # --- text ---
-    tx = sub.add_parser("text", help="print the full text of a stored book")
+    tx = sub.add_parser(
+        "text",
+        formatter_class=fmt,
+        help="print the full reconstructed text of a stored book",
+        description=(
+            "Print the full plain text of a stored book by joining all chunks. "
+            "Useful for piping to other tools or reading offline."
+        ),
+        epilog="""\
+examples:
+  gutenbit text 46                # print to terminal
+  gutenbit text 46 > carol.txt   # save to file
+  gutenbit text 46 | wc -w       # word count""",
+    )
     tx.add_argument("book_id", type=int, help="Project Gutenberg book ID")
 
     return p
