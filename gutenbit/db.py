@@ -9,8 +9,9 @@ from dataclasses import astuple, dataclass
 from pathlib import Path
 
 from gutenbit.catalog import BookRecord
-from gutenbit.chunker import chunk_text
-from gutenbit.download import download_text, strip_headers
+from gutenbit.chunker import Chunk, chunk_text
+from gutenbit.download import download_html, download_text, strip_headers
+from gutenbit.html_chunker import chunk_html
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,11 @@ class Database:
     # ------------------------------------------------------------------
 
     def ingest(self, books: list[BookRecord], *, delay: float = 1.0) -> None:
-        """Download, clean, chunk, and store books. Skips already-downloaded books."""
+        """Download, clean, chunk, and store books. Skips already-downloaded books.
+
+        Tries the HTML version first (better structural parsing via TOC),
+        falling back to plain text if HTML is unavailable.
+        """
         for book in books:
             if self._has_text(book.id):
                 logger.info("Skipping %s (already downloaded)", book.title)
@@ -130,13 +135,28 @@ class Database:
 
             logger.info("Downloading %s (id=%d)", book.title, book.id)
             try:
-                raw = download_text(book.id)
-                clean = strip_headers(raw)
-                self._store(book, clean)
+                self._ingest_one(book)
             except Exception:
                 logger.exception("Failed to download %s (id=%d)", book.title, book.id)
 
             time.sleep(delay)
+
+    def _ingest_one(self, book: BookRecord) -> None:
+        """Download and store a single book, trying HTML then text."""
+        # Try HTML first for TOC-driven structural parsing
+        try:
+            html = download_html(book.id)
+            chunks = chunk_html(html)
+            if chunks:
+                self._store_chunks(book, chunks)
+                return
+        except Exception:
+            logger.debug("HTML not available for %s, falling back to text", book.title)
+
+        # Fall back to plain text
+        raw = download_text(book.id)
+        clean = strip_headers(raw)
+        self._store(book, clean)
 
     # ------------------------------------------------------------------
     # Query helpers
@@ -268,6 +288,30 @@ class Database:
     def _has_text(self, book_id: int) -> bool:
         row = self._conn.execute("SELECT 1 FROM texts WHERE book_id = ?", (book_id,)).fetchone()
         return row is not None
+
+    def _store_chunks(self, book: BookRecord, chunks: list[Chunk]) -> None:
+        """Store pre-chunked content (from HTML chunker)."""
+        text = "\n\n".join(c.content for c in chunks)
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO books"
+                " (id, title, authors, language, subjects, locc, bookshelves, issued, type)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                astuple(book),
+            )
+            self._conn.execute(
+                "INSERT OR REPLACE INTO texts (book_id, content) VALUES (?, ?)",
+                (book.id, text),
+            )
+            self._conn.execute("DELETE FROM chunks WHERE book_id = ?", (book.id,))
+            self._conn.executemany(
+                "INSERT INTO chunks (book_id, div1, div2, div3, div4, position, content, kind)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (book.id, c.div1, c.div2, c.div3, c.div4, c.position, c.content, c.kind)
+                    for c in chunks
+                ],
+            )
 
     def _store(self, book: BookRecord, text: str) -> None:
         chunks = chunk_text(text)

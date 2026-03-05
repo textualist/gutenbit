@@ -163,12 +163,12 @@ def test_no_chapter_gives_empty_string():
 def test_heading_variants():
     # Maps heading keyword → (div_field, expected_normalised_value)
     _cases = [
-        ("BOOK III",        "div1", "BOOK III"),
-        ("Part 2",          "div1", "Part 2"),
-        ("ACT IV",          "div1", "ACT IV"),
-        ("SCENE 1",         "div2", "SCENE 1"),
-        ("Section 5",       "div3", "Section 5"),
-        ("STAVE I",         "div2", "STAVE I"),
+        ("BOOK III", "div1", "BOOK III"),
+        ("Part 2", "div1", "Part 2"),
+        ("ACT IV", "div1", "ACT IV"),
+        ("SCENE 1", "div2", "SCENE 1"),
+        ("Section 5", "div3", "Section 5"),
+        ("STAVE I", "div2", "STAVE I"),
         ("CHAPTER. XVIII.", "div2", "CHAPTER. XVIII."),
     ]
     content = "Some content that is long enough to pass the minimum length filter."

@@ -173,7 +173,7 @@ def test_search_result_fields(tmp_path):
     assert r.book_id == 1
     assert r.title == "Moby Dick"
     assert r.authors == "Melville, Herman"
-    assert r.div1 == ""           # no PART/BOOK heading in test data
+    assert r.div1 == ""  # no PART/BOOK heading in test data
     assert r.div2 == "CHAPTER 1"  # CHAPTER is rank-2
     assert r.kind == "paragraph"
     assert r.score > 0

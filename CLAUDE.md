@@ -12,15 +12,22 @@ ETL package for Project Gutenberg: download, parse, and store texts in SQLite.
 ## Architecture
 
 - `gutenbit/catalog.py` — CSV catalog fetch and search
-- `gutenbit/download.py` — Text download and header/footer stripping
-- `gutenbit/chunker.py` — Structural text chunking
+- `gutenbit/download.py` — Text/HTML download and header/footer stripping
+- `gutenbit/chunker.py` — Structural text chunking (plain-text fallback)
+- `gutenbit/html_chunker.py` — TOC-driven HTML chunking (primary)
 - `gutenbit/db.py` — SQLite storage with FTS5 search
 
-### Chunker
+### HTML Chunker (primary)
 
-Splits book text into labelled chunks. Kinds: `front_matter` (title page, etc.),
-`toc` (table of contents), `heading` (chapter/section headings), `paragraph` (prose),
-`end_matter` (footnotes, appendices, etc.).
+Uses the table of contents `<a class="pginternal">` links in Project Gutenberg
+HTML as the structural map. Each TOC link points to a body anchor inside an
+`<h2>`–`<h3>` tag, giving section boundaries and heading text from the markup.
+Hierarchy is determined by bold (`<b>`) tags in TOC links (broad divisions like
+BOOK/PART) and keyword-based classification as fallback.
+
+### Text Chunker (fallback)
+
+Regex-based chunking of plain text. Used when HTML is unavailable.
 
 ## Verification
 
@@ -38,7 +45,24 @@ Canonical test corpus (covers diverse structural patterns):
 | Pride and Prejudice (Austen) | 1342 | Illustrated edition with `Chapter I.]` bracket artifacts |
 | Locke's Second Treatise | 7370 | `CHAPTER. I.` period-after-keyword format |
 
-Typical live check:
+Typical live check (HTML — preferred):
+
+```python
+import httpx, zipfile, io
+from gutenbit.html_chunker import chunk_html
+
+book_id = 2600  # swap as needed
+url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}-h.zip"
+resp = httpx.get(url, verify=False, timeout=60)
+z = zipfile.ZipFile(io.BytesIO(resp.content))
+html = z.read([n for n in z.namelist() if n.endswith('.html')][0]).decode()
+chunks = chunk_html(html)
+headings = [c for c in chunks if c.kind == "heading"]
+for h in headings[:20]:
+    print(f"div1={h.div1!r:25s} div2={h.div2!r:20s}  {h.content!r}")
+```
+
+Plain-text fallback:
 
 ```python
 import httpx
