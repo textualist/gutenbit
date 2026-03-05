@@ -137,12 +137,15 @@ def _parse_toc_sections(soup: BeautifulSoup) -> list[_Section]:
     sections: list[_Section] = []
     used_headings: set[int] = set()
 
+    # Index all anchors by id to avoid O(n) soup.find per TOC link.
+    anchor_map: dict[str, Tag] = {str(a["id"]): a for a in soup.find_all("a", id=True)}
+
     for link in toc_links:
         href = link.get("href", "")
         if not href.startswith("#"):
             continue
         anchor_id = href[1:]
-        body_anchor = soup.find("a", id=anchor_id)
+        body_anchor = anchor_map.get(str(anchor_id))
         if not body_anchor:
             continue
 
@@ -239,15 +242,16 @@ def _paragraphs_between(start_anchor: Tag, stop_anchor: Tag | None) -> list[str]
     """Collect paragraph text between two body anchors."""
     heading_el = start_anchor.find_parent(["h1", "h2", "h3", "h4", "h5", "h6"])
     start_el = heading_el or start_anchor
+    stop_heading = (
+        stop_anchor.find_parent(["h1", "h2", "h3", "h4", "h5", "h6"]) if stop_anchor else None
+    )
 
     paragraphs: list[str] = []
     for el in start_el.find_all_next():
         if stop_anchor and (el is stop_anchor or el is stop_anchor.parent):
             break
-        if stop_anchor and isinstance(el, Tag):
-            stop_heading = stop_anchor.find_parent(["h1", "h2", "h3", "h4", "h5", "h6"])
-            if stop_heading and el is stop_heading:
-                break
+        if stop_heading and isinstance(el, Tag) and el is stop_heading:
+            break
         if isinstance(el, Tag) and el.name == "p":
             text = " ".join(el.get_text().split()).strip()
             if text:
