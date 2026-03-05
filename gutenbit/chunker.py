@@ -17,8 +17,8 @@ from dataclasses import dataclass
 # Matches common chapter/part/book headings.
 # Examples: "CHAPTER I", "Chapter 12", "BOOK III", "Part 2", "ACT IV", "SCENE 2"
 _HEADING_RE = re.compile(
-    r"^(?:CHAPTER|BOOK|PART|ACT|SCENE|SECTION)"
-    r"\s+[\dIVXLCDMivxlcdm]+\.?(?:\s.*)?$",
+    r"^(?:CHAPTER|BOOK|PART|ACT|SCENE|SECTION|STAVE)"
+    r"\s+[\dIVXLCDMivxlcdm]+[.:]?(?:\s.*)?$",
     re.IGNORECASE,
 )
 

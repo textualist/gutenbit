@@ -161,7 +161,7 @@ def test_no_chapter_gives_empty_string():
 
 
 def test_heading_variants():
-    for heading in ["BOOK III", "Part 2", "ACT IV", "SCENE 1", "Section 5"]:
+    for heading in ["BOOK III", "Part 2", "ACT IV", "SCENE 1", "Section 5", "STAVE I"]:
         content = "Some content that is long enough to pass the minimum length filter."
         text = f"{heading}\n\n{content}\n"
         chunks = chunk_text(text)
@@ -170,6 +170,22 @@ def test_heading_variants():
         assert heading_chunks[0].content == heading
         paragraphs = [c for c in chunks if c.kind == "paragraph"]
         assert paragraphs[0].chapter == heading
+
+
+def test_stave_heading_with_colon_title():
+    """STAVE I:  Subtitle (A Christmas Carol style) is detected as a heading."""
+    text = (
+        "STAVE I:  MARLEY'S GHOST\n"
+        "\n"
+        "Marley was dead: to begin with. There is no doubt whatever about that. "
+        "Old Marley was as dead as a door-nail.\n"
+    )
+    chunks = chunk_text(text)
+    headings = [c for c in chunks if c.kind == "heading"]
+    assert len(headings) == 1
+    assert headings[0].content == "STAVE I:  MARLEY'S GHOST"  # raw block preserved
+    paragraphs = [c for c in chunks if c.kind == "paragraph"]
+    assert paragraphs[0].chapter == "STAVE I: MARLEY'S GHOST"  # normalised (double space collapsed)
 
 
 # ------------------------------------------------------------------
