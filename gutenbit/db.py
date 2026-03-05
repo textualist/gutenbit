@@ -9,9 +9,8 @@ from dataclasses import astuple, dataclass
 from pathlib import Path
 
 from gutenbit.catalog import BookRecord
-from gutenbit.chunker import Chunk, chunk_text
-from gutenbit.download import download_html, download_text, strip_headers
-from gutenbit.html_chunker import chunk_html
+from gutenbit.download import download_html
+from gutenbit.html_chunker import Chunk, chunk_html
 
 logger = logging.getLogger(__name__)
 
@@ -44,14 +43,13 @@ CREATE TABLE IF NOT EXISTS chunks (
     position INTEGER NOT NULL,
     content TEXT NOT NULL,
     kind TEXT NOT NULL DEFAULT 'paragraph',
+    char_count INTEGER NOT NULL DEFAULT 0,
     UNIQUE(book_id, position)
 );
 
 CREATE INDEX IF NOT EXISTS idx_chunks_book_id ON chunks(book_id);
 """
 
-# FTS5 and its sync triggers are created separately because virtual tables
-# don't support IF NOT EXISTS in all SQLite builds.
 _FTS_SETUP = """\
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
     content,
@@ -78,7 +76,8 @@ END;
 
 _SEARCH_SQL = """\
 SELECT
-    c.id, c.book_id, c.div1, c.div2, c.div3, c.div4, c.position, c.content, c.kind,
+    c.id, c.book_id, c.div1, c.div2, c.div3, c.div4,
+    c.position, c.content, c.kind, c.char_count,
     b.title, b.authors, b.language, b.subjects,
     rank
 FROM chunks_fts
@@ -90,7 +89,7 @@ WHERE chunks_fts MATCH ?
 
 @dataclass(frozen=True, slots=True)
 class SearchResult:
-    """A single search hit — one paragraph with its book metadata."""
+    """A single search hit — one chunk with its book metadata."""
 
     chunk_id: int
     book_id: int
@@ -98,18 +97,19 @@ class SearchResult:
     authors: str
     language: str
     subjects: str
-    div1: str  # broadest division (BOOK, PART, ACT); empty if none
-    div2: str  # chapter-level (CHAPTER, STAVE, SCENE)
-    div3: str  # sub-chapter (SECTION)
-    div4: str  # reserved
+    div1: str
+    div2: str
+    div3: str
+    div4: str
     position: int
     content: str
     kind: str
+    char_count: int
     score: float
 
 
 class Database:
-    """SQLite database for storing Project Gutenberg books and their texts."""
+    """SQLite database for storing and searching Project Gutenberg books."""
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
@@ -123,47 +123,26 @@ class Database:
     # ------------------------------------------------------------------
 
     def ingest(self, books: list[BookRecord], *, delay: float = 1.0) -> None:
-        """Download, clean, chunk, and store books. Skips already-downloaded books.
-
-        Tries the HTML version first (better structural parsing via TOC),
-        falling back to plain text if HTML is unavailable.
-        """
+        """Download, chunk, and store books. Skips already-downloaded books."""
         for book in books:
             if self._has_text(book.id):
                 logger.info("Skipping %s (already downloaded)", book.title)
                 continue
-
             logger.info("Downloading %s (id=%d)", book.title, book.id)
             try:
-                self._ingest_one(book)
+                html = download_html(book.id)
+                chunks = chunk_html(html)
+                self._store(book, chunks)
             except Exception:
                 logger.exception("Failed to download %s (id=%d)", book.title, book.id)
-
             time.sleep(delay)
-
-    def _ingest_one(self, book: BookRecord) -> None:
-        """Download and store a single book, trying HTML then text."""
-        # Try HTML first for TOC-driven structural parsing
-        try:
-            html = download_html(book.id)
-            chunks = chunk_html(html)
-            if chunks:
-                self._store_chunks(book, chunks)
-                return
-        except Exception:
-            logger.debug("HTML not available for %s, falling back to text", book.title)
-
-        # Fall back to plain text
-        raw = download_text(book.id)
-        clean = strip_headers(raw)
-        self._store(book, clean)
 
     # ------------------------------------------------------------------
     # Query helpers
     # ------------------------------------------------------------------
 
     def books(self) -> list[BookRecord]:
-        """Return all stored books as BookRecords."""
+        """Return all stored books."""
         rows = self._conn.execute("SELECT * FROM books ORDER BY id").fetchall()
         return [BookRecord(**row) for row in rows]
 
@@ -174,49 +153,44 @@ class Database:
         ).fetchone()
         return row["content"] if row else None
 
-    # ------------------------------------------------------------------
-    # Full-text search
-    # ------------------------------------------------------------------
-
     def chunks(
         self,
         book_id: int,
         *,
         kinds: list[str] | None = None,
-    ) -> list[tuple[int, str, str, str, str, str, str]]:
-        """Return chunks for a book as ``(position, div1, div2, div3, div4, content, kind)``
-        tuples.
-
-        If *kinds* is given, only chunks with a matching kind are returned.
-        Useful for reconstructing text::
-
-            # Full raw reconstruction
-            "\\n\\n".join(content for _, _, _, _, _, content, _ in db.chunks(book_id))
-
-            # Prose only (no headings)
-            "\\n\\n".join(
-                content for _, _, _, _, _, content, kind in db.chunks(book_id)
-                if kind == "paragraph"
-            )
-        """
+    ) -> list[tuple[int, str, str, str, str, str, str, int]]:
+        """Return chunks as ``(position, div1, div2, div3, div4, content, kind, char_count)``."""
+        fields = "position, div1, div2, div3, div4, content, kind, char_count"
         if kinds:
             placeholders = ",".join("?" * len(kinds))
             sql = (
-                f"SELECT position, div1, div2, div3, div4, content, kind FROM chunks"
+                f"SELECT {fields} FROM chunks"
                 f" WHERE book_id = ? AND kind IN ({placeholders})"
                 f" ORDER BY position"
             )
             rows = self._conn.execute(sql, [book_id, *kinds]).fetchall()
         else:
             rows = self._conn.execute(
-                "SELECT position, div1, div2, div3, div4, content, kind FROM chunks"
-                " WHERE book_id = ? ORDER BY position",
+                f"SELECT {fields} FROM chunks WHERE book_id = ? ORDER BY position",
                 (book_id,),
             ).fetchall()
         return [
-            (r["position"], r["div1"], r["div2"], r["div3"], r["div4"], r["content"], r["kind"])
+            (
+                r["position"],
+                r["div1"],
+                r["div2"],
+                r["div3"],
+                r["div4"],
+                r["content"],
+                r["kind"],
+                r["char_count"],
+            )
             for r in rows
         ]
+
+    # ------------------------------------------------------------------
+    # Full-text search
+    # ------------------------------------------------------------------
 
     def search(
         self,
@@ -230,13 +204,7 @@ class Database:
         kind: str | None = None,
         limit: int = 20,
     ) -> list[SearchResult]:
-        """Search chunks via FTS5 with BM25 ranking.
-
-        *query* is an FTS5 match expression (e.g. ``"moby dick"`` or
-        ``whale OR sea``).  Optional keyword filters narrow results by book
-        metadata using case-insensitive substring matching.  *kind* filters
-        by chunk kind (``"paragraph"``, ``"heading"``, ``"front_matter"``, etc.).
-        """
+        """Search chunks via FTS5 with BM25 ranking."""
         sql = _SEARCH_SQL
         params: list[object] = [query]
 
@@ -276,7 +244,8 @@ class Database:
                 position=row["position"],
                 content=row["content"],
                 kind=row["kind"],
-                score=-row["rank"],  # FTS5 rank is negative; negate for intuitive scoring
+                char_count=row["char_count"],
+                score=-row["rank"],
             )
             for row in rows
         ]
@@ -289,8 +258,8 @@ class Database:
         row = self._conn.execute("SELECT 1 FROM texts WHERE book_id = ?", (book_id,)).fetchone()
         return row is not None
 
-    def _store_chunks(self, book: BookRecord, chunks: list[Chunk]) -> None:
-        """Store pre-chunked content (from HTML chunker)."""
+    def _store(self, book: BookRecord, chunks: list[Chunk]) -> None:
+        """Store a book and its chunks."""
         text = "\n\n".join(c.content for c in chunks)
         with self._conn:
             self._conn.execute(
@@ -305,40 +274,26 @@ class Database:
             )
             self._conn.execute("DELETE FROM chunks WHERE book_id = ?", (book.id,))
             self._conn.executemany(
-                "INSERT INTO chunks (book_id, div1, div2, div3, div4, position, content, kind)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    (book.id, c.div1, c.div2, c.div3, c.div4, c.position, c.content, c.kind)
-                    for c in chunks
-                ],
-            )
-
-    def _store(self, book: BookRecord, text: str) -> None:
-        chunks = chunk_text(text)
-        with self._conn:
-            self._conn.execute(
-                "INSERT OR REPLACE INTO books"
-                " (id, title, authors, language, subjects, locc, bookshelves, issued, type)"
+                "INSERT INTO chunks"
+                " (book_id, div1, div2, div3, div4, position, content, kind, char_count)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                astuple(book),
-            )
-            self._conn.execute(
-                "INSERT OR REPLACE INTO texts (book_id, content) VALUES (?, ?)",
-                (book.id, text),
-            )
-            # Clear any existing chunks for this book before re-inserting.
-            self._conn.execute("DELETE FROM chunks WHERE book_id = ?", (book.id,))
-            self._conn.executemany(
-                "INSERT INTO chunks (book_id, div1, div2, div3, div4, position, content, kind)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (book.id, c.div1, c.div2, c.div3, c.div4, c.position, c.content, c.kind)
+                    (
+                        book.id,
+                        c.div1,
+                        c.div2,
+                        c.div3,
+                        c.div4,
+                        c.position,
+                        c.content,
+                        c.kind,
+                        len(c.content),
+                    )
                     for c in chunks
                 ],
             )
 
     def close(self) -> None:
-        """Close the database connection."""
         self._conn.close()
 
     def __enter__(self) -> Database:

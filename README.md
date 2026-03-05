@@ -1,6 +1,6 @@
 # gutenbit
 
-Download, parse, and store [Project Gutenberg](https://www.gutenberg.org/) texts in SQLite.
+Download, parse, and store [Project Gutenberg](https://www.gutenberg.org/) HTML texts in SQLite.
 
 ## Install
 
@@ -17,7 +17,7 @@ from gutenbit import Catalog, Database
 catalog = Catalog.fetch()
 books = catalog.search(author="Shakespeare", language="en")
 
-# Download texts and store them in SQLite
+# Download HTML, chunk, and store in SQLite
 with Database("gutenberg.db") as db:
     db.ingest(books)
 
@@ -31,11 +31,11 @@ with Database("gutenberg.db") as db:
     results = db.search("whale", author="melville", language="en")
 
     for r in results:
-        print(f"[{r.title}] {r.chapter} (score={r.score:.1f})")
+        print(f"[{r.title}] {r.div2} (score={r.score:.1f}, {r.char_count} chars)")
         print(r.content[:200])
 ```
 
-Texts are automatically chunked into paragraphs during ingest, with chapter headings detected and tracked. Each search result includes the matching paragraph, its chapter, position, book metadata, and a BM25 relevance score.
+Each `<p>` element in the HTML becomes its own chunk. Headings are detected via TOC links and tracked as div1–div4 structural divisions. Search results include the matching paragraph, its structural position, book metadata, character count, and a BM25 relevance score.
 
 ## Development
 

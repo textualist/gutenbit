@@ -1,11 +1,10 @@
-"""TOC-driven HTML chunker for Project Gutenberg books.
+"""HTML chunker for Project Gutenberg books.
 
-Uses the table of contents ``<a class="pginternal">`` links as the primary
-structural map, rather than regex-based content heuristics.  Each TOC link
-points to a body anchor inside an ``<h2>``–``<h6>`` tag, giving us section
-boundaries and heading text directly from the markup.
+Uses the table of contents ``<a class="pginternal">`` links as the structural
+map.  Each TOC link points to a body anchor inside an ``<h2>``–``<h3>`` tag,
+giving section boundaries and heading text directly from the markup.
 
-Produces the same ``Chunk`` dataclass as ``chunker.py`` for compatibility.
+Each ``<p>`` element becomes its own chunk — no accumulation or merging.
 """
 
 from __future__ import annotations
@@ -15,8 +14,32 @@ from dataclasses import dataclass
 
 from bs4 import BeautifulSoup, Tag
 
-# Re-use the Chunk dataclass from the text chunker for compatibility.
-from gutenbit.chunker import Chunk
+# ---------------------------------------------------------------------------
+# Public data structures
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Chunk:
+    """A discrete block extracted from a book, labelled by kind.
+
+    Structural divisions (div1–div4):
+    - div1 — broadest: BOOK, PART, ACT, VOLUME
+    - div2 — chapter-level: CHAPTER, STAVE, SCENE
+    - div3 — sub-chapter: SECTION
+    - div4 — reserved for deeper nesting
+
+    Kinds: ``"front_matter"``, ``"heading"``, ``"paragraph"``, ``"end_matter"``
+    """
+
+    position: int
+    div1: str
+    div2: str
+    div3: str
+    div4: str
+    content: str
+    kind: str
+
 
 # ---------------------------------------------------------------------------
 # Heading hierarchy helpers
@@ -24,10 +47,8 @@ from gutenbit.chunker import Chunk
 
 _BROAD_KEYWORDS = frozenset({"book", "part", "act", "epilogue", "volume"})
 
-# Matches BOOK/PART/CHAPTER etc. headings for level classification fallback.
 _HEADING_KEYWORD_RE = re.compile(
-    r"^(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)"
-    r"\.?\s",
+    r"^(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)\.?\s",
     re.IGNORECASE,
 )
 
@@ -35,8 +56,6 @@ _END_MATTER_RE = re.compile(
     r"^(?:FOOTNOTES?|APPENDIX|GLOSSARY|INDEX|END OF)\b",
     re.IGNORECASE,
 )
-
-_MIN_CHUNK_LEN = 50
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,118 +76,54 @@ class _Section:
 def chunk_html(html: str) -> list[Chunk]:
     """Split an HTML book into labelled chunks using the TOC as structural map.
 
-    Returns chunks in document order, compatible with ``chunker.chunk_text``.
+    Each ``<p>`` element becomes its own chunk.  Returns chunks in document order.
     """
     soup = BeautifulSoup(html, "html.parser")
 
-    # 1. Strip PG boilerplate
+    # Strip PG boilerplate
     for section_id in ("pg-header", "pg-footer"):
         el = soup.find(id=section_id)
         if el:
             el.decompose()
 
-    # 2. Build section list from TOC links
+    # Build section list from TOC links
     sections = _parse_toc_sections(soup)
     if not sections:
         return []
 
-    # 3. Build chunks
     chunks: list[Chunk] = []
-    position = 0
-    divs = ["", "", "", ""]  # [div1, div2, div3, div4]
+    pos = 0
+    divs = ["", "", "", ""]
 
-    # --- Front matter: everything before first section anchor ---
-    front_paragraphs = _paragraphs_before(soup, sections[0].body_anchor)
-    for text in front_paragraphs:
-        chunks.append(
-            Chunk(
-                position=position,
-                div1="",
-                div2="",
-                div3="",
-                div4="",
-                content=text,
-                kind="front_matter",
-            )
-        )
-        position += 1
+    # Front matter: everything before first section anchor
+    for text in _paragraphs_before(soup, sections[0].body_anchor):
+        chunks.append(Chunk(pos, "", "", "", "", text, "front_matter"))
+        pos += 1
 
-    # --- Body sections ---
+    # Body sections
     for i, section in enumerate(sections):
         # Update division tracking
-        rank = section.level
-        divs[rank - 1] = section.heading_text
-        for lvl in range(rank, 4):
+        divs[section.level - 1] = section.heading_text
+        for lvl in range(section.level, 4):
             divs[lvl] = ""
 
         # Heading chunk
         chunks.append(
-            Chunk(
-                position=position,
-                div1=divs[0],
-                div2=divs[1],
-                div3=divs[2],
-                div4=divs[3],
-                content=section.heading_text,
-                kind="heading",
-            )
+            Chunk(pos, divs[0], divs[1], divs[2], divs[3], section.heading_text, "heading")
         )
-        position += 1
+        pos += 1
 
-        # Paragraphs until next section (or end of document)
+        # Paragraphs until next section
         next_anchor = sections[i + 1].body_anchor if i + 1 < len(sections) else None
-        paragraphs = _paragraphs_between(section.body_anchor, next_anchor)
-        position = _emit_paragraphs(paragraphs, divs, chunks, position)
+        in_end_matter = False
+        for text in _paragraphs_between(section.body_anchor, next_anchor):
+            if not in_end_matter and _END_MATTER_RE.match(text):
+                in_end_matter = True
+            kind = "end_matter" if in_end_matter else "paragraph"
+            chunks.append(Chunk(pos, divs[0], divs[1], divs[2], divs[3], text, kind))
+            pos += 1
 
     return chunks
-
-
-def _emit_paragraphs(
-    paragraphs: list[str],
-    divs: list[str],
-    chunks: list[Chunk],
-    position: int,
-) -> int:
-    """Accumulate paragraph texts into chunks, detecting end matter.
-
-    Returns the updated *position* counter.
-    """
-    in_end_matter = False
-    buffer: list[str] = []
-
-    def flush() -> int:
-        nonlocal in_end_matter
-        nonlocal position
-        if not buffer:
-            return position
-        content = "\n\n".join(buffer)
-        kind = "end_matter" if in_end_matter else "paragraph"
-        chunks.append(
-            Chunk(
-                position=position,
-                div1=divs[0],
-                div2=divs[1],
-                div3=divs[2],
-                div4=divs[3],
-                content=content,
-                kind=kind,
-            )
-        )
-        position += 1
-        buffer.clear()
-        return position
-
-    for text in paragraphs:
-        if not in_end_matter and _END_MATTER_RE.match(text):
-            position = flush()
-            in_end_matter = True
-
-        buffer.append(text)
-        if in_end_matter or sum(len(b) for b in buffer) >= _MIN_CHUNK_LEN:
-            position = flush()
-
-    position = flush()
-    return position
 
 
 # ---------------------------------------------------------------------------
@@ -191,15 +146,11 @@ def _parse_toc_sections(soup: BeautifulSoup) -> list[_Section]:
         if not body_anchor:
             continue
 
-        # Find the associated heading element.  Two patterns exist:
-        #   1. Anchor inside the heading:  <h2><a id="...">TEXT</a></h2>
-        #   2. Anchor before the heading:  <p><a id="..."></a></p> ... <h2>TEXT</h2>
+        # Find the associated heading element.
         heading_el = body_anchor.find_parent(["h1", "h2", "h3", "h4", "h5", "h6"])
         if not heading_el:
             heading_el = _find_next_heading(body_anchor, used_headings)
-        if not heading_el:
-            continue
-        if id(heading_el) in used_headings:
+        if not heading_el or id(heading_el) in used_headings:
             continue
         used_headings.add(id(heading_el))
 
@@ -207,22 +158,15 @@ def _parse_toc_sections(soup: BeautifulSoup) -> list[_Section]:
         if not heading_text:
             continue
 
-        # Determine hierarchy level
         is_bold = link.find("b") is not None
         level = _classify_level(heading_text, is_bold)
-
         sections.append(_Section(anchor_id, heading_text, level, body_anchor))
 
     return sections
 
 
 def _find_next_heading(anchor: Tag, used_headings: set[int] | None = None) -> Tag | None:
-    """Find the next major heading element after *anchor*, within a few elements.
-
-    Only matches ``<h1>``–``<h3>`` tags (not ``<h4>``–``<h6>`` which are often
-    used for illustration captions).  Skips headings already claimed by another
-    anchor (tracked via *used_headings* set of element ids).
-    """
+    """Find the next ``<h1>``–``<h3>`` heading after *anchor*."""
     for el in anchor.find_all_next(limit=10):
         if isinstance(el, Tag) and el.name in ("h1", "h2", "h3"):
             if used_headings is not None and id(el) in used_headings:
@@ -232,51 +176,38 @@ def _find_next_heading(anchor: Tag, used_headings: set[int] | None = None) -> Ta
 
 
 def _extract_heading_text(heading_el: Tag) -> str:
-    """Get clean heading text from an ``<h2>`` tag.
+    """Get clean heading text from a heading tag.
 
-    Handles several Project Gutenberg HTML patterns:
-    - Direct text nodes in the heading (most common)
-    - Text inside ``<a>`` anchors (e.g. Christmas Carol ``<a id="...">STAVE ONE.</a>``)
-    - Illustrated editions where heading text is in ``<img alt="...">``
-    - Page-number spans (``<span class="pagenum">``) that should be ignored
+    Handles: direct text, ``<a>`` anchors, ``<img alt="...">``,
+    and strips ``<span class="pagenum">`` elements.
     """
-    # Remove page-number spans before extracting text
     heading_copy = BeautifulSoup(str(heading_el), "html.parser")
     for pagenum in heading_copy.select("span.pagenum"):
         pagenum.decompose()
 
-    # Try direct text nodes first (handles P&P's image-caption h2 elements)
-    root = heading_copy.find(["h1", "h2", "h3", "h4", "h5", "h6"])
-    if not root:
-        root = heading_copy
+    root = heading_copy.find(["h1", "h2", "h3", "h4", "h5", "h6"]) or heading_copy
 
-    direct_text = ""
-    for child in root.children:
-        if isinstance(child, str):
-            direct_text += child
-
+    # Try direct text nodes first
+    direct_text = "".join(child for child in root.children if isinstance(child, str))
     cleaned = " ".join(direct_text.split()).strip()
     if cleaned:
         return cleaned
 
-    # Try img alt text (illustrated editions use images for heading text)
+    # Try img alt text (illustrated editions)
     img = root.find("img", alt=True)
     if img:
         alt = " ".join(img["alt"].split()).strip()
         if alt:
             return alt
 
-    # Fall back to full text content (headings with text inside child elements)
+    # Fall back to full text content
     return " ".join(root.get_text().split()).strip()
 
 
 def _classify_level(heading_text: str, is_bold_in_toc: bool) -> int:
     """Determine structural level: 1=broad (BOOK/PART), 2=chapter, 3=sub-chapter."""
-    # Bold in TOC reliably signals broader divisions
     if is_bold_in_toc:
         return 1
-
-    # Fall back to keyword-based classification
     m = _HEADING_KEYWORD_RE.match(heading_text)
     if m:
         keyword = heading_text.split()[0].rstrip(".,:]").lower()
@@ -284,9 +215,7 @@ def _classify_level(heading_text: str, is_bold_in_toc: bool) -> int:
             return 1
         if keyword == "section":
             return 3
-        return 2  # CHAPTER, STAVE, SCENE
-
-    # Default to chapter level
+        return 2
     return 2
 
 
@@ -295,7 +224,6 @@ def _paragraphs_before(soup: BeautifulSoup, stop_anchor: Tag) -> list[str]:
     body = soup.find("body")
     if not body:
         return []
-
     paragraphs: list[str] = []
     for el in body.descendants:
         if el is stop_anchor or _is_ancestor_of(el, stop_anchor):
@@ -304,40 +232,30 @@ def _paragraphs_before(soup: BeautifulSoup, stop_anchor: Tag) -> list[str]:
             text = " ".join(el.get_text().split()).strip()
             if text:
                 paragraphs.append(text)
-
     return paragraphs
 
 
 def _paragraphs_between(start_anchor: Tag, stop_anchor: Tag | None) -> list[str]:
-    """Collect paragraph text between two body anchors.
-
-    Walks siblings/parents from *start_anchor*'s heading element forward,
-    collecting ``<p>`` text until *stop_anchor* is reached.
-    """
-    # Start from the heading element containing the anchor
+    """Collect paragraph text between two body anchors."""
     heading_el = start_anchor.find_parent(["h1", "h2", "h3", "h4", "h5", "h6"])
-    start_el = heading_el if heading_el else start_anchor
+    start_el = heading_el or start_anchor
 
     paragraphs: list[str] = []
     for el in start_el.find_all_next():
         if stop_anchor and (el is stop_anchor or el is stop_anchor.parent):
             break
-        # Stop if we hit a heading that contains the stop anchor
         if stop_anchor and isinstance(el, Tag):
             stop_heading = stop_anchor.find_parent(["h1", "h2", "h3", "h4", "h5", "h6"])
             if stop_heading and el is stop_heading:
                 break
-
         if isinstance(el, Tag) and el.name == "p":
             text = " ".join(el.get_text().split()).strip()
             if text:
                 paragraphs.append(text)
-
     return paragraphs
 
 
 def _is_ancestor_of(potential_ancestor: object, target: Tag) -> bool:
-    """Check if *potential_ancestor* is an ancestor of *target*."""
     parent = target.parent
     while parent:
         if parent is potential_ancestor:
