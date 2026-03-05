@@ -313,11 +313,16 @@ def test_no_front_matter_when_chapter_first():
 
 def test_body_start_not_stolen_by_toc_heading_near_prose():
     """A long TOC ending with chapter entries near the first prose must not
-    push body_start back into the TOC (War and Peace regression)."""
-    # TOC ends: ...CHAPTER VIII, CHAPTER IX, separator, then actual body starts.
+    push body_start back into the TOC (War and Peace regression).
+
+    'BOOK ONE: 1805' is now a valid heading (word-ordinal form), so the body
+    starts there; the TOC CHAPTER VII/VIII/IX entries must NOT be pulled in.
+    """
+    # TOC ends: ...CHAPTER VIII, CHAPTER IX; then body starts with BOOK ONE.
     toc_chapters = "\n\n".join(f"CHAPTER {n}" for n in ["VII", "VIII", "IX"])
-    separator = "BOOK ONE: 1805"  # short non-heading between TOC and body
     body = (
+        "BOOK ONE: 1805\n"
+        "\n"
         "CHAPTER I\n"
         "\n"
         "Well, Prince, so Genoa and Lucca are now just family estates of the "
@@ -326,12 +331,14 @@ def test_body_start_not_stolen_by_toc_heading_near_prose():
         "Antichrist—I really believe he is Antichrist—I will have nothing more "
         "to do with you.\n"
     )
-    text = f"CONTENTS\n\n{toc_chapters}\n\n{separator}\n\n{body}"
+    text = f"CONTENTS\n\n{toc_chapters}\n\n{body}"
     chunks = chunk_text(text)
     headings = [c for c in chunks if c.kind == "heading"]
-    # The first heading in the body must be CHAPTER I, not CHAPTER VII/VIII/IX
-    assert headings[0].content == "CHAPTER I"
+    # Body starts at BOOK ONE (div1), not at the TOC CHAPTER VII/VIII/IX entries
+    assert headings[0].content == "BOOK ONE: 1805"
+    assert headings[1].content == "CHAPTER I"
     paragraphs = [c for c in chunks if c.kind == "paragraph"]
+    assert all(c.div1 == "BOOK ONE: 1805" for c in paragraphs)
     assert all(c.div2 == "CHAPTER I" for c in paragraphs)
 
 

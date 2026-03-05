@@ -27,10 +27,17 @@ from dataclasses import dataclass
 
 # Matches common chapter/part/book headings.
 # Examples: "CHAPTER I", "Chapter 12", "BOOK III", "Part 2", "ACT IV", "SCENE 2",
-#           "STAVE I:  Subtitle", "CHAPTER. XVIII." (Locke-style with period after keyword)
+#           "STAVE I:  Subtitle", "CHAPTER. XVIII." (Locke-style with period after keyword),
+#           "BOOK ONE: 1805" (Tolstoy-style word ordinals)
+_ORDINAL_WORDS = (
+    "one|two|three|four|five|six|seven|eight|nine|ten|"
+    "eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
+    "first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|"
+    "eleventh|twelfth|thirteenth|fourteenth|fifteenth"
+)
 _HEADING_RE = re.compile(
     r"^(?:CHAPTER|BOOK|PART|ACT|SCENE|SECTION|STAVE)"
-    r"\.?\s+[\dIVXLCDMivxlcdm]+[.:]?(?:\s.*)?$",
+    r"\.?\s+(?:[\dIVXLCDMivxlcdm]+|(?:" + _ORDINAL_WORDS + r"))[.:]?(?:\s.*)?$",
     re.IGNORECASE,
 )
 
@@ -180,9 +187,12 @@ def _find_body_start(blocks: list[str]) -> int:
                 for k in range(j - 1, i - 1, -1):
                     if _is_heading(blocks[k]):
                         # Also step back through any directly preceding headings
-                        # (e.g. "PART I" immediately before "CHAPTER I") so they
-                        # are included in the body rather than front matter.
+                        # with a strictly broader rank (e.g. "PART I" before
+                        # "CHAPTER I").  Equal-rank headings are TOC entries
+                        # and must not be pulled into the body.
                         while k > 0 and _is_heading(blocks[k - 1]):
+                            if _heading_rank(blocks[k - 1]) >= _heading_rank(blocks[k]):
+                                break
                             k -= 1
                         return k
                 return i
