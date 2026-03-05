@@ -78,3 +78,40 @@ def test_strips_leading_trailing_whitespace():
     )
     result = strip_headers(text)
     assert result == "Content with spaces."
+
+
+def test_false_positive_marker_in_content_not_treated_as_delimiter():
+    """A line mentioning Project Gutenberg with *** that isn't the exact delimiter
+    must NOT trigger header/footer stripping of surrounding content."""
+    text = (
+        "*** START OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***\n"
+        "\n"
+        "Real chapter content here.\n"
+        "\n"
+        "*** See also Project Gutenberg's free eBooks ***\n"
+        "\n"
+        "More real content that must not be lost.\n"
+        "\n"
+        "*** END OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***\n"
+    )
+    result = strip_headers(text)
+    assert "Real chapter content here." in result
+    assert "*** See also Project Gutenberg's free eBooks ***" in result
+    assert "More real content that must not be lost." in result
+
+
+def test_end_marker_before_start_marker_falls_back():
+    """If there is no START marker, the full text is returned unchanged."""
+    text = (
+        "Some preamble.\n\n*** END OF THE PROJECT GUTENBERG EBOOK ORPHAN ***\n\nTrailing junk.\n"
+    )
+    result = strip_headers(text)
+    assert result == text.strip()
+
+
+def test_partial_marker_not_matched():
+    """Lines that partially resemble delimiters must not match."""
+    text = "*** PROJECT GUTENBERG ***\n\nSome book content.\n"
+    # No valid START marker, so full text is returned
+    result = strip_headers(text)
+    assert result == text.strip()
