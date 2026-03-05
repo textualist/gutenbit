@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import gzip
 from dataclasses import dataclass
 from io import StringIO
 
@@ -37,7 +38,7 @@ class Catalog:
         """Download the CSV catalog from Project Gutenberg."""
         response = httpx.get(CATALOG_URL, follow_redirects=True, timeout=60.0)
         response.raise_for_status()
-        text = response.content.decode("utf-8")
+        text = gzip.decompress(response.content).decode("utf-8")
 
         records: list[BookRecord] = []
         for row in csv.DictReader(StringIO(text)):

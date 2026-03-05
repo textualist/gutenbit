@@ -2,9 +2,23 @@
 
 from __future__ import annotations
 
+import re
+
 import httpx
 
 TEXT_URL = "https://www.gutenberg.org/ebooks/{id}.txt.utf-8"
+
+# These patterns match only the exact standard Gutenberg delimiters:
+#   *** START OF THE PROJECT GUTENBERG EBOOK <TITLE> ***
+#   *** END OF THE PROJECT GUTENBERG EBOOK <TITLE> ***
+_START_MARKER_RE = re.compile(
+    r"^\*{3}\s+START OF THE PROJECT GUTENBERG EBOOK\b.*\*{3}\s*$",
+    re.IGNORECASE,
+)
+_END_MARKER_RE = re.compile(
+    r"^\*{3}\s+END OF THE PROJECT GUTENBERG EBOOK\b.*\*{3}\s*$",
+    re.IGNORECASE,
+)
 
 
 def download_text(book_id: int) -> str:
@@ -15,12 +29,6 @@ def download_text(book_id: int) -> str:
     return response.text
 
 
-def _is_marker_line(line: str) -> bool:
-    """Check if a line is a Project Gutenberg START/END delimiter."""
-    stripped = line.strip().upper()
-    return stripped.startswith("***") and "PROJECT GUTENBERG" in stripped
-
-
 def strip_headers(text: str) -> str:
     """Remove Project Gutenberg headers and footers, returning only the book content."""
     lines = text.splitlines()
@@ -28,10 +36,12 @@ def strip_headers(text: str) -> str:
     end = len(lines)
 
     for i, line in enumerate(lines):
-        if _is_marker_line(line):
-            if start is None:
+        stripped = line.strip()
+        if start is None:
+            if _START_MARKER_RE.match(stripped):
                 start = i + 1
-            else:
+        else:
+            if _END_MARKER_RE.match(stripped):
                 end = i
                 break
 
