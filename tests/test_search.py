@@ -84,10 +84,10 @@ def test_chunks_stored(tmp_path):
 def test_chunks_have_chapters(tmp_path):
     db = _make_db(tmp_path)
     rows = db._conn.execute(
-        "SELECT chapter FROM chunks WHERE book_id = ? AND kind = 'paragraph' ORDER BY position",
+        "SELECT div2 FROM chunks WHERE book_id = ? AND kind = 'paragraph' ORDER BY position",
         (1,),
     ).fetchall()
-    chapters = [r["chapter"] for r in rows]
+    chapters = [r["div2"] for r in rows]
     assert chapters == ["CHAPTER 1", "CHAPTER 1", "CHAPTER 2"]
 
 
@@ -131,13 +131,13 @@ def test_chunks_method_filters_by_kind(tmp_path):
     db = _make_db(tmp_path)
     paragraphs = db.chunks(1, kinds=["paragraph"])
     assert len(paragraphs) == 3
-    assert all(k == "paragraph" for _, _, _, k in paragraphs)
+    assert all(k == "paragraph" for _, _, _, _, _, _, k in paragraphs)
 
 
 def test_chunks_method_reconstruct_text(tmp_path):
     db = _make_db(tmp_path)
     chunks = db.chunks(1)
-    reconstructed = "\n\n".join(content for _, _, content, _ in chunks)
+    reconstructed = "\n\n".join(content for _, _, _, _, _, content, _ in chunks)
     assert "Call me Ishmael" in reconstructed
     assert "CHAPTER 1" in reconstructed
 
@@ -146,9 +146,9 @@ def test_chunks_method_prose_only(tmp_path):
     """Filtering to 'paragraph' gives prose without headings."""
     db = _make_db(tmp_path)
     prose = db.chunks(1, kinds=["paragraph"])
-    kinds = {k for _, _, _, k in prose}
+    kinds = {k for _, _, _, _, _, _, k in prose}
     assert kinds == {"paragraph"}
-    contents = "\n\n".join(c for _, _, c, _ in prose)
+    contents = "\n\n".join(c for _, _, _, _, _, c, _ in prose)
     assert "Call me Ishmael" in contents
     assert "CHAPTER" not in contents
 
@@ -173,7 +173,8 @@ def test_search_result_fields(tmp_path):
     assert r.book_id == 1
     assert r.title == "Moby Dick"
     assert r.authors == "Melville, Herman"
-    assert r.chapter == "CHAPTER 1"
+    assert r.div1 == ""           # no PART/BOOK heading in test data
+    assert r.div2 == "CHAPTER 1"  # CHAPTER is rank-2
     assert r.kind == "paragraph"
     assert r.score > 0
 
@@ -283,7 +284,7 @@ def test_dickens_dialogue_accumulated(tmp_path):
     db._store(_DICKENS_BOOK, _DICKENS_TEXT)
 
     all_chunks = db.chunks(3)
-    reconstructed = "\n\n".join(content for _, _, content, _ in all_chunks)
+    reconstructed = "\n\n".join(content for _, _, _, _, _, content, _ in all_chunks)
     assert "Oliver Twist" in reconstructed
     assert "What's your name" in reconstructed
     assert "boy hesitated" in reconstructed
@@ -294,7 +295,7 @@ def test_dickens_reconstruct_full_text(tmp_path):
     db._store(_DICKENS_BOOK, _DICKENS_TEXT)
 
     all_chunks = db.chunks(3)
-    reconstructed = "\n\n".join(content for _, _, content, _ in all_chunks)
+    reconstructed = "\n\n".join(content for _, _, _, _, _, content, _ in all_chunks)
     assert "workhouse" in reconstructed
     assert "Oliver Twist" in reconstructed
     assert "* * *" in reconstructed
@@ -306,9 +307,9 @@ def test_dickens_filter_prose_only(tmp_path):
     db._store(_DICKENS_BOOK, _DICKENS_TEXT)
 
     prose = db.chunks(3, kinds=["paragraph"])
-    kinds = {k for _, _, _, k in prose}
+    kinds = {k for _, _, _, _, _, _, k in prose}
     assert kinds == {"paragraph"}
-    contents = "\n\n".join(c for _, _, c, _ in prose)
+    contents = "\n\n".join(c for _, _, _, _, _, c, _ in prose)
     # Dialogue is inside paragraph chunks (accumulated)
     assert "Oliver Twist" in contents
     # Headings excluded from prose

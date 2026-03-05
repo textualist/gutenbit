@@ -36,7 +36,10 @@ CREATE TABLE IF NOT EXISTS texts (
 CREATE TABLE IF NOT EXISTS chunks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-    chapter TEXT NOT NULL DEFAULT '',
+    div1 TEXT NOT NULL DEFAULT '',
+    div2 TEXT NOT NULL DEFAULT '',
+    div3 TEXT NOT NULL DEFAULT '',
+    div4 TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL,
     content TEXT NOT NULL,
     kind TEXT NOT NULL DEFAULT 'paragraph',
@@ -74,7 +77,7 @@ END;
 
 _SEARCH_SQL = """\
 SELECT
-    c.id, c.book_id, c.chapter, c.position, c.content, c.kind,
+    c.id, c.book_id, c.div1, c.div2, c.div3, c.div4, c.position, c.content, c.kind,
     b.title, b.authors, b.language, b.subjects,
     rank
 FROM chunks_fts
@@ -94,7 +97,10 @@ class SearchResult:
     authors: str
     language: str
     subjects: str
-    chapter: str
+    div1: str  # broadest division (BOOK, PART, ACT); empty if none
+    div2: str  # chapter-level (CHAPTER, STAVE, SCENE)
+    div3: str  # sub-chapter (SECTION)
+    div4: str  # reserved
     position: int
     content: str
     kind: str
@@ -157,36 +163,40 @@ class Database:
         book_id: int,
         *,
         kinds: list[str] | None = None,
-    ) -> list[tuple[int, str, str, str]]:
-        """Return chunks for a book as ``(position, chapter, content, kind)`` tuples.
+    ) -> list[tuple[int, str, str, str, str, str, str]]:
+        """Return chunks for a book as ``(position, div1, div2, div3, div4, content, kind)``
+        tuples.
 
         If *kinds* is given, only chunks with a matching kind are returned.
         Useful for reconstructing text::
 
             # Full raw reconstruction
-            "\\n\\n".join(content for _, _, content, _ in db.chunks(book_id))
+            "\\n\\n".join(content for _, _, _, _, _, content, _ in db.chunks(book_id))
 
             # Prose only (no headings)
             "\\n\\n".join(
-                content for _, _, content, kind in db.chunks(book_id)
+                content for _, _, _, _, _, content, kind in db.chunks(book_id)
                 if kind == "paragraph"
             )
         """
         if kinds:
             placeholders = ",".join("?" * len(kinds))
             sql = (
-                f"SELECT position, chapter, content, kind FROM chunks"
+                f"SELECT position, div1, div2, div3, div4, content, kind FROM chunks"
                 f" WHERE book_id = ? AND kind IN ({placeholders})"
                 f" ORDER BY position"
             )
             rows = self._conn.execute(sql, [book_id, *kinds]).fetchall()
         else:
             rows = self._conn.execute(
-                "SELECT position, chapter, content, kind FROM chunks"
+                "SELECT position, div1, div2, div3, div4, content, kind FROM chunks"
                 " WHERE book_id = ? ORDER BY position",
                 (book_id,),
             ).fetchall()
-        return [(r["position"], r["chapter"], r["content"], r["kind"]) for r in rows]
+        return [
+            (r["position"], r["div1"], r["div2"], r["div3"], r["div4"], r["content"], r["kind"])
+            for r in rows
+        ]
 
     def search(
         self,
@@ -239,7 +249,10 @@ class Database:
                 authors=row["authors"],
                 language=row["language"],
                 subjects=row["subjects"],
-                chapter=row["chapter"],
+                div1=row["div1"],
+                div2=row["div2"],
+                div3=row["div3"],
+                div4=row["div4"],
                 position=row["position"],
                 content=row["content"],
                 kind=row["kind"],
@@ -272,9 +285,12 @@ class Database:
             # Clear any existing chunks for this book before re-inserting.
             self._conn.execute("DELETE FROM chunks WHERE book_id = ?", (book.id,))
             self._conn.executemany(
-                "INSERT INTO chunks (book_id, chapter, position, content, kind)"
-                " VALUES (?, ?, ?, ?, ?)",
-                [(book.id, c.chapter, c.position, c.content, c.kind) for c in chunks],
+                "INSERT INTO chunks (book_id, div1, div2, div3, div4, position, content, kind)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (book.id, c.div1, c.div2, c.div3, c.div4, c.position, c.content, c.kind)
+                    for c in chunks
+                ],
             )
 
     def close(self) -> None:
