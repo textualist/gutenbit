@@ -1,6 +1,10 @@
 """Integration tests for chunk storage and FTS5 search."""
 
+import contextlib
+import io
+
 from gutenbit.catalog import BookRecord
+from gutenbit.cli import main as cli_main
 from gutenbit.db import Database, SearchResult
 from gutenbit.html_chunker import chunk_html
 
@@ -99,6 +103,14 @@ def _make_db(tmp_path):
     db._store(_BOOK, chunk_html(_BOOK_HTML))
     db._store(_BOOK2, chunk_html(_BOOK2_HTML))
     return db
+
+
+def _run_cli(db_path, *args):
+    out = io.StringIO()
+    err = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = cli_main(["--db", str(db_path), *args])
+    return code, out.getvalue(), err.getvalue()
 
 
 # ------------------------------------------------------------------
@@ -329,3 +341,83 @@ def test_search_mode_last_orders_reverse_position(tmp_path):
     db = _make_db(tmp_path)
     results = db.search("CHAPTER", book_id=1, kind="heading", mode="last", limit=2)
     assert [r.position for r in results] == [5, 2]
+
+
+# ------------------------------------------------------------------
+# CLI view command
+# ------------------------------------------------------------------
+
+
+def test_view_default_shows_structure(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1")
+    assert code == 0
+    assert "Moby Dick" in out
+    assert "CHAPTER 1" in out
+    assert "section(s)" in out
+
+
+def test_view_all_and_missing_book(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    ok_code, ok_out, _ok_err = _run_cli(db_path, "view", "1", "--all")
+    assert ok_code == 0
+    assert "Call me Ishmael" in ok_out
+
+    miss_code, miss_out, _miss_err = _run_cli(db_path, "view", "999", "--all")
+    assert miss_code == 1
+    assert "No text found" in miss_out
+
+
+def test_view_chunk_id_with_neighbors(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    row = db._conn.execute(
+        "SELECT id FROM chunks WHERE book_id = ? AND kind = 'paragraph' ORDER BY position LIMIT 1",
+        (1,),
+    ).fetchone()
+    assert row is not None
+    chunk_id = row["id"]
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--chunk-id", str(chunk_id), "--around", "1")
+    assert code == 0
+    assert f"chunk={chunk_id}" in out
+    assert "path=CHAPTER 1" in out
+
+
+def test_view_div_with_filters_and_limit(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(
+        db_path,
+        "view",
+        "1",
+        "--div",
+        "CHAPTER 1",
+        "--kind",
+        "paragraph",
+        "-n",
+        "1",
+    )
+    assert code == 0
+    assert "div='CHAPTER 1'" in out
+    assert "kind=paragraph" in out
+    assert "1 chunk(s)" in out
+
+
+def test_view_rejects_multiple_selectors(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--all", "--div", "CHAPTER 1")
+    assert code == 1
+    assert "Choose at most one selector" in out

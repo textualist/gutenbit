@@ -515,22 +515,39 @@ class TestCLICommands:
         assert "Second Treatise" in result.stdout
         assert "2 book(s)" in result.stdout
 
-    def test_cli_chunks(self, db_path: str):
-        result = _run_cli("chunks", "46", db=db_path)
+    def test_cli_view_default(self, db_path: str):
+        result = _run_cli("view", "46", db=db_path)
         assert result.returncode == 0
+        assert "A Christmas Carol" in result.stdout
         assert "STAVE" in result.stdout
-        assert "chunk(s) shown" in result.stdout
+        assert "section(s)" in result.stdout
 
-    def test_cli_chunks_kind_filter(self, db_path: str):
-        result = _run_cli("chunks", "46", "--kind", "heading", db=db_path)
+    def test_cli_view_div_kind_filter(self, db_path: str):
+        result = _run_cli("view", "46", "--div", "STAVE ONE", "--kind", "heading", db=db_path)
         assert result.returncode == 0
-        assert "[heading]" in result.stdout
-        assert "5/" in result.stdout  # 5 headings shown
+        assert "kind=heading" in result.stdout
+        assert "path=STAVE ONE" in result.stdout
 
-    def test_cli_chunks_limit(self, db_path: str):
-        result = _run_cli("chunks", "46", "-n", "3", db=db_path)
+    def test_cli_view_div_limit(self, db_path: str):
+        result = _run_cli("view", "46", "--div", "STAVE ONE", "-n", "3", db=db_path)
         assert result.returncode == 0
-        assert "3/" in result.stdout
+        assert "3 chunk(s)" in result.stdout
+
+    def test_cli_view_chunk_id(self, db_path: str):
+        with Database(db_path) as db:
+            row = db._conn.execute(
+                "SELECT id FROM chunks "
+                "WHERE book_id = ? AND kind = 'heading' "
+                "ORDER BY position LIMIT 1",
+                (46,),
+            ).fetchone()
+        assert row is not None
+        chunk_id = row["id"]
+
+        result = _run_cli("view", "46", "--chunk-id", str(chunk_id), db=db_path)
+        assert result.returncode == 0
+        assert f"chunk={chunk_id}" in result.stdout
+        assert "path=STAVE ONE" in result.stdout
 
     def test_cli_search(self, db_path: str):
         result = _run_cli("search", "Scrooge", "--book-id", "46", db=db_path)
@@ -548,34 +565,25 @@ class TestCLICommands:
         assert result.returncode == 0
         assert "No results" in result.stdout
 
-    def test_cli_toc(self, db_path: str):
-        result = _run_cli("toc", "46", db=db_path)
-        assert result.returncode == 0
-        assert "Christmas Carol" in result.stdout
-        assert "STAVE ONE" in result.stdout
-        assert "STAVE FIVE" in result.stdout
-        assert "5 section(s)" in result.stdout
-        assert "paragraphs" in result.stdout
-
-    def test_cli_toc_locke(self, db_path: str):
-        result = _run_cli("toc", "7370", db=db_path)
+    def test_cli_view_default_locke(self, db_path: str):
+        result = _run_cli("view", "7370", db=db_path)
         assert result.returncode == 0
         assert "CHAPTER." in result.stdout
         assert "19 section(s)" in result.stdout
 
-    def test_cli_text(self, db_path: str):
-        result = _run_cli("text", "46", db=db_path)
+    def test_cli_view_all(self, db_path: str):
+        result = _run_cli("view", "46", "--all", db=db_path)
         assert result.returncode == 0
         assert "Marley was dead" in result.stdout
         assert "Scrooge" in result.stdout
 
-    def test_cli_text_missing_book(self, db_path: str):
-        result = _run_cli("text", "99999", db=db_path)
+    def test_cli_view_all_missing_book(self, db_path: str):
+        result = _run_cli("view", "99999", "--all", db=db_path)
         assert result.returncode == 1
         assert "No text found" in result.stdout
 
-    def test_cli_chunks_missing_book(self, db_path: str):
-        result = _run_cli("chunks", "99999", db=db_path)
+    def test_cli_view_missing_book(self, db_path: str):
+        result = _run_cli("view", "99999", db=db_path)
         assert result.returncode == 1
         assert "No chunks found" in result.stdout
 
@@ -604,13 +612,13 @@ class TestCLIDeleteCommand:
         assert "Christmas Carol" not in books.stdout
         assert "Second Treatise" in books.stdout
 
-        chunks = _run_cli("chunks", "46", db=db_path)
-        assert chunks.returncode == 1
-        assert "No chunks found" in chunks.stdout
+        summary = _run_cli("view", "46", db=db_path)
+        assert summary.returncode == 1
+        assert "No chunks found" in summary.stdout
 
-        text = _run_cli("text", "46", db=db_path)
-        assert text.returncode == 1
-        assert "No text found" in text.stdout
+        all_text = _run_cli("view", "46", "--all", db=db_path)
+        assert all_text.returncode == 1
+        assert "No text found" in all_text.stdout
 
         search = _run_cli("search", "Scrooge", "--book-id", "46", db=db_path)
         assert search.returncode == 0

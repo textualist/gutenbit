@@ -8,9 +8,10 @@ import sys
 from pathlib import Path
 
 from gutenbit.catalog import Catalog
-from gutenbit.db import Database
+from gutenbit.db import ChunkRecord, Database
 
 DEFAULT_DB = "gutenbit.db"
+CHUNK_KINDS = ["front_matter", "heading", "paragraph", "end_matter"]
 
 
 def _preview(text: str, limit: int) -> str:
@@ -37,8 +38,8 @@ typical workflow:
   1. gutenbit catalog --author Dickens         # find book IDs
   2. gutenbit ingest 46 730                    # download & store
   3. gutenbit books                            # list stored books
-  4. gutenbit toc 46                           # view table of contents
-  5. gutenbit search "Marley ghost" --book-id 46  # full-text search
+  4. gutenbit view 46                          # browse structure / text
+  5. gutenbit search "Marley ghost" --book-id 46  # find relevant chunks
 
 chunk kinds:  front_matter, heading, paragraph, end_matter
 division hierarchy:  div1 (BOOK/PART) > div2 (CHAPTER) > div3 (SECTION) > div4
@@ -126,34 +127,6 @@ example:
 output columns:  ID  AUTHORS  TITLE""",
     )
 
-    # --- chunks ---
-    ch = sub.add_parser(
-        "chunks",
-        formatter_class=fmt,
-        help="show chunks for a stored book",
-        description=(
-            "Display individual chunks (paragraphs, headings, etc.) for a stored book. "
-            "Each chunk has a position, div path, kind, and content preview."
-        ),
-        epilog="""\
-examples:
-  gutenbit chunks 2600                              # all chunks
-  gutenbit chunks 2600 --kind heading               # headings only
-  gutenbit chunks 2600 --kind paragraph -n 10       # first 10 paragraphs
-  gutenbit chunks 46 --kind front_matter end_matter # bookend material
-
-output columns:  POSITION  [KIND]  DIV_PATH  CONTENT_PREVIEW
-chunk kinds:  front_matter, heading, paragraph, end_matter""",
-    )
-    ch.add_argument("book_id", type=int, help="Project Gutenberg book ID")
-    ch.add_argument(
-        "--kind",
-        nargs="+",
-        choices=["front_matter", "heading", "paragraph", "end_matter"],
-        help="filter by chunk kind(s)",
-    )
-    ch.add_argument("-n", "--limit", type=int, default=0, help="max chunks to show (0=all)")
-
     # --- search ---
     se = sub.add_parser(
         "search",
@@ -178,7 +151,7 @@ output fields:
   path, score, kind, char_count
   preview text
 
-tip: use 'gutenbit toc <id>' first to see a book's structure, then
+tip: use 'gutenbit view <id>' first to see a book's structure, then
      narrow searches with --book-id and --kind.""",
     )
     se.add_argument("query", help="FTS5 search query (supports phrases, AND/OR/NOT, prefix*)")
@@ -214,52 +187,54 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
         help="preview length per result (default: 140)",
     )
 
-    # --- toc ---
-    toc = sub.add_parser(
-        "toc",
+    # --- view ---
+    vw = sub.add_parser(
+        "view",
         formatter_class=fmt,
-        help="print the table of contents for a stored book",
+        help="browse structure and retrieve text/chunks for a stored book",
         description=(
-            "Print the hierarchical table of contents for a stored book. "
-            "Shows each section heading with its div path, paragraph count, "
-            "and character count. Use this to understand a book's structure "
-            "before searching."
-        ),
-        epilog="""\
-example:
-  gutenbit toc 2600
-
-output per section:
-  HEADING_TEXT                         (indented by hierarchy depth)
-    div=DIV1/DIV2  (N paragraphs, M chars)
-
-division hierarchy:
-  div1 — broad divisions (BOOK, PART, VOLUME)
-  div2 — chapters (CHAPTER, STAVE, SCENE)
-  div3 — sub-sections (SECTION)
-  div4 — reserved
-
-workflow: run 'toc' to identify sections, then use the div values
-with 'search --book-id <id>' to target specific parts of a book.""",
-    )
-    toc.add_argument("book_id", type=int, help="Project Gutenberg book ID")
-
-    # --- text ---
-    tx = sub.add_parser(
-        "text",
-        formatter_class=fmt,
-        help="print the full reconstructed text of a stored book",
-        description=(
-            "Print the full plain text of a stored book by joining all chunks. "
-            "Useful for piping to other tools or reading offline."
+            "Unified text-view command. By default prints a TOC-style structure summary. "
+            "Use exact selectors to retrieve the full book, one chunk by ID, "
+            "or chunks under a div path."
         ),
         epilog="""\
 examples:
-  gutenbit text 46                # print to terminal
-  gutenbit text 46 > carol.txt   # save to file
-  gutenbit text 46 | wc -w       # word count""",
+  gutenbit view 2600                                 # structure summary
+  gutenbit view 2600 --all                           # full reconstructed text
+  gutenbit view 2600 --chunk-id 12345                # one exact chunk
+  gutenbit view 2600 --chunk-id 12345 --around 2     # chunk + neighbors
+  gutenbit view 2600 --div "BOOK I/CHAPTER I" -n 10  # chunks in section
+  gutenbit view 46 --div "STAVE ONE" --full          # full chunk text
+
+selectors (choose at most one):
+  --all | --chunk-id <id> | --div <DIV_PATH>
+
+chunk kinds:  front_matter, heading, paragraph, end_matter
+division hierarchy:  div1/div2/div3/div4""",
     )
-    tx.add_argument("book_id", type=int, help="Project Gutenberg book ID")
+    vw.add_argument("book_id", type=int, help="Project Gutenberg book ID")
+    vw.add_argument("--all", action="store_true", help="print full reconstructed text")
+    vw.add_argument("--chunk-id", type=int, help="retrieve one exact chunk by chunk id")
+    vw.add_argument(
+        "--div",
+        help="retrieve chunks under exact div path prefix (e.g. PART ONE/CHAPTER I)",
+    )
+    vw.add_argument(
+        "--around", type=int, default=0, help="neighbors on each side (for --chunk-id)"
+    )
+    vw.add_argument(
+        "--full", action="store_true", help="print full chunk text instead of previews"
+    )
+    vw.add_argument(
+        "--kind", nargs="+", choices=CHUNK_KINDS, help="filter kinds (only with --div)"
+    )
+    vw.add_argument("-n", "--limit", type=int, default=0, help="max chunks for --div (0=all)")
+    vw.add_argument(
+        "--preview-chars",
+        type=int,
+        default=140,
+        help="preview length per chunk when not using --full (default: 140)",
+    )
 
     return p
 
@@ -335,26 +310,6 @@ def _cmd_delete(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_chunks(args: argparse.Namespace) -> int:
-    with Database(args.db) as db:
-        rows = db.chunks(args.book_id, kinds=args.kind)
-    if not rows:
-        print(f"No chunks found for book {args.book_id}.")
-        return 1
-    limit = args.limit if args.limit > 0 else len(rows)
-    for pos, div1, div2, div3, div4, content, kind, _char_count in rows[:limit]:
-        divs = "/".join(d for d in [div1, div2, div3, div4] if d)
-        tag = f"[{kind}]"
-        preview = content[:120].replace("\n", " ")
-        if len(content) > 120:
-            preview += "…"
-        print(f"  {pos:>5}  {tag:<14s}  {divs:<40s}  {preview}")
-    total = len(rows)
-    shown = min(limit, total)
-    print(f"\n{shown}/{total} chunk(s) shown (book {args.book_id})")
-    return 0
-
-
 def _cmd_search(args: argparse.Namespace) -> int:
     search_query = _fts_phrase_query(args.query) if args.phrase else args.query
     default_limit = 1 if args.mode in {"first", "last"} else 20
@@ -391,21 +346,22 @@ def _cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_toc(args: argparse.Namespace) -> int:
-    with Database(args.db) as db:
-        all_chunks = db.chunks(args.book_id)
-        stored_books = db.books()
+def _render_section_summary(db: Database, book_id: int) -> int:
+    all_chunks = db.chunks(book_id)
     if not all_chunks:
-        print(f"No chunks found for book {args.book_id}.")
+        print(f"No chunks found for book {book_id}.")
         return 1
 
+    stored_books = db.books()
     title = ""
     for b in stored_books:
-        if b.id == args.book_id:
+        if b.id == book_id:
             title = b.title
             break
 
-    # Build sections: each heading plus counts of paragraphs that follow it
+    if title:
+        print(f"# {title} (id={book_id})\n")
+
     sections: list[dict[str, str | int]] = []
     for pos, div1, div2, div3, div4, content, kind, char_count in all_chunks:
         if kind == "heading":
@@ -425,17 +381,11 @@ def _cmd_toc(args: argparse.Namespace) -> int:
             sections[-1]["paragraphs"] = int(sections[-1]["paragraphs"]) + 1
             sections[-1]["chars"] = int(sections[-1]["chars"]) + char_count
 
-    if title:
-        print(f"# {title} (id={args.book_id})\n")
-
-    # Print with indentation reflecting hierarchy
     for sec in sections:
         div1 = sec["div1"]
         div2 = sec["div2"]
         div3 = sec["div3"]
         div4 = sec["div4"]
-
-        # Indent: div1-only=0, div2=2, div3=4, div4=6
         if div4:
             indent = 6
         elif div3:
@@ -444,27 +394,87 @@ def _cmd_toc(args: argparse.Namespace) -> int:
             indent = 2
         else:
             indent = 0
-
         divs = "/".join(str(d) for d in [div1, div2, div3, div4] if d)
         stats = f"({sec['paragraphs']} paragraphs, {sec['chars']} chars)"
         print(f"{' ' * indent}{sec['heading']}")
         print(f"{' ' * indent}  div={divs}  {stats}")
 
     print(f"\n{len(sections)} section(s)")
-    # Print a hint for agent usage
-    bid = args.book_id
-    print(f"\nFilter searches with: gutenbit search <query> --book-id {bid} --kind paragraph")
+    print(f"\nFilter searches with: gutenbit search <query> --book-id {book_id} --kind paragraph")
     return 0
 
 
-def _cmd_text(args: argparse.Namespace) -> int:
-    with Database(args.db) as db:
-        content = db.text(args.book_id)
-    if content is None:
-        print(f"No text found for book {args.book_id}.")
+def _print_chunk_blocks(
+    rows: list[ChunkRecord], *, full: bool, preview_chars: int, title: str = ""
+) -> None:
+    if title:
+        print(title)
+    for idx, row in enumerate(rows, start=1):
+        divs = " / ".join(d for d in [row.div1, row.div2, row.div3, row.div4] if d) or "(root)"
+        body = row.content if full else _preview(row.content, preview_chars)
+        print(
+            f"\n{idx:>2}. chunk={row.chunk_id} pos={row.position}  "
+            f"kind={row.kind}  chars={row.char_count}"
+        )
+        print(f"    path={divs}")
+        print(f"    {body}")
+    print(f"\n{len(rows)} chunk(s)")
+
+
+def _cmd_view(args: argparse.Namespace) -> int:
+    selected = int(args.all) + int(args.chunk_id is not None) + int(args.div is not None)
+    if selected > 1:
+        print("Choose at most one selector: --all, --chunk-id, or --div.")
         return 1
-    print(content)
-    return 0
+    if args.around < 0:
+        print("--around must be >= 0.")
+        return 1
+    if args.limit < 0:
+        print("--limit must be >= 0.")
+        return 1
+    if args.kind and args.div is None:
+        print("--kind can only be used with --div.")
+        return 1
+
+    preview_chars = args.preview_chars if args.preview_chars > 0 else 140
+    with Database(args.db) as db:
+        if args.all:
+            content = db.text(args.book_id)
+            if content is None:
+                print(f"No text found for book {args.book_id}.")
+                return 1
+            print(content)
+            return 0
+
+        if args.chunk_id is not None:
+            rows = db.chunk_window(args.book_id, args.chunk_id, around=args.around)
+            if not rows:
+                print(f"No chunk found for id {args.chunk_id} in book {args.book_id}.")
+                return 1
+            _print_chunk_blocks(
+                rows,
+                full=args.full,
+                preview_chars=preview_chars,
+                title=(
+                    f"book={args.book_id}  chunk_id={args.chunk_id}  around={args.around}"
+                ),
+            )
+            return 0
+
+        if args.div is not None:
+            rows = db.chunks_by_div(args.book_id, args.div, kinds=args.kind, limit=args.limit)
+            if not rows:
+                print(f"No chunks found for book {args.book_id} under div '{args.div}'.")
+                return 1
+            _print_chunk_blocks(
+                rows,
+                full=args.full,
+                preview_chars=preview_chars,
+                title=f"book={args.book_id}  div={args.div!r}",
+            )
+            return 0
+
+        return _render_section_summary(db, args.book_id)
 
 
 _COMMANDS = {
@@ -472,10 +482,8 @@ _COMMANDS = {
     "ingest": _cmd_ingest,
     "delete": _cmd_delete,
     "books": _cmd_books,
-    "chunks": _cmd_chunks,
     "search": _cmd_search,
-    "toc": _cmd_toc,
-    "text": _cmd_text,
+    "view": _cmd_view,
 }
 
 
