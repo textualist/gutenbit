@@ -381,11 +381,12 @@ def test_view_default_shows_structure(tmp_path):
     assert code == 0
     assert "Moby Dick" in out
     assert "CHAPTER 1" in out
-    assert "section(s)" in out
-    assert "#  Section" in out
+    assert "Sections" in out
+    assert "Section" in out
     assert "Paras" in out
     assert "Chars" in out
-    assert "Read" in out
+    assert "Est words" in out
+    assert "Est read" in out
     assert "Position" in out
     assert "Opening" in out
     assert "--position" in out
@@ -406,6 +407,7 @@ def test_view_default_json(tmp_path):
     assert payload["overview"]["sections_total"] == 2
     assert payload["overview"]["chunk_counts"]["heading"] == 2
     assert payload["sections"][0]["heading"] == "CHAPTER 1"
+    assert payload["sections"][0]["est_words"] > 0
     assert payload["quick_actions"]["search"] == (
         "gutenbit search <query> --book-id 1 --kind paragraph"
     )

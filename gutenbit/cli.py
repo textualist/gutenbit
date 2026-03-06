@@ -81,6 +81,46 @@ def _estimate_read_time(words: int, *, wpm: int = 250) -> str:
     return f"{mins}m"
 
 
+def _print_key_value_table(
+    rows: list[tuple[str, str]], *, show_header: bool = True, key_header: str = "Field", value_header: str = "Value"
+) -> None:
+    if not rows:
+        return
+    key_width = max(len(key_header), max(len(key) for key, _ in rows))
+    if show_header:
+        print(f"  {key_header:<{key_width}}  {value_header}")
+        print(f"  {'-' * key_width}  {'-' * len(value_header)}")
+    for key, value in rows:
+        shown = _single_line(value) if value else "-"
+        print(f"  {key:<{key_width}}  {shown}")
+
+
+def _print_table(headers: list[str], rows: list[list[str]], *, right_align: set[int]) -> None:
+    if not headers:
+        return
+    widths = []
+    for idx, header in enumerate(headers):
+        widest = len(header)
+        for row in rows:
+            widest = max(widest, len(row[idx]))
+        widths.append(widest)
+
+    def _fmt(cell: str, idx: int) -> str:
+        width = widths[idx]
+        if idx in right_align:
+            return f"{cell:>{width}}"
+        return f"{cell:<{width}}"
+
+    print("  " + "  ".join(_fmt(header, i) for i, header in enumerate(headers)))
+    print("  " + "  ".join("-" * width for width in widths))
+    for row in rows:
+        print("  " + "  ".join(_fmt(cell, i) for i, cell in enumerate(row)))
+
+
+def _print_block_header(title: str) -> None:
+    print(f"\n[{title.upper()}]")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     fmt = argparse.RawDescriptionHelpFormatter
     p = argparse.ArgumentParser(
@@ -573,6 +613,7 @@ def _build_section_summary(db: Database, book_id: int) -> dict[str, object] | No
                 "position": int(sec["position"]),
                 "paragraphs": int(sec["paragraphs"]),
                 "chars": int(sec["chars"]),
+                "est_words": round(int(sec["chars"]) / 5),
                 "read_time": _estimate_read_time(round(int(sec["chars"]) / 5)),
                 "first_position": (
                     int(sec["first_position"]) if sec["first_position"] is not None else None
@@ -609,103 +650,107 @@ def _render_section_summary(db: Database, book_id: int, *, as_json: bool = False
     assert isinstance(sections, list)
     assert isinstance(quick_actions, dict)
 
-    title = str(book["title"])
-    print(f"# {title} (id={book_id})")
-
     authors = str(book["authors"])
-    if authors:
-        print(f"by {authors}")
-
-    meta: list[str] = []
-    if book["language"]:
-        meta.append(f"language={book['language']}")
-    if book["issued"]:
-        meta.append(f"issued={book['issued']}")
-    if book["type"]:
-        meta.append(f"type={book['type']}")
-    if book["locc"]:
-        meta.append(f"locc={book['locc']}")
-    if meta:
-        print(f"meta: {'  '.join(meta)}")
-
     subjects = _summarize_semicolon_list(";".join(book["subjects"]), max_items=5)
+    shelves = _summarize_semicolon_list(";".join(book["bookshelves"]), max_items=7)
+
+    book_rows: list[tuple[str, str]] = []
+    book_rows.append(("Title", str(book["title"])))
+    book_rows.append(("Gutenberg ID", str(book_id)))
+    if authors:
+        book_rows.append(("Authors", authors))
+    if book["language"]:
+        book_rows.append(("Language", str(book["language"])))
+    if book["issued"]:
+        book_rows.append(("Issued", str(book["issued"])))
+    if book["type"]:
+        book_rows.append(("Type", str(book["type"])))
+    if book["locc"]:
+        book_rows.append(("LoCC", str(book["locc"])))
     if subjects:
-        print(f"subjects: {subjects}")
-    shelves = _summarize_semicolon_list(";".join(book["bookshelves"]), max_items=4)
+        book_rows.append(("Subjects", subjects))
     if shelves:
-        print(f"shelves: {shelves}")
+        book_rows.append(("Shelves", shelves))
 
-    print("\nOverview")
-    print(
-        "  chunks="
-        f"{_format_int(int(overview['chunks_total']))} ("
-        f"front_matter={_format_int(int(overview['chunk_counts']['front_matter']))}, "
-        f"heading={_format_int(int(overview['chunk_counts']['heading']))}, "
-        f"paragraph={_format_int(int(overview['chunk_counts']['paragraph']))}, "
-        f"end_matter={_format_int(int(overview['chunk_counts']['end_matter']))})"
-    )
-    print(
-        "  "
-        f"section(s)={_format_int(int(overview['sections_total']))}  "
-        f"paragraphs={_format_int(int(overview['paragraphs_total']))}  "
-        f"chars={_format_int(int(overview['chars_total']))}"
-    )
-    print(
-        f"  est_words~{_format_int(int(overview['est_words']))}  "
-        f"est_read={overview['est_read_time']}"
+    _print_block_header("Book")
+    _print_key_value_table(book_rows, show_header=False)
+
+    _print_block_header("Overview")
+    _print_table(
+        [
+            "Sections",
+            "Paras",
+            "Chars",
+            "Est words",
+            "Est read",
+        ],
+        [
+            [
+                _format_int(int(overview["chunk_counts"]["heading"])),
+                _format_int(int(overview["chunk_counts"]["paragraph"])),
+                _format_int(int(overview["chars_total"])),
+                _format_int(int(overview["est_words"])),
+                str(overview["est_read_time"]),
+            ]
+        ],
+        right_align=set(range(5)),
     )
 
-    print("\nContents")
+    _print_block_header("Contents")
     if not sections:
         print("  (no headings found)")
     else:
-        section_values = [str(sec["path"]) or str(sec["heading"]) for sec in sections]
-        paras_values = [_format_int(int(sec["paragraphs"])) for sec in sections]
-        char_values = [_format_int(int(sec["chars"])) for sec in sections]
-        read_values = [str(sec["read_time"]) for sec in sections]
-        first_position_values = [
+        position_values = [
             str(sec["first_position"]) if sec["first_position"] is not None else "-"
             for sec in sections
         ]
+        section_values = [str(sec["path"]) or str(sec["heading"]) for sec in sections]
+        paras_values = [_format_int(int(sec["paragraphs"])) for sec in sections]
+        char_values = [_format_int(int(sec["chars"])) for sec in sections]
+        est_word_values = [_format_int(int(sec["est_words"])) for sec in sections]
+        est_read_values = [str(sec["read_time"]) for sec in sections]
         opening_values = [str(sec["opening_line"]) or "-" for sec in sections]
 
-        idx_width = max(1, len(str(len(sections))))
+        position_label = "Position"
+        position_width = max(len(position_label), max(len(v) for v in position_values))
         section_width = min(40, max(len("Section"), max(len(v) for v in section_values)))
         paras_width = max(len("Paras"), max(len(v) for v in paras_values))
         chars_width = max(len("Chars"), max(len(v) for v in char_values))
-        read_width = max(len("Read"), max(len(v) for v in read_values))
-        position_label = "Position"
-        first_position_width = max(len(position_label), max(len(v) for v in first_position_values))
+        est_words_width = max(len("Est words"), max(len(v) for v in est_word_values))
+        est_read_width = max(len("Est read"), max(len(v) for v in est_read_values))
         opening_width = min(56, max(len("Opening"), max(len(v) for v in opening_values)))
 
         print(
-            f" {'#':>{idx_width}}  {'Section':<{section_width}}  "
-            f"{position_label:>{first_position_width}}  {'Paras':>{paras_width}}  "
-            f"{'Chars':>{chars_width}}  {'Read':>{read_width}}  {'Opening':<{opening_width}}"
+            f" {position_label:>{position_width}}  {'Section':<{section_width}}  "
+            f"{'Paras':>{paras_width}}  {'Chars':>{chars_width}}  "
+            f"{'Est words':>{est_words_width}}  {'Est read':>{est_read_width}}  "
+            f"{'Opening':<{opening_width}}"
         )
         print(
-            f" {'-' * idx_width}  {'-' * section_width}  "
-            f"{'-' * first_position_width}  {'-' * paras_width}  "
-            f"{'-' * chars_width}  {'-' * read_width}  {'-' * opening_width}"
+            f" {'-' * position_width}  {'-' * section_width}  "
+            f"{'-' * paras_width}  {'-' * chars_width}  "
+            f"{'-' * est_words_width}  {'-' * est_read_width}  {'-' * opening_width}"
         )
 
-        for idx, sec in enumerate(sections, start=1):
+        for sec in sections:
+            first_position = str(sec["first_position"]) if sec["first_position"] is not None else "-"
             section_label = str(sec["path"]) or str(sec["heading"])
             if len(section_label) > section_width:
                 keep = max(1, section_width - 3)
                 section_label = section_label[:keep] + "..."
             paragraphs = _format_int(int(sec["paragraphs"]))
             chars = _format_int(int(sec["chars"]))
-            read_time = str(sec["read_time"])
-            first_position = str(sec["first_position"]) if sec["first_position"] is not None else "-"
+            est_words = _format_int(int(sec["est_words"]))
+            est_read = str(sec["read_time"])
             opening = str(sec["opening_line"]) or "-"
             if len(opening) > opening_width:
                 keep = max(1, opening_width - 3)
                 opening = opening[:keep] + "..."
             print(
-                f" {idx:>{idx_width}}  {section_label:<{section_width}}  "
-                f"{first_position:>{first_position_width}}  {paragraphs:>{paras_width}}  "
-                f"{chars:>{chars_width}}  {read_time:>{read_width}}  {opening:<{opening_width}}"
+                f" {first_position:>{position_width}}  {section_label:<{section_width}}  "
+                f"{paragraphs:>{paras_width}}  {chars:>{chars_width}}  "
+                f"{est_words:>{est_words_width}}  {est_read:>{est_read_width}}  "
+                f"{opening:<{opening_width}}"
             )
 
     print("\nQuick actions")

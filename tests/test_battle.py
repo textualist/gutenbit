@@ -545,11 +545,12 @@ class TestCLICommands:
         assert result.returncode == 0
         assert "A Christmas Carol" in result.stdout
         assert "STAVE" in result.stdout
-        assert "section(s)" in result.stdout
-        assert "#  Section" in result.stdout
+        assert "Sections" in result.stdout
+        assert "Section" in result.stdout
         assert "Paras" in result.stdout
         assert "Chars" in result.stdout
-        assert "Read" in result.stdout
+        assert "Est words" in result.stdout
+        assert "Est read" in result.stdout
         assert "Position" in result.stdout
         assert "Opening" in result.stdout
         assert "--position" in result.stdout
@@ -602,7 +603,7 @@ class TestCLICommands:
         result = _run_cli("view", "7370", db=db_path)
         assert result.returncode == 0
         assert "CHAPTER." in result.stdout
-        assert "section(s)=19" in result.stdout
+        assert "Sections" in result.stdout
 
     def test_cli_view_all(self, db_path: str):
         result = _run_cli("view", "46", "--all", db=db_path)
