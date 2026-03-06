@@ -751,3 +751,135 @@ def test_ingest_remaps_to_canonical_catalog_id(tmp_path, monkeypatch):
     assert code == 0
     assert "remapped 101 -> 100" in out
     assert ingested_ids == [100]
+
+
+# ------------------------------------------------------------------
+# Validation edge cases
+# ------------------------------------------------------------------
+
+
+def test_view_full_all_rejected(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--full", "--all")
+    assert code == 1
+    assert "--full is redundant with --all" in out
+
+
+def test_view_full_without_selector_rejected(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--full")
+    assert code == 1
+    assert "--full requires a selector" in out
+
+
+def test_search_preview_chars_zero_rejected(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--preview-chars", "0")
+    assert code == 1
+    assert "--preview-chars must be > 0" in out
+
+
+def test_search_preview_chars_negative_rejected(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--preview-chars", "-5")
+    assert code == 1
+    assert "--preview-chars must be > 0" in out
+
+
+def test_view_preview_chars_zero_rejected(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--preview-chars", "0")
+    assert code == 1
+    assert "--preview-chars must be > 0" in out
+
+
+def test_ingest_rejects_non_positive_ids(tmp_path):
+    code, out, _err = _run_cli(tmp_path / "any.db", "ingest", "0", "-1")
+    assert code == 1
+    assert "must be positive" in out
+    assert "0" in out
+    assert "-1" in out
+
+
+# ------------------------------------------------------------------
+# JSON output
+# ------------------------------------------------------------------
+
+
+def test_search_json_output(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    assert len(payload) >= 1
+    result = payload[0]
+    assert result["book_id"] == 1
+    assert result["title"] == "Moby Dick"
+    assert "Ishmael" in result["content"]
+    assert "rank" in result
+    assert "position" in result
+    assert "section" in result
+    assert "score" in result
+    assert "kind" in result
+    assert "char_count" in result
+
+
+def test_search_json_empty(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "xyzzyplugh", "--json")
+    assert code == 0
+    assert json.loads(out) == []
+
+
+def test_books_json_output(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "books", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    assert len(payload) == 2
+    assert payload[0]["id"] == 1
+    assert payload[0]["title"] == "Moby Dick"
+    assert payload[1]["id"] == 2
+    assert payload[1]["title"] == "Pride and Prejudice"
+
+
+def test_books_json_empty(tmp_path):
+    code, out, _err = _run_cli(tmp_path / "empty.db", "books", "--json")
+    assert code == 0
+    assert json.loads(out) == []
+
+
+def test_books_has_column_headers(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "books")
+    assert code == 0
+    assert "ID" in out
+    assert "AUTHORS" in out
+    assert "TITLE" in out

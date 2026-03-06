@@ -175,7 +175,7 @@ class Database:
                 )
 
         for book in canonical_books:
-            if self._has_text(book.id):
+            if self.has_text(book.id):
                 logger.info("Skipping %s (already downloaded)", book.title)
                 continue
             logger.info("Downloading %s (id=%d)", book.title, book.id)
@@ -222,7 +222,8 @@ class Database:
 
     def has_text(self, book_id: int) -> bool:
         """Return True when a book has already been downloaded and stored."""
-        return self._has_text(book_id)
+        row = self._conn.execute("SELECT 1 FROM texts WHERE book_id = ?", (book_id,)).fetchone()
+        return row is not None
 
     def chunk_records(
         self,
@@ -491,10 +492,6 @@ class Database:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
-
-    def _has_text(self, book_id: int) -> bool:
-        row = self._conn.execute("SELECT 1 FROM texts WHERE book_id = ?", (book_id,)).fetchone()
-        return row is not None
 
     def _store(self, book: BookRecord, chunks: list[Chunk]) -> None:
         """Store a book and its chunks."""

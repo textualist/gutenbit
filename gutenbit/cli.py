@@ -195,7 +195,7 @@ examples:
   gutenbit ingest 46 730 967            # multiple books
   gutenbit ingest 2600 --delay 2.0      # polite crawling""",
     )
-    ing.add_argument("ids", nargs="+", type=int, help="Project Gutenberg book IDs")
+    ing.add_argument("book_ids", nargs="+", type=int, help="Project Gutenberg book IDs")
     ing.add_argument(
         "--delay",
         type=float,
@@ -231,12 +231,14 @@ if a book ID is not present, a warning is printed and exit code is 1.""",
         help="list books stored in the database",
         description="List all books that have been ingested into the database.",
         epilog="""\
-example:
+examples:
   gutenbit books
+  gutenbit books --json
   gutenbit books --db my.db
 
 output columns:  ID  AUTHORS  TITLE""",
     )
+    bk.add_argument("--json", action="store_true", help="output as JSON")
     _add_global_args(bk)
 
     # --- search ---
@@ -258,6 +260,7 @@ examples:
   gutenbit search "may it be" --phrase --book-id 2554 -n 20 # exact phrase
   gutenbit search "freedom" --kind paragraph -n 5           # filtered top hits
   gutenbit search "ghost" --full -n 3                       # full chunk text
+  gutenbit search "battle" --json                            # JSON output
 
 output fields:
   rank, book_id, position, title
@@ -297,6 +300,7 @@ tip: use 'gutenbit view <id>' first to see a book's structure, then
     se.add_argument(
         "--full", action="store_true", help="print full chunk text instead of previews"
     )
+    se.add_argument("--json", action="store_true", help="output results as JSON")
     se.add_argument(
         "--preview-chars",
         type=int,
@@ -392,6 +396,8 @@ def _cmd_catalog(args: argparse.Namespace) -> int:
         print("No books found.")
         return 0
     shown = results[: args.limit]
+    print(f"  {'ID':>6}  {'AUTHORS':<40s}  TITLE")
+    print(f"  {'------':>6}  {'----------------------------------------':<40s}  -----")
     for b in shown:
         authors = _summarize_semicolon_list(b.authors, max_items=2)[:40]
         title = _single_line(b.title)
@@ -406,10 +412,15 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         print("--delay must be >= 0.")
         return 1
 
+    invalid_ids = [bid for bid in args.book_ids if bid <= 0]
+    if invalid_ids:
+        print(f"Book IDs must be positive integers, got: {', '.join(map(str, invalid_ids))}")
+        return 1
+
     print("Fetching catalog…")
     catalog = Catalog.fetch()
     selected_by_id = {}
-    for requested_id in args.ids:
+    for requested_id in args.book_ids:
         rec = catalog.get(requested_id)
         if rec is None:
             print(
@@ -441,11 +452,34 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
 
 
 def _cmd_books(args: argparse.Namespace) -> int:
+    as_json = getattr(args, "json", False)
     with Database(args.db) as db:
         books = db.books()
     if not books:
-        print("No books stored yet. Use 'gutenbit ingest <id> ...' to add some.")
+        if as_json:
+            print("[]")
+        else:
+            print("No books stored yet. Use 'gutenbit ingest <id> ...' to add some.")
         return 0
+    if as_json:
+        payload = [
+            {
+                "id": b.id,
+                "title": b.title,
+                "authors": b.authors,
+                "language": b.language,
+                "subjects": b.subjects,
+                "locc": b.locc,
+                "bookshelves": b.bookshelves,
+                "issued": b.issued,
+                "type": b.type,
+            }
+            for b in books
+        ]
+        print(json.dumps(payload, indent=2))
+        return 0
+    print(f"  {'ID':>6}  {'AUTHORS':<40s}  TITLE")
+    print(f"  {'------':>6}  {'----------------------------------------':<40s}  -----")
     for b in books:
         authors = _summarize_semicolon_list(b.authors, max_items=2)[:40]
         title = _single_line(b.title)
@@ -471,6 +505,9 @@ def _cmd_search(args: argparse.Namespace) -> int:
     if args.limit < 0:
         print("--limit must be >= 0.")
         return 1
+    if args.preview_chars <= 0:
+        print("--preview-chars must be > 0.")
+        return 1
 
     query_text = args.query.strip()
     if not query_text:
@@ -480,7 +517,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
     search_query = _fts_phrase_query(query_text) if args.phrase else query_text
     default_limit = 1 if args.mode in {"first", "last"} else 20
     limit = args.limit if args.limit > 0 else default_limit
-    preview_chars = max(1, args.preview_chars) if args.preview_chars > 0 else 140
+    preview_chars = args.preview_chars
 
     with Database(args.db) as db:
         results = db.search(
@@ -493,7 +530,33 @@ def _cmd_search(args: argparse.Namespace) -> int:
             limit=limit,
         )
     if not results:
-        print("No results.")
+        if args.json:
+            print("[]")
+        else:
+            print("No results.")
+        return 0
+
+    if args.json:
+        payload = [
+            {
+                "rank": idx,
+                "book_id": r.book_id,
+                "position": r.position,
+                "title": r.title,
+                "authors": r.authors,
+                "section": _section_path(r.div1, r.div2, r.div3, r.div4),
+                "div1": r.div1,
+                "div2": r.div2,
+                "div3": r.div3,
+                "div4": r.div4,
+                "score": round(r.score, 4),
+                "kind": r.kind,
+                "char_count": r.char_count,
+                "content": r.content,
+            }
+            for idx, r in enumerate(results, start=1)
+        ]
+        print(json.dumps(payload, indent=2))
         return 0
 
     print(f"query={args.query!r}  mode={args.mode}  shown={len(results)}")
@@ -835,11 +898,17 @@ def _cmd_view(args: argparse.Namespace) -> int:
     if args.around > 0 and args.position is None:
         print("--around can only be used with --position.")
         return 1
-    if args.full and selected == 0 and not args.json:
-        print("--full requires a selector: --all, --position, or --section.")
+    if args.full and args.all:
+        print("--full is redundant with --all (full text is already printed).")
+        return 1
+    if args.full and selected == 0:
+        print("--full requires a selector: --position or --section.")
+        return 1
+    if args.preview_chars <= 0:
+        print("--preview-chars must be > 0.")
         return 1
 
-    preview_chars = max(1, args.preview_chars) if args.preview_chars > 0 else 140
+    preview_chars = args.preview_chars
     with Database(args.db) as db:
         if args.all:
             content = db.text(args.book_id)
