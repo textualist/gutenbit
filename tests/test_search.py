@@ -406,7 +406,16 @@ def test_view_default_json(tmp_path):
     assert payload["book"]["authors"] == "Melville, Herman"
     assert payload["overview"]["sections_total"] == 2
     assert payload["overview"]["chunk_counts"]["heading"] == 2
-    assert payload["sections"][0]["heading"] == "CHAPTER 1"
+    assert payload["sections"][0]["section"] == "CHAPTER 1"
+    assert list(payload["sections"][0].keys()) == [
+        "position",
+        "section",
+        "paras",
+        "chars",
+        "est_words",
+        "est_read",
+        "opening_line",
+    ]
     assert payload["sections"][0]["est_words"] > 0
     assert payload["sections"][0]["opening_line"].endswith("…")
     assert len(payload["sections"][0]["opening_line"]) <= 141

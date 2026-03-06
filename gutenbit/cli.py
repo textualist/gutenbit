@@ -585,6 +585,26 @@ def _build_section_summary(db: Database, book_id: int) -> dict[str, object] | No
             f"gutenbit view {book_id} --position {first_position} --around 2"
         )
 
+    section_rows: list[dict[str, object]] = []
+    for sec in sections:
+        chars = int(sec["chars"])
+        est_words_for_section = round(chars / 5)
+        section_rows.append(
+            {
+                "position": (
+                    int(sec["first_position"])
+                    if sec.get("first_position") is not None
+                    else int(sec["position"])
+                ),
+                "section": str(sec["path"]) or str(sec["heading"]),
+                "paras": int(sec["paragraphs"]),
+                "chars": chars,
+                "est_words": est_words_for_section,
+                "est_read": _estimate_read_time(est_words_for_section),
+                "opening_line": str(sec["opening_line"]),
+            }
+        )
+
     return {
         "book": {
             "id": book_id,
@@ -606,23 +626,7 @@ def _build_section_summary(db: Database, book_id: int) -> dict[str, object] | No
             "est_words": est_words,
             "est_read_time": read_time,
         },
-        "sections": [
-            {
-                "index": idx,
-                "heading": str(sec["heading"]),
-                "path": str(sec["path"]),
-                "position": int(sec["position"]),
-                "paragraphs": int(sec["paragraphs"]),
-                "chars": int(sec["chars"]),
-                "est_words": round(int(sec["chars"]) / 5),
-                "read_time": _estimate_read_time(round(int(sec["chars"]) / 5)),
-                "first_position": (
-                    int(sec["first_position"]) if sec["first_position"] is not None else None
-                ),
-                "opening_line": str(sec["opening_line"]),
-            }
-            for idx, sec in enumerate(sections, start=1)
-        ],
+        "sections": section_rows,
         "quick_actions": {
             "search": search_cmd,
             "view_first_section": first_section_cmd,
@@ -715,15 +719,12 @@ def _render_section_summary(db: Database, book_id: int, *, as_json: bool = False
     if not sections:
         print("  (no headings found)")
     else:
-        position_values = [
-            str(sec["first_position"]) if sec["first_position"] is not None else "-"
-            for sec in sections
-        ]
-        section_values = [str(sec["path"]) or str(sec["heading"]) for sec in sections]
-        paras_values = [_format_int(int(sec["paragraphs"])) for sec in sections]
+        position_values = [str(sec["position"]) for sec in sections]
+        section_values = [str(sec["section"]) for sec in sections]
+        paras_values = [_format_int(int(sec["paras"])) for sec in sections]
         char_values = [_format_int(int(sec["chars"])) for sec in sections]
         est_word_values = [_format_int(int(sec["est_words"])) for sec in sections]
-        est_read_values = [str(sec["read_time"]) for sec in sections]
+        est_read_values = [str(sec["est_read"]) for sec in sections]
         opening_values = [str(sec["opening_line"]) or "-" for sec in sections]
 
         position_label = "Position"
@@ -748,21 +749,21 @@ def _render_section_summary(db: Database, book_id: int, *, as_json: bool = False
         )
 
         for sec in sections:
-            first_position = str(sec["first_position"]) if sec["first_position"] is not None else "-"
-            section_label = str(sec["path"]) or str(sec["heading"])
+            position = str(sec["position"])
+            section_label = str(sec["section"])
             if len(section_label) > section_width:
                 keep = max(1, section_width - 3)
                 section_label = section_label[:keep] + "..."
-            paragraphs = _format_int(int(sec["paragraphs"]))
+            paragraphs = _format_int(int(sec["paras"]))
             chars = _format_int(int(sec["chars"]))
             est_words = _format_int(int(sec["est_words"]))
-            est_read = str(sec["read_time"])
+            est_read = str(sec["est_read"])
             opening = str(sec["opening_line"]) or "-"
             if len(opening) > opening_width:
                 keep = max(1, opening_width - 3)
                 opening = opening[:keep] + "..."
             print(
-                f" {first_position:>{position_width}}  {section_label:<{section_width}}  "
+                f" {position:>{position_width}}  {section_label:<{section_width}}  "
                 f"{paragraphs:>{paras_width}}  {chars:>{chars_width}}  "
                 f"{est_words:>{est_words_width}}  {est_read:>{est_read_width}}  "
                 f"{opening:<{opening_width}}"
