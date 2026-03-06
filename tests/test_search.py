@@ -467,6 +467,26 @@ def test_view_section_with_filters_and_limit(tmp_path):
     assert "1 chunk(s)" in out
 
 
+def test_view_section_miss_shows_examples(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(
+        db_path,
+        "view",
+        "1",
+        "--section",
+        "BOOK THIRTEEN: 1812 / CHAPTER XII",
+    )
+    assert code == 1
+    assert "No chunks found for book 1 under section 'BOOK THIRTEEN: 1812 / CHAPTER XII'." in out
+    assert "Available sections include:" in out
+    assert "CHAPTER 1" in out
+    assert "CHAPTER 2" in out
+    assert "Tip: run `gutenbit view 1` to list all sections." in out
+
+
 def test_chunks_by_div_ignores_trailing_punctuation(tmp_path):
     db = Database(tmp_path / "test.db")
     db._store(_BOOK3, chunk_html(_BOOK3_HTML))

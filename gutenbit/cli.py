@@ -41,6 +41,22 @@ def _section_path(*levels: str) -> str:
     return " / ".join(level for level in levels if level) or "(root)"
 
 
+def _section_examples(db: Database, book_id: int, *, limit: int = 5) -> list[str]:
+    examples: list[str] = []
+    seen: set[str] = set()
+    for _pos, div1, div2, div3, div4, _content, _kind, _char_count in db.chunks(
+        book_id, kinds=["heading"]
+    ):
+        section = _section_path(div1, div2, div3, div4)
+        if section == "(root)" or section in seen:
+            continue
+        seen.add(section)
+        examples.append(section)
+        if len(examples) >= limit:
+            break
+    return examples
+
+
 def _split_semicolon_list(raw: str) -> list[str]:
     return [_single_line(part) for part in raw.split(";") if part.strip()]
 
@@ -680,6 +696,12 @@ def _cmd_view(args: argparse.Namespace) -> int:
             rows = db.chunks_by_div(args.book_id, args.section, kinds=args.kind, limit=args.limit)
             if not rows:
                 print(f"No chunks found for book {args.book_id} under section '{args.section}'.")
+                examples = _section_examples(db, args.book_id)
+                if examples:
+                    print("Available sections include:")
+                    for section in examples:
+                        print(f"  {section}")
+                print(f"Tip: run `gutenbit view {args.book_id}` to list all sections.")
                 return 1
             _print_chunk_blocks(
                 rows,
