@@ -37,6 +37,10 @@ def _format_int(value: int) -> str:
     return f"{value:,}"
 
 
+def _section_path(*levels: str) -> str:
+    return " / ".join(level for level in levels if level) or "(root)"
+
+
 def _split_semicolon_list(raw: str) -> list[str]:
     return [_single_line(part) for part in raw.split(";") if part.strip()]
 
@@ -76,7 +80,7 @@ typical workflow:
   5. gutenbit search "Marley ghost" --book-id 46  # find relevant chunks
 
 chunk kinds:  front_matter, heading, paragraph, end_matter
-division hierarchy:  div1 > div2 > div3 > div4  (levels compact to fill from div1)
+section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowest heading)
 
 all data is stored in a local SQLite database (default: gutenbit.db).""",
     )
@@ -182,7 +186,7 @@ examples:
 
 output fields:
   rank, book_id, chunk_id, position, title
-  path, score, kind, char_count
+  section, score, kind, char_count
   preview text
 
 tip: use 'gutenbit view <id>' first to see a book's structure, then
@@ -230,7 +234,7 @@ tip: use 'gutenbit view <id>' first to see a book's structure, then
         description=(
             "Unified text-view command. By default prints a TOC-style structure summary. "
             "Use exact selectors to retrieve the full book, one chunk by ID, "
-            "or chunks under a div path."
+            "or chunks under a section path."
         ),
         epilog="""\
 examples:
@@ -239,14 +243,14 @@ examples:
   gutenbit view 2600 --all                           # full reconstructed text
   gutenbit view 2600 --chunk-id 12345                # one exact chunk
   gutenbit view 2600 --chunk-id 12345 --around 2     # chunk + neighbors
-  gutenbit view 2600 --div "BOOK I/CHAPTER I" -n 10  # chunks in section
-  gutenbit view 46 --div "STAVE ONE" --full          # full chunk text
+  gutenbit view 2600 --section "BOOK I/CHAPTER I" -n 10  # chunks in section
+  gutenbit view 46 --section "STAVE ONE" --full          # full chunk text
 
 selectors (choose at most one):
-  --all | --chunk-id <id> | --div <DIV_PATH>
+  --all | --chunk-id <id> | --section <SECTION_PATH>
 
 chunk kinds:  front_matter, heading, paragraph, end_matter
-division hierarchy:  div1 > div2 > div3 > div4  (compacted from shallowest level)""",
+section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowest heading)""",
     )
     vw.add_argument("book_id", type=int, help="Project Gutenberg book ID")
     vw.add_argument(
@@ -257,8 +261,8 @@ division hierarchy:  div1 > div2 > div3 > div4  (compacted from shallowest level
     vw.add_argument("--all", action="store_true", help="print full reconstructed text")
     vw.add_argument("--chunk-id", type=int, help="retrieve one exact chunk by chunk id")
     vw.add_argument(
-        "--div",
-        help="retrieve chunks under div path prefix (e.g. PART ONE/CHAPTER I)",
+        "--section",
+        help="retrieve chunks under section path prefix (e.g. PART ONE/CHAPTER I)",
     )
     vw.add_argument(
         "--around", type=int, default=0, help="neighbors on each side (for --chunk-id)"
@@ -267,9 +271,15 @@ division hierarchy:  div1 > div2 > div3 > div4  (compacted from shallowest level
         "--full", action="store_true", help="print full chunk text instead of previews"
     )
     vw.add_argument(
-        "--kind", nargs="+", choices=CHUNK_KINDS, help="filter kinds (only with --div)"
+        "--kind", nargs="+", choices=CHUNK_KINDS, help="filter kinds (only with --section)"
     )
-    vw.add_argument("-n", "--limit", type=int, default=0, help="max chunks for --div (0=all)")
+    vw.add_argument(
+        "-n",
+        "--limit",
+        type=int,
+        default=0,
+        help="max chunks for --section (0=all)",
+    )
     vw.add_argument(
         "--preview-chars",
         type=int,
@@ -396,10 +406,10 @@ def _cmd_search(args: argparse.Namespace) -> int:
 
     print(f"query={args.query!r}  mode={args.mode}  shown={len(results)}")
     for idx, r in enumerate(results, start=1):
-        divs = " / ".join(d for d in [r.div1, r.div2, r.div3, r.div4] if d) or "(root)"
+        section = _section_path(r.div1, r.div2, r.div3, r.div4)
         preview = _preview(r.content, preview_chars)
         print(f"\n{idx:>2}. book={r.book_id} chunk={r.chunk_id} pos={r.position}  title={r.title}")
-        print(f"    path={divs}")
+        print(f"    section={section}")
         print(f"    score={r.score:.2f}  kind={r.kind}  chars={r.char_count}")
         print(f"    {preview}")
         print()
@@ -476,8 +486,8 @@ def _build_section_summary(db: Database, book_id: int) -> dict[str, object] | No
             break
     first_section_cmd = ""
     if first_path:
-        safe_div = first_path.replace('"', '\\"')
-        first_section_cmd = f'gutenbit view {book_id} --div "{safe_div}" -n 20'
+        safe_section = first_path.replace('"', '\\"')
+        first_section_cmd = f'gutenbit view {book_id} --section "{safe_section}" -n 20'
 
     return {
         "book": {
@@ -596,9 +606,8 @@ def _render_section_summary(db: Database, book_id: int, *, as_json: bool = False
             chars = _format_int(int(sec["chars"]))
             print(f"{idx:>2}. {heading:<{name_width}}  {paragraphs:>7} paras  {chars:>10} chars")
 
-            path = str(sec["path"])
-            if "/" in path:
-                print(f"    path={path}")
+            section = str(sec["path"]) or "(root)"
+            print(f"    section={section}")
 
     print("\nQuick actions")
     print(f"  {quick_actions['search']}")
@@ -613,21 +622,21 @@ def _print_chunk_blocks(
     if title:
         print(title)
     for idx, row in enumerate(rows, start=1):
-        divs = " / ".join(d for d in [row.div1, row.div2, row.div3, row.div4] if d) or "(root)"
+        section = _section_path(row.div1, row.div2, row.div3, row.div4)
         body = row.content if full else _preview(row.content, preview_chars)
         print(
             f"\n{idx:>2}. chunk={row.chunk_id} pos={row.position}  "
             f"kind={row.kind}  chars={row.char_count}"
         )
-        print(f"    path={divs}")
+        print(f"    section={section}")
         print(f"    {body}")
     print(f"\n{len(rows)} chunk(s)")
 
 
 def _cmd_view(args: argparse.Namespace) -> int:
-    selected = int(args.all) + int(args.chunk_id is not None) + int(args.div is not None)
+    selected = int(args.all) + int(args.chunk_id is not None) + int(args.section is not None)
     if selected > 1:
-        print("Choose at most one selector: --all, --chunk-id, or --div.")
+        print("Choose at most one selector: --all, --chunk-id, or --section.")
         return 1
     if args.json and selected > 0:
         print("--json can only be used with the default summary view.")
@@ -638,8 +647,8 @@ def _cmd_view(args: argparse.Namespace) -> int:
     if args.limit < 0:
         print("--limit must be >= 0.")
         return 1
-    if args.kind and args.div is None:
-        print("--kind can only be used with --div.")
+    if args.kind and args.section is None:
+        print("--kind can only be used with --section.")
         return 1
 
     preview_chars = args.preview_chars if args.preview_chars > 0 else 140
@@ -665,16 +674,16 @@ def _cmd_view(args: argparse.Namespace) -> int:
             )
             return 0
 
-        if args.div is not None:
-            rows = db.chunks_by_div(args.book_id, args.div, kinds=args.kind, limit=args.limit)
+        if args.section is not None:
+            rows = db.chunks_by_div(args.book_id, args.section, kinds=args.kind, limit=args.limit)
             if not rows:
-                print(f"No chunks found for book {args.book_id} under div '{args.div}'.")
+                print(f"No chunks found for book {args.book_id} under section '{args.section}'.")
                 return 1
             _print_chunk_blocks(
                 rows,
                 full=args.full,
                 preview_chars=preview_chars,
-                title=f"book={args.book_id}  div={args.div!r}",
+                title=f"book={args.book_id}  section={args.section!r}",
             )
             return 0
 

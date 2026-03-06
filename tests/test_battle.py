@@ -547,14 +547,14 @@ class TestCLICommands:
         assert "STAVE" in result.stdout
         assert "section(s)" in result.stdout
 
-    def test_cli_view_div_kind_filter(self, db_path: str):
-        result = _run_cli("view", "46", "--div", "STAVE ONE", "--kind", "heading", db=db_path)
+    def test_cli_view_section_kind_filter(self, db_path: str):
+        result = _run_cli("view", "46", "--section", "STAVE ONE", "--kind", "heading", db=db_path)
         assert result.returncode == 0
         assert "kind=heading" in result.stdout
-        assert "path=STAVE ONE" in result.stdout
+        assert "section=STAVE ONE" in result.stdout
 
-    def test_cli_view_div_limit(self, db_path: str):
-        result = _run_cli("view", "46", "--div", "STAVE ONE", "-n", "3", db=db_path)
+    def test_cli_view_section_limit(self, db_path: str):
+        result = _run_cli("view", "46", "--section", "STAVE ONE", "-n", "3", db=db_path)
         assert result.returncode == 0
         assert "3 chunk(s)" in result.stdout
 
@@ -572,7 +572,7 @@ class TestCLICommands:
         result = _run_cli("view", "46", "--chunk-id", str(chunk_id), db=db_path)
         assert result.returncode == 0
         assert f"chunk={chunk_id}" in result.stdout
-        assert "path=STAVE ONE" in result.stdout
+        assert "section=STAVE ONE" in result.stdout
 
     def test_cli_search(self, db_path: str):
         result = _run_cli("search", "Scrooge", "--book-id", "46", db=db_path)

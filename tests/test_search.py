@@ -442,10 +442,10 @@ def test_view_chunk_id_with_neighbors(tmp_path):
     code, out, _err = _run_cli(db_path, "view", "1", "--chunk-id", str(chunk_id), "--around", "1")
     assert code == 0
     assert f"chunk={chunk_id}" in out
-    assert "path=CHAPTER 1" in out
+    assert "section=CHAPTER 1" in out
 
 
-def test_view_div_with_filters_and_limit(tmp_path):
+def test_view_section_with_filters_and_limit(tmp_path):
     db = _make_db(tmp_path)
     db_path = db.path
     db.close()
@@ -454,7 +454,7 @@ def test_view_div_with_filters_and_limit(tmp_path):
         db_path,
         "view",
         "1",
-        "--div",
+        "--section",
         "CHAPTER 1",
         "--kind",
         "paragraph",
@@ -462,7 +462,7 @@ def test_view_div_with_filters_and_limit(tmp_path):
         "1",
     )
     assert code == 0
-    assert "div='CHAPTER 1'" in out
+    assert "section='CHAPTER 1'" in out
     assert "kind=paragraph" in out
     assert "1 chunk(s)" in out
 
@@ -482,7 +482,7 @@ def test_view_rejects_multiple_selectors(tmp_path):
     db_path = db.path
     db.close()
 
-    code, out, _err = _run_cli(db_path, "view", "1", "--all", "--div", "CHAPTER 1")
+    code, out, _err = _run_cli(db_path, "view", "1", "--all", "--section", "CHAPTER 1")
     assert code == 1
     assert "Choose at most one selector" in out
 
