@@ -334,10 +334,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
     for idx, r in enumerate(results, start=1):
         divs = " / ".join(d for d in [r.div1, r.div2, r.div3, r.div4] if d) or "(root)"
         preview = _preview(r.content, preview_chars)
-        print(
-            f"\n{idx:>2}. book={r.book_id} chunk={r.chunk_id} pos={r.position}  "
-            f"title={r.title}"
-        )
+        print(f"\n{idx:>2}. book={r.book_id} chunk={r.chunk_id} pos={r.position}  title={r.title}")
         print(f"    path={divs}")
         print(f"    score={r.score:.2f}  kind={r.kind}  chars={r.char_count}")
         print(f"    {preview}")
@@ -455,9 +452,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                 rows,
                 full=args.full,
                 preview_chars=preview_chars,
-                title=(
-                    f"book={args.book_id}  chunk_id={args.chunk_id}  around={args.around}"
-                ),
+                title=(f"book={args.book_id}  chunk_id={args.chunk_id}  around={args.around}"),
             )
             return 0
 
