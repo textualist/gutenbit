@@ -277,6 +277,21 @@ def test_toc_paragraphs_not_front_matter():
     assert front == ["Title Page: A Great Novel by Famous Author."]
 
 
+def test_inline_pginternal_links_not_toc():
+    html = _make_html("""
+    <p><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>
+      Body text with inline reference
+      <a href="#fn1" class="pginternal">[1]</a>
+      remains content.
+    </p>
+    """)
+    chunks = chunk_html(html)
+    paragraphs = [c.content for c in chunks if c.kind == "paragraph"]
+    assert paragraphs == ["Body text with inline reference [1] remains content."]
+
+
 # ------------------------------------------------------------------
 # Heading text extraction
 # ------------------------------------------------------------------

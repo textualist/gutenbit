@@ -296,7 +296,21 @@ def _extract_paragraph_text(paragraph: Tag) -> str:
 
 def _is_toc_paragraph(paragraph: Tag) -> bool:
     """Return True for TOC/navigation paragraphs."""
-    return paragraph.find("a", class_="pginternal") is not None
+    if paragraph.find("a", class_="pginternal") is None:
+        return False
+
+    classes = {str(c).lower() for c in (paragraph.get("class") or [])}
+    if "toc" in classes:
+        return True
+
+    paragraph_copy = BeautifulSoup(str(paragraph), "html.parser").find("p")
+    if paragraph_copy is None:
+        return False
+    for anchor in paragraph_copy.find_all("a", class_="pginternal"):
+        anchor.decompose()
+
+    residue = " ".join(paragraph_copy.get_text().split()).strip()
+    return re.sub(r"[^A-Za-z0-9]+", "", residue) == ""
 
 
 def _is_ancestor_of(potential_ancestor: object, target: Tag) -> bool:
