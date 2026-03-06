@@ -580,6 +580,48 @@ class TestCLICommands:
         assert "No chunks found" in result.stdout
 
 
+class TestCLIDeleteCommand:
+    """Exercise CLI delete subcommand against a real database."""
+
+    @pytest.fixture(scope="class")
+    def db_path(self, tmp_path_factory) -> str:
+        path = str(tmp_path_factory.mktemp("cli_delete") / "cli_delete.db")
+        book_ids = [46, 7370]  # Christmas Carol + Locke
+        with Database(path) as db:
+            for bid in book_ids:
+                html = download_html(bid)
+                chunks = chunk_html(html)
+                db._store(_BOOKS[bid], chunks)
+        return path
+
+    def test_cli_delete_success(self, db_path: str):
+        result = _run_cli("delete", "46", db=db_path)
+        assert result.returncode == 0
+        assert "Deleted book 46" in result.stdout
+
+        books = _run_cli("books", db=db_path)
+        assert books.returncode == 0
+        assert "Christmas Carol" not in books.stdout
+        assert "Second Treatise" in books.stdout
+
+        chunks = _run_cli("chunks", "46", db=db_path)
+        assert chunks.returncode == 1
+        assert "No chunks found" in chunks.stdout
+
+        text = _run_cli("text", "46", db=db_path)
+        assert text.returncode == 1
+        assert "No text found" in text.stdout
+
+        search = _run_cli("search", "Scrooge", "--book-id", "46", db=db_path)
+        assert search.returncode == 0
+        assert "No results" in search.stdout
+
+    def test_cli_delete_missing_book(self, db_path: str):
+        result = _run_cli("delete", "99999", db=db_path)
+        assert result.returncode == 1
+        assert "No book found for id 99999." in result.stdout
+
+
 # ===================================================================
 # CROSS-BOOK SEARCH TESTS
 # ===================================================================

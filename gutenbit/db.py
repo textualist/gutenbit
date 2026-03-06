@@ -137,6 +137,18 @@ class Database:
                 logger.exception("Failed to download %s (id=%d)", book.title, book.id)
             time.sleep(delay)
 
+    def delete_book(self, book_id: int) -> bool:
+        """Delete a stored book and all associated rows. Returns False if missing."""
+        row = self._conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone()
+        if row is None:
+            return False
+
+        with self._conn:
+            self._conn.execute("DELETE FROM chunks WHERE book_id = ?", (book_id,))
+            self._conn.execute("DELETE FROM texts WHERE book_id = ?", (book_id,))
+            self._conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
+        return True
+
     # ------------------------------------------------------------------
     # Query helpers
     # ------------------------------------------------------------------

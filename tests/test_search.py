@@ -205,6 +205,37 @@ def test_chunks_method_prose_only(tmp_path):
 
 
 # ------------------------------------------------------------------
+# Database.delete_book() method
+# ------------------------------------------------------------------
+
+
+def test_delete_book_removes_book_text_chunks_and_search_hits(tmp_path):
+    db = _make_db(tmp_path)
+    assert db.delete_book(1) is True
+
+    ids = {b.id for b in db.books()}
+    assert 1 not in ids
+    assert 2 in ids
+    assert db.text(1) is None
+    assert db.chunks(1) == []
+    assert db.search("Ishmael") == []
+
+    other = db.search("truth")
+    assert len(other) >= 1
+    assert all(r.book_id == 2 for r in other)
+
+
+def test_delete_book_missing_id_is_noop(tmp_path):
+    db = _make_db(tmp_path)
+    before = {b.id for b in db.books()}
+
+    assert db.delete_book(99999) is False
+
+    after = {b.id for b in db.books()}
+    assert after == before
+
+
+# ------------------------------------------------------------------
 # Search
 # ------------------------------------------------------------------
 

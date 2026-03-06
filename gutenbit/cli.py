@@ -81,6 +81,24 @@ examples:
         help="seconds between downloads (default: 1.0)",
     )
 
+    # --- delete ---
+    de = sub.add_parser(
+        "delete",
+        formatter_class=fmt,
+        help="delete a stored book by PG id",
+        description=(
+            "Delete a previously ingested book from the SQLite database, including "
+            "its reconstructed text and all chunks."
+        ),
+        epilog="""\
+examples:
+  gutenbit delete 46
+  gutenbit --db my.db delete 2600
+
+if the book ID is not present, the command returns exit code 1.""",
+    )
+    de.add_argument("book_id", type=int, help="Project Gutenberg book ID")
+
     # --- books ---
     sub.add_parser(
         "books",
@@ -270,6 +288,16 @@ def _cmd_books(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_delete(args: argparse.Namespace) -> int:
+    with Database(args.db) as db:
+        deleted = db.delete_book(args.book_id)
+    if not deleted:
+        print(f"No book found for id {args.book_id}.")
+        return 1
+    print(f"Deleted book {args.book_id} from {args.db}.")
+    return 0
+
+
 def _cmd_chunks(args: argparse.Namespace) -> int:
     with Database(args.db) as db:
         rows = db.chunks(args.book_id, kinds=args.kind)
@@ -395,6 +423,7 @@ def _cmd_text(args: argparse.Namespace) -> int:
 _COMMANDS = {
     "catalog": _cmd_catalog,
     "ingest": _cmd_ingest,
+    "delete": _cmd_delete,
     "books": _cmd_books,
     "chunks": _cmd_chunks,
     "search": _cmd_search,
