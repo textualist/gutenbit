@@ -149,6 +149,11 @@ def _parse_toc_sections(soup: BeautifulSoup) -> list[_Section]:
         if not body_anchor:
             continue
 
+        # Skip page-number anchors (e.g. illustrated editions use
+        # <span class="pagenum"><a id="page_1">) — these are not sections.
+        if body_anchor.find_parent("span", class_="pagenum"):
+            continue
+
         # Find the associated heading element.
         heading_el = body_anchor.find_parent(["h1", "h2", "h3", "h4", "h5", "h6"])
         if not heading_el:
