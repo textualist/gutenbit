@@ -546,6 +546,10 @@ class TestCLICommands:
         assert "A Christmas Carol" in result.stdout
         assert "STAVE" in result.stdout
         assert "section(s)" in result.stdout
+        assert "#  Section" in result.stdout
+        assert "Paras" in result.stdout
+        assert "Chars" in result.stdout
+        assert "Path" in result.stdout
         assert "\n    section=" not in result.stdout
 
     def test_cli_view_section_kind_filter(self, db_path: str):

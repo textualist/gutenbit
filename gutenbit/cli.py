@@ -613,18 +613,36 @@ def _render_section_summary(db: Database, book_id: int, *, as_json: bool = False
     if not sections:
         print("  (no headings found)")
     else:
-        name_width = min(54, max(len(str(sec["heading"])) for sec in sections))
+        section_values = [str(sec["heading"]) for sec in sections]
+        paras_values = [_format_int(int(sec["paragraphs"])) for sec in sections]
+        char_values = [_format_int(int(sec["chars"])) for sec in sections]
+
+        idx_width = max(1, len(str(len(sections))))
+        section_width = min(44, max(len("Section"), max(len(v) for v in section_values)))
+        paras_width = max(len("Paras"), max(len(v) for v in paras_values))
+        chars_width = max(len("Chars"), max(len(v) for v in char_values))
+
+        print(
+            f" {'#':>{idx_width}}  {'Section':<{section_width}}  "
+            f"{'Paras':>{paras_width}}  {'Chars':>{chars_width}}  Path"
+        )
+        print(
+            f" {'-' * idx_width}  {'-' * section_width}  "
+            f"{'-' * paras_width}  {'-' * chars_width}  {'-' * len('Path')}"
+        )
+
         for idx, sec in enumerate(sections, start=1):
             raw_heading = str(sec["heading"])
             heading = raw_heading
-            if len(heading) > name_width:
-                heading = heading[: name_width - 1] + "…"
+            if len(heading) > section_width:
+                keep = max(1, section_width - 3)
+                heading = heading[:keep] + "..."
             paragraphs = _format_int(int(sec["paragraphs"]))
             chars = _format_int(int(sec["chars"]))
-            section_path = str(sec["path"])
-            context = f"  [{section_path}]" if section_path and section_path != raw_heading else ""
+            section_path = str(sec["path"]) or "(root)"
             print(
-                f"{idx:>2}. {heading:<{name_width}}  {paragraphs:>7} paras  {chars:>10} chars{context}"
+                f" {idx:>{idx_width}}  {heading:<{section_width}}  "
+                f"{paragraphs:>{paras_width}}  {chars:>{chars_width}}  {section_path}"
             )
 
     print("\nQuick actions")

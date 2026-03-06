@@ -382,6 +382,10 @@ def test_view_default_shows_structure(tmp_path):
     assert "Moby Dick" in out
     assert "CHAPTER 1" in out
     assert "section(s)" in out
+    assert "#  Section" in out
+    assert "Paras" in out
+    assert "Chars" in out
+    assert "Path" in out
 
 
 def test_view_default_json(tmp_path):
