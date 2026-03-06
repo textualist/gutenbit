@@ -599,15 +599,17 @@ def _render_section_summary(db: Database, book_id: int, *, as_json: bool = False
     else:
         name_width = min(54, max(len(str(sec["heading"])) for sec in sections))
         for idx, sec in enumerate(sections, start=1):
-            heading = str(sec["heading"])
+            raw_heading = str(sec["heading"])
+            heading = raw_heading
             if len(heading) > name_width:
                 heading = heading[: name_width - 1] + "…"
             paragraphs = _format_int(int(sec["paragraphs"]))
             chars = _format_int(int(sec["chars"]))
-            print(f"{idx:>2}. {heading:<{name_width}}  {paragraphs:>7} paras  {chars:>10} chars")
-
-            section = str(sec["path"]) or "(root)"
-            print(f"    section={section}")
+            section_path = str(sec["path"])
+            context = f"  [{section_path}]" if section_path and section_path != raw_heading else ""
+            print(
+                f"{idx:>2}. {heading:<{name_width}}  {paragraphs:>7} paras  {chars:>10} chars{context}"
+            )
 
     print("\nQuick actions")
     print(f"  {quick_actions['search']}")

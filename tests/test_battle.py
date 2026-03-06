@@ -546,6 +546,7 @@ class TestCLICommands:
         assert "A Christmas Carol" in result.stdout
         assert "STAVE" in result.stdout
         assert "section(s)" in result.stdout
+        assert "\n    section=" not in result.stdout
 
     def test_cli_view_section_kind_filter(self, db_path: str):
         result = _run_cli("view", "46", "--section", "STAVE ONE", "--kind", "heading", db=db_path)
