@@ -290,7 +290,7 @@ def _cmd_catalog(args: argparse.Namespace) -> int:
         print("--limit must be > 0.")
         return 1
 
-    print("Fetching catalog from Project Gutenberg…")
+    print("Fetching catalog from Project Gutenberg (English text corpus)…")
     catalog = Catalog.fetch()
     results = catalog.search(
         author=args.author,
@@ -314,14 +314,21 @@ def _cmd_catalog(args: argparse.Namespace) -> int:
 def _cmd_ingest(args: argparse.Namespace) -> int:
     print("Fetching catalog…")
     catalog = Catalog.fetch()
-    by_id = {b.id: b for b in catalog.records}
-    books = []
-    for book_id in args.ids:
-        rec = by_id.get(book_id)
+    selected_by_id = {}
+    for requested_id in args.ids:
+        rec = catalog.get(requested_id)
         if rec is None:
-            print(f"  warning: book {book_id} not found in catalog, skipping")
+            print(
+                "  warning: book "
+                f"{requested_id} is outside the English text catalog boundaries, skipping"
+            )
             continue
-        books.append(rec)
+        if rec.id != requested_id:
+            title = _single_line(rec.title)
+            print(f"  remapped {requested_id} -> {rec.id}: {title} (canonical edition)")
+        selected_by_id.setdefault(rec.id, rec)
+
+    books = list(selected_by_id.values())
 
     if not books:
         print("No valid book IDs provided.")

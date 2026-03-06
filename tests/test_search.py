@@ -1,6 +1,7 @@
 """Integration tests for chunk storage and FTS5 search."""
 
 import contextlib
+import gzip
 import io
 import json
 
@@ -534,6 +535,42 @@ def test_catalog_output_collapses_embedded_newlines(tmp_path, monkeypatch):
     assert "Title Line One\nTitle Line Two" not in out
 
 
+def test_catalog_fetch_enforces_english_text_policy_and_canonical_ids(monkeypatch):
+    csv_payload = "\n".join(
+        [
+            "Text#,Type,Issued,Title,Language,Authors,Subjects,LoCC,Bookshelves",
+            "100,Text,2000-01-01,Duplicate Work,en,Author Example,,,",
+            "101,Text,2001-01-01,Duplicate Work,en,Author Example,,,",
+            '200,Text,2002-01-01,Bilingual Work,"en, fr",Author Two,,,',
+            "300,Text,2003-01-01,French Work,fr,Auteur Trois,,,",
+            "400,Sound,2004-01-01,Audio Work,en,Narrator Four,,,",
+        ]
+    )
+
+    class _FakeResponse:
+        def __init__(self, content: bytes):
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+    compressed = gzip.compress(csv_payload.encode("utf-8"))
+    monkeypatch.setattr(
+        "gutenbit.catalog.httpx.get",
+        lambda *_args, **_kwargs: _FakeResponse(compressed),
+    )
+
+    catalog = Catalog.fetch()
+    assert [book.id for book in catalog.records] == [100, 200]
+    assert catalog.canonical_id(100) == 100
+    assert catalog.canonical_id(101) == 100
+    alias = catalog.get(101)
+    assert alias is not None
+    assert alias.id == 100
+    assert catalog.get(300) is None
+    assert catalog.get(400) is None
+
+
 def test_books_output_collapses_embedded_newlines(tmp_path):
     db = Database(tmp_path / "test.db")
     weird_book = BookRecord(
@@ -560,6 +597,61 @@ def test_books_output_collapses_embedded_newlines(tmp_path):
     assert "Book\nTitle" not in out
 
 
+def test_database_ingest_enforces_catalog_boundaries(tmp_path, monkeypatch):
+    english = BookRecord(
+        id=10,
+        title="Allowed English Text",
+        authors="Author",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    french = BookRecord(
+        id=11,
+        title="French Text",
+        authors="Auteur",
+        language="fr",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    audio = BookRecord(
+        id=12,
+        title="Audio Track",
+        authors="Narrator",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Sound",
+    )
+
+    html = _make_html("Allowed English Text", "<h2>CHAPTER 1</h2><p>Body text.</p>")
+    seen_downloads: list[int] = []
+
+    def _fake_download(book_id: int) -> str:
+        seen_downloads.append(book_id)
+        return html
+
+    monkeypatch.setattr("gutenbit.db.download_html", _fake_download)
+
+    with Database(tmp_path / "boundaries.db") as db:
+        db.ingest([french, audio, english], delay=0)
+        stored_ids = [book.id for book in db.books()]
+        assert stored_ids == [10]
+        assert db.has_text(10) is True
+        assert db.has_text(11) is False
+        assert db.has_text(12) is False
+
+    assert seen_downloads == [10]
+
+
 def test_ingest_reports_skip_before_downloading(tmp_path, monkeypatch):
     record = BookRecord(
         id=888,
@@ -583,3 +675,32 @@ def test_ingest_reports_skip_before_downloading(tmp_path, monkeypatch):
     code, out, _err = _run_cli(tmp_path / "skip.db", "ingest", "888", "--delay", "0")
     assert code == 0
     assert "skipping 888: Already There (already downloaded)" in out
+
+
+def test_ingest_remaps_to_canonical_catalog_id(tmp_path, monkeypatch):
+    canonical = BookRecord(
+        id=100,
+        title="Canonical Work",
+        authors="Example, Author",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    catalog = Catalog([canonical], canonical_id_by_id={100: 100, 101: 100})
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: catalog))
+    monkeypatch.setattr(Database, "has_text", lambda _self, _book_id: False)
+
+    ingested_ids: list[int] = []
+
+    def _capture_ingest(_self, books, *, delay=1.0):
+        ingested_ids.extend(book.id for book in books)
+
+    monkeypatch.setattr(Database, "ingest", _capture_ingest)
+
+    code, out, _err = _run_cli(tmp_path / "canonical.db", "ingest", "101", "--delay", "0")
+    assert code == 0
+    assert "remapped 101 -> 100" in out
+    assert ingested_ids == [100]

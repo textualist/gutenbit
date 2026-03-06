@@ -14,8 +14,9 @@ uv sync
 from gutenbit import Catalog, Database
 
 # Fetch the catalog and search for books
+# (catalog is pre-filtered to English Text records)
 catalog = Catalog.fetch()
-books = catalog.search(author="Shakespeare", language="en")
+books = catalog.search(author="Shakespeare")
 
 # Download HTML, chunk, and store in SQLite
 with Database("gutenberg.db") as db:
@@ -28,7 +29,7 @@ with Database("gutenberg.db") as db:
     results = db.search("to be or not to be")
 
     # Filter by metadata
-    results = db.search("whale", author="melville", language="en")
+    results = db.search("whale", author="melville")
 
     for r in results:
         print(f"[{r.title}] {r.div2} (score={r.score:.1f}, {r.char_count} chars)")
@@ -36,6 +37,16 @@ with Database("gutenberg.db") as db:
 ```
 
 Each `<p>` element in the HTML becomes its own chunk. Headings are detected via TOC links and tracked as div1–div4 structural divisions. Search results include the matching paragraph, its structural position, book metadata, character count, and a BM25 relevance score.
+
+## Corpus boundaries
+
+`gutenbit` enforces a curated ingestion policy in `gutenbit/catalog.py`:
+- English-language records only (`en`)
+- Text media only (`Type=Text`)
+- Duplicate work entries are collapsed to a canonical record (lowest Gutenberg ID)
+
+The constants are hard-coded for this package's English-text scope, but are
+explicit and centralized so they can be adjusted if requirements change.
 
 ## Development
 

@@ -10,7 +10,7 @@ from dataclasses import astuple, dataclass
 from pathlib import Path
 from typing import Literal
 
-from gutenbit.catalog import BookRecord
+from gutenbit.catalog import BookRecord, apply_catalog_policy, is_record_allowed
 from gutenbit.download import download_html
 from gutenbit.html_chunker import Chunk, chunk_html
 
@@ -149,8 +149,32 @@ class Database:
     # ------------------------------------------------------------------
 
     def ingest(self, books: list[BookRecord], *, delay: float = 1.0) -> None:
-        """Download, chunk, and store books. Skips already-downloaded books."""
+        """Download, chunk, and store books.
+
+        Enforces package ingestion boundaries: English text records only, with
+        in-request duplicate work IDs collapsed to a canonical edition.
+        """
+        allowed_books: list[BookRecord] = []
         for book in books:
+            if not is_record_allowed(book):
+                logger.info(
+                    "Skipping %s (outside ingest policy: English Text catalog only)",
+                    book.title,
+                )
+                continue
+            allowed_books.append(book)
+
+        canonical_books, canonical_id_by_id = apply_catalog_policy(allowed_books)
+        for book in allowed_books:
+            canonical_id = canonical_id_by_id.get(book.id, book.id)
+            if canonical_id != book.id:
+                logger.info(
+                    "Skipping %s (duplicate work; canonical id=%d)",
+                    book.title,
+                    canonical_id,
+                )
+
+        for book in canonical_books:
             if self._has_text(book.id):
                 logger.info("Skipping %s (already downloaded)", book.title)
                 continue
