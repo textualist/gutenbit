@@ -579,7 +579,7 @@ class TestCLICommands:
         assert result.returncode == 0
         assert "Quick actions" in result.stdout
         assert "gutenbit toc 46" in result.stdout
-        assert "gutenbit view 46 --all" in result.stdout
+        assert "gutenbit view 46 -n 0" in result.stdout
         assert "section=" not in result.stdout
 
     def test_cli_toc_default(self, db_path: str):
@@ -591,10 +591,8 @@ class TestCLICommands:
         assert "Section" in result.stdout
         assert "Position" in result.stdout
 
-    def test_cli_view_section_kind_filter(self, db_path: str):
-        result = _run_cli(
-            "view", "46", "--section", "STAVE ONE", "--kind", "heading", "--meta", db=db_path
-        )
+    def test_cli_view_section_meta(self, db_path: str):
+        result = _run_cli("view", "46", "--section", "STAVE ONE", "-n", "1", "--meta", db=db_path)
         assert result.returncode == 0
         assert "kind=heading" in result.stdout
         assert "section=STAVE ONE" in result.stdout
@@ -642,14 +640,14 @@ class TestCLICommands:
         assert "Quick actions" in result.stdout
         assert "gutenbit toc 7370" in result.stdout
 
-    def test_cli_view_all(self, db_path: str):
-        result = _run_cli("view", "46", "--all", db=db_path)
+    def test_cli_view_full_with_n_zero(self, db_path: str):
+        result = _run_cli("view", "46", "-n", "0", db=db_path)
         assert result.returncode == 0
         assert "Marley was dead" in result.stdout
         assert "Scrooge" in result.stdout
 
-    def test_cli_view_all_missing_book(self, db_path: str):
-        result = _run_cli("view", "99999", "--all", db=db_path)
+    def test_cli_view_full_with_n_zero_missing_book(self, db_path: str):
+        result = _run_cli("view", "99999", "-n", "0", db=db_path)
         assert result.returncode == 1
         assert "No text found" in result.stdout
 
@@ -687,7 +685,7 @@ class TestCLIDeleteCommand:
         assert summary.returncode == 1
         assert "No chunks found" in summary.stdout
 
-        all_text = _run_cli("view", "46", "--all", db=db_path)
+        all_text = _run_cli("view", "46", "-n", "0", db=db_path)
         assert all_text.returncode == 1
         assert "No text found" in all_text.stdout
 
