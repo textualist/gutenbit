@@ -499,11 +499,35 @@ def _find_gutenberg_bounds(soup: BeautifulSoup, tag_positions: dict[int, int]) -
             return None
         return marker_text.parent if isinstance(marker_text.parent, Tag) else None
 
+    def _subtree_end_pos(tag: Tag | None) -> int | None:
+        if tag is None:
+            return None
+        end_pos = _tag_position(tag, tag_positions)
+        for child in tag.find_all(True):
+            child_pos = _tag_position(child, tag_positions)
+            if child_pos is not None and (end_pos is None or child_pos > end_pos):
+                end_pos = child_pos
+        return end_pos
+
     start_parent = _find_marker_parent(_START_DELIMITER_RE)
     end_parent = _find_marker_parent(_END_DELIMITER_RE)
     start_pos = _tag_position(start_parent, tag_positions) if start_parent else None
     end_pos = _tag_position(end_parent, tag_positions) if end_parent else None
 
+    # Fallback for editions with missing/non-standard delimiter text.
+    header = soup.find(id="pg-header")
+    footer = soup.find(id="pg-footer")
+    header_end_pos = _subtree_end_pos(header if isinstance(header, Tag) else None)
+    footer_start_pos = _tag_position(footer, tag_positions) if isinstance(footer, Tag) else None
+
+    if start_pos is None:
+        start_pos = header_end_pos
+    if end_pos is None:
+        end_pos = footer_start_pos
+
     if start_pos is not None and end_pos is not None and end_pos <= start_pos:
-        return _ContentBounds()
+        if footer_start_pos is not None and footer_start_pos > start_pos:
+            end_pos = footer_start_pos
+        else:
+            end_pos = None
     return _ContentBounds(start_pos=start_pos, end_pos=end_pos)
