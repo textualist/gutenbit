@@ -5,8 +5,8 @@ map. Each TOC link points to a body anchor inside an ``<h2>``–``<h3>`` tag,
 giving section boundaries and heading text directly from the markup.
 
 Corpus boundaries are defined by Gutenberg's explicit text delimiters:
-``*** START OF THE PROJECT GUTENBERG EBOOK ... ***`` through
-``*** END OF THE PROJECT GUTENBERG EBOOK ... ***``.
+``*** START OF (THE|THIS) PROJECT GUTENBERG EBOOK ... ***`` through
+``*** END OF (THE|THIS) PROJECT GUTENBERG EBOOK ... ***``.
 
 Each ``<p>`` element becomes its own chunk — no accumulation or merging.
 """
@@ -56,11 +56,11 @@ _HEADING_KEYWORD_RE = re.compile(
     re.IGNORECASE,
 )
 _START_DELIMITER_RE = re.compile(
-    r"\*\*\*\s*START OF THE PROJECT GUTENBERG EBOOK\b",
+    r"\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG EBOOK\b",
     re.IGNORECASE,
 )
 _END_DELIMITER_RE = re.compile(
-    r"\*\*\*\s*END OF THE PROJECT GUTENBERG EBOOK\b",
+    r"\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG EBOOK\b",
     re.IGNORECASE,
 )
 _HEADING_CITATION_SUFFIX_RE = re.compile(r"\s*\[\d+\]\s*$")

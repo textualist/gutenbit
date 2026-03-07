@@ -1059,14 +1059,20 @@ def test_ingest_json_output(tmp_path, monkeypatch):
     )
     catalog = Catalog([canonical], canonical_id_by_id={100: 100, 101: 100})
     monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: catalog))
-    monkeypatch.setattr(Database, "has_current_text", lambda _self, _book_id: False)
     monkeypatch.setattr(Database, "has_text", lambda _self, _book_id: False)
 
     ingested_ids: list[int] = []
+    current_ids: set[int] = set()
+
+    def _has_current(_self, book_id):
+        return book_id in current_ids
 
     def _capture_ingest(_self, books, *, delay=1.0):
-        ingested_ids.extend(book.id for book in books)
+        for book in books:
+            ingested_ids.append(book.id)
+            current_ids.add(book.id)
 
+    monkeypatch.setattr(Database, "has_current_text", _has_current)
     monkeypatch.setattr(Database, "ingest", _capture_ingest)
 
     code, out, _err = _run_cli(
@@ -1087,6 +1093,42 @@ def test_ingest_json_output(tmp_path, monkeypatch):
     assert payload["data"]["results"][0]["canonical_id"] == 100
     assert payload["data"]["results"][0]["status"] == "ingested"
     assert ingested_ids == [100]
+
+
+def test_ingest_json_failure_reports_failed_and_stays_parseable(tmp_path, monkeypatch):
+    record = BookRecord(
+        id=555,
+        title="Broken Download",
+        authors="Example, Author",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
+
+    def _boom(_book_id):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("gutenbit.db.download_html", _boom)
+
+    code, out, _err = _run_cli(
+        tmp_path / "broken.db",
+        "ingest",
+        "555",
+        "--delay",
+        "0",
+        "--json",
+    )
+    assert code == 1
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    assert payload["command"] == "ingest"
+    assert payload["data"]["failed_canonical_ids"] == [555]
+    assert payload["data"]["results"][0]["status"] == "failed"
+    assert "Failed to ingest 555: Broken Download" in payload["errors"]
 
 
 def test_delete_json_output(tmp_path):

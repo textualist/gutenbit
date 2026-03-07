@@ -244,6 +244,27 @@ def test_pg_header_stripped():
     assert "Project Gutenberg" not in all_text
 
 
+def test_pg_legacy_this_delimiters_bound_content():
+    html = _make_html("""
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Content that should appear.</p>
+    """)
+    html = html.replace(
+        "*** START OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***",
+        "*** START OF THIS PROJECT GUTENBERG EBOOK TEST BOOK ***",
+    ).replace(
+        "*** END OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***</div>",
+        "*** END OF THIS PROJECT GUTENBERG EBOOK TEST BOOK ***</div>"
+        "<p>Project Gutenberg License content.</p>",
+    )
+
+    chunks = chunk_html(html)
+    all_text = " ".join(c.content for c in chunks)
+    assert "Content that should appear." in all_text
+    assert "Project Gutenberg License content." not in all_text
+
+
 # ------------------------------------------------------------------
 # Opening prose before first heading
 # ------------------------------------------------------------------

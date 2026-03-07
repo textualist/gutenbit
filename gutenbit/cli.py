@@ -635,23 +635,39 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         )
 
     canonical_statuses: dict[int, str] = {}
+    errors: list[str] = []
     with Database(args.db) as db:
         for book in books:
             title = _single_line(book.title)
-            if db.has_current_text(book.id):
+            was_current = db.has_current_text(book.id)
+            if was_current:
                 canonical_statuses[book.id] = "skipped_current"
                 if not as_json:
                     print(f"  skipping {book.id}: {title} (already downloaded)")
                 continue
-            if db.has_text(book.id):
-                canonical_statuses[book.id] = "reprocessed"
+            was_present = db.has_text(book.id)
+            target_status = "reprocessed" if was_present else "ingested"
+            if was_present:
                 if not as_json:
                     print(f"  reprocessing {book.id}: {title} (chunker updated)…")
             else:
-                canonical_statuses[book.id] = "ingested"
                 if not as_json:
                     print(f"  ingesting {book.id}: {title}…")
-            db.ingest([book], delay=args.delay)
+            if as_json:
+                previous_disable = logging.root.manager.disable
+                logging.disable(logging.CRITICAL)
+                try:
+                    db.ingest([book], delay=args.delay)
+                finally:
+                    logging.disable(previous_disable)
+                if db.has_current_text(book.id):
+                    canonical_statuses[book.id] = target_status
+                else:
+                    canonical_statuses[book.id] = "failed"
+                    errors.append(f"Failed to ingest {book.id}: {title}")
+            else:
+                canonical_statuses[book.id] = target_status
+                db.ingest([book], delay=args.delay)
 
     if as_json:
         result_rows: list[dict[str, Any]] = []
@@ -684,8 +700,13 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
             "status_totals": status_totals,
             "results": result_rows,
         }
-        _print_json_envelope("ingest", ok=True, data=data, warnings=warnings)
-        return 0
+        failed_canonical_ids = sorted(
+            book_id for book_id, status in canonical_statuses.items() if status == "failed"
+        )
+        data["failed_canonical_ids"] = failed_canonical_ids
+        ok = len(failed_canonical_ids) == 0
+        _print_json_envelope("ingest", ok=ok, data=data, warnings=warnings, errors=errors)
+        return 0 if ok else 1
 
     print(f"Done. Database: {Path(args.db).resolve()}")
     return 0
