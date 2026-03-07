@@ -87,6 +87,15 @@ uv run ruff format --check .     # format check
 uv run ty check                  # type check
 ```
 
+## Documentation
+
+```bash
+uv sync --group dev --extra docs
+uv run hatch run docs:build
+uv run hatch run docs:serve
+uv run hatch run docs:check
+```
+
 ## License
 
 MIT

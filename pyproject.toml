@@ -11,6 +11,16 @@ dependencies = [
 [project.scripts]
 gutenbit = "gutenbit.cli:_entry_point"
 
+[project.optional-dependencies]
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-gen-files>=0.5",
+    "mkdocs-literate-nav>=0.6",
+    "mkdocs-material>=9.6",
+    "mkdocs-section-index>=0.3",
+    "mkdocstrings[python]>=0.30",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -26,8 +36,17 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 testpaths = ["tests"]
 markers = ["network: tests that require network access (download from Project Gutenberg)"]
 
+[tool.hatch.envs.docs]
+features = ["docs"]
+
+[tool.hatch.envs.docs.scripts]
+build = "mkdocs build --strict --clean"
+serve = "mkdocs serve"
+check = "mkdocs build --strict --clean --verbose"
+
 [dependency-groups]
 dev = [
+    "hatch>=1.14",
     "pytest>=8.0",
     "ruff>=0.9",
     "ty>=0.0.1a7",
