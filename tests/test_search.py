@@ -156,7 +156,7 @@ def test_chunks_stored(tmp_path):
 def test_chunks_have_chapters(tmp_path):
     db = _make_db(tmp_path)
     rows = db._conn.execute(
-        "SELECT div1 FROM chunks WHERE book_id = ? AND kind = 'paragraph' ORDER BY position",
+        "SELECT div1 FROM chunks WHERE book_id = ? AND kind = 'text' ORDER BY position",
         (1,),
     ).fetchall()
     chapters = [r["div1"] for r in rows]
@@ -171,10 +171,10 @@ def test_chunks_have_kinds(tmp_path):
     kinds = [r["kind"] for r in rows]
     assert kinds == [
         "heading",
-        "paragraph",
-        "paragraph",
+        "text",
+        "text",
         "heading",
-        "paragraph",
+        "text",
     ]
 
 
@@ -211,9 +211,9 @@ def test_chunks_method_returns_all(tmp_path):
 
 def test_chunks_method_filters_by_kind(tmp_path):
     db = _make_db(tmp_path)
-    paragraphs = db.chunks(1, kinds=["paragraph"])
+    paragraphs = db.chunks(1, kinds=["text"])
     assert len(paragraphs) == 3
-    assert all(k == "paragraph" for _, _, _, _, _, _, k, _ in paragraphs)
+    assert all(k == "text" for _, _, _, _, _, _, k, _ in paragraphs)
 
 
 def test_chunks_method_includes_char_count(tmp_path):
@@ -233,9 +233,9 @@ def test_chunks_method_reconstruct_text(tmp_path):
 
 def test_chunks_method_prose_only(tmp_path):
     db = _make_db(tmp_path)
-    prose = db.chunks(1, kinds=["paragraph"])
+    prose = db.chunks(1, kinds=["text"])
     kinds = {k for _, _, _, _, _, _, k, _ in prose}
-    assert kinds == {"paragraph"}
+    assert kinds == {"text"}
     contents = "\n\n".join(c for _, _, _, _, _, c, _, _ in prose)
     assert "Call me Ishmael" in contents
     assert "CHAPTER" not in contents
@@ -293,7 +293,7 @@ def test_search_result_fields(tmp_path):
     assert r.title == "Moby Dick"
     assert r.authors == "Melville, Herman"
     assert r.div1 == "CHAPTER 1"
-    assert r.kind == "paragraph"
+    assert r.kind == "text"
     assert r.char_count > 0
     assert r.score > 0
 
@@ -525,7 +525,7 @@ def test_view_position_with_n(tmp_path):
     db_path = db.path
     row = db._conn.execute(
         "SELECT position FROM chunks "
-        "WHERE book_id = ? AND kind = 'paragraph' "
+        "WHERE book_id = ? AND kind = 'text' "
         "ORDER BY position LIMIT 1",
         (1,),
     ).fetchone()
@@ -666,9 +666,7 @@ def test_view_rejects_multiple_selectors(tmp_path):
     db_path = db.path
     db.close()
 
-    code, out, _err = _run_cli(
-        db_path, "view", "1", "--position", "1", "--section", "CHAPTER 1"
-    )
+    code, out, _err = _run_cli(db_path, "view", "1", "--position", "1", "--section", "CHAPTER 1")
     assert code == 1
     assert "Choose at most one selector" in out
 

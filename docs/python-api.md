@@ -116,7 +116,7 @@ Returns a list of `SearchResult` objects ranked by BM25 relevance.
 ```python
 results = db.search("battle", author="Tolstoy")
 results = db.search("battle", book_id=2600)
-results = db.search("battle", kind="paragraph")
+results = db.search("battle", kind="text")
 results = db.search("battle", title="War")
 ```
 
@@ -163,7 +163,7 @@ A frozen dataclass with these fields:
 | `div4` | `str` | Deepest level |
 | `position` | `int` | Chunk index in document order |
 | `content` | `str` | Full text of the matching chunk |
-| `kind` | `str` | `"heading"`, `"paragraph"`, `"front_matter"`, or `"end_matter"` |
+| `kind` | `str` | `"heading"` or `"text"` |
 | `char_count` | `int` | Character length of content |
 | `score` | `float` | BM25 relevance score (higher is better) |
 
@@ -202,7 +202,7 @@ window = db.chunk_window(1342, position=50, around=3)
 
 ```python
 section = db.chunks_by_div(1342, "Chapter 1")
-section = db.chunks_by_div(1342, "BOOK ONE/CHAPTER I", kinds=["paragraph"], limit=10)
+section = db.chunks_by_div(1342, "BOOK ONE/CHAPTER I", kinds=["text"], limit=10)
 ```
 
 `chunks_by_div` matches by prefix on the div hierarchy. Matching ignores trailing punctuation and is case-insensitive.
@@ -268,6 +268,6 @@ A frozen dataclass with these fields:
 | `div3` | `str` | Third level |
 | `div4` | `str` | Deepest level |
 | `content` | `str` | Text content |
-| `kind` | `str` | `"heading"`, `"paragraph"`, `"front_matter"`, or `"end_matter"` |
+| `kind` | `str` | `"heading"` or `"text"` |
 
 See [Concepts](concepts.md) for how divisions and chunk kinds work.

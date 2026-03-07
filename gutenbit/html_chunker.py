@@ -32,7 +32,7 @@ class Chunk:
     chapters go in div1; for a book with BOOK + CHAPTER, BOOK fills
     div1 and CHAPTER fills div2.
 
-    Kinds: ``"heading"``, ``"paragraph"``
+    Kinds: ``"heading"``, ``"text"``
     """
 
     position: int
@@ -49,7 +49,7 @@ class Chunk:
 # ---------------------------------------------------------------------------
 
 _BROAD_KEYWORDS = frozenset({"book", "part", "act", "epilogue", "volume"})
-CHUNKER_VERSION = 4
+CHUNKER_VERSION = 5
 
 _HEADING_KEYWORD_RE = re.compile(
     r"^(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)\.?\s",
@@ -146,7 +146,7 @@ def chunk_html(html: str) -> list[Chunk]:
         bounds=bounds,
         heading_texts=heading_texts,
     ):
-        chunks.append(Chunk(pos, "", "", "", "", text, "paragraph"))
+        chunks.append(Chunk(pos, "", "", "", "", text, "text"))
         pos += 1
 
     # Body sections.
@@ -170,7 +170,7 @@ def chunk_html(html: str) -> list[Chunk]:
             tag_positions=tag_positions,
             bounds=bounds,
         ):
-            chunks.append(Chunk(pos, divs[0], divs[1], divs[2], divs[3], text, "paragraph"))
+            chunks.append(Chunk(pos, divs[0], divs[1], divs[2], divs[3], text, "text"))
             pos += 1
 
     return chunks

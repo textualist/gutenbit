@@ -13,7 +13,7 @@ from gutenbit.catalog import Catalog
 from gutenbit.db import ChunkRecord, Database
 
 DEFAULT_DB = "gutenbit.db"
-CHUNK_KINDS = ["heading", "paragraph"]
+CHUNK_KINDS = ["heading", "text"]
 JSON_OPENING_LINE_PREVIEW_CHARS = 140
 DEFAULT_OPENING_CHUNK_COUNT = 3
 DEFAULT_VIEW_SELECTOR_N = 1
@@ -311,7 +311,7 @@ typical workflow:
   5. gutenbit view 46 --section 3 -n 20        # read part of a book
   6. gutenbit search "Marley ghost" --book-id 46  # find relevant chunks
 
-chunk kinds:  heading, paragraph
+chunk kinds:  heading, text
 section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowest heading)
 
 all data is stored in a local SQLite database (default: gutenbit.db).""",
@@ -426,7 +426,7 @@ examples:
   gutenbit search "door" --mode first                       # lowest book_id first
   gutenbit search "door" --mode last                        # highest book_id first
   gutenbit search "may it be" --phrase --book-id 2554 -n 20 # exact phrase
-  gutenbit search "freedom" --kind paragraph -n 5           # filtered top hits
+  gutenbit search "freedom" --kind text -n 5                 # filtered top hits
   gutenbit search "ghost" --full -n 3                       # full chunk text
   gutenbit search "battle" --json                            # JSON output
 
@@ -465,7 +465,7 @@ mode ordering:
     se.add_argument(
         "--kind",
         choices=CHUNK_KINDS,
-        help="filter by chunk kind (heading|paragraph)",
+        help="filter by chunk kind (heading|text)",
     )
     se.add_argument(
         "-n",
@@ -534,7 +534,7 @@ examples:
 selectors (choose at most one):
   --position <n> | --section <SECTION_SELECTOR>
 
-chunk kinds:  heading, paragraph
+chunk kinds:  heading, text
 section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowest heading)""",
     )
     vw.add_argument("book_id", type=int, help="Project Gutenberg book ID")
@@ -974,7 +974,7 @@ def _build_section_summary(db: Database, book_id: int) -> dict[str, object] | No
                     "opening_line": "",
                 }
             )
-        elif rec.kind == "paragraph" and sections:
+        elif rec.kind == "text" and sections:
             sections[-1]["paragraphs"] = int(sections[-1]["paragraphs"]) + 1
             sections[-1]["chars"] = int(sections[-1]["chars"]) + rec.char_count
             if not sections[-1]["opening_line"]:
@@ -982,7 +982,7 @@ def _build_section_summary(db: Database, book_id: int) -> dict[str, object] | No
 
     total_chunks = len(chunk_records)
     total_sections = len(sections)
-    total_paragraphs = kind_counts.get("paragraph", 0)
+    total_paragraphs = kind_counts.get("text", 0)
     est_words = round(total_chars / 5) if total_chars else 0
     read_time = _estimate_read_time(est_words)
 
@@ -1123,7 +1123,7 @@ def _render_section_summary(db: Database, book_id: int) -> int:
         [
             [
                 _format_int(int(overview["chunk_counts"]["heading"])),
-                _format_int(int(overview["chunk_counts"]["paragraph"])),
+                _format_int(int(overview["chunk_counts"]["text"])),
                 _format_int(int(overview["chars_total"])),
                 _format_int(int(overview["est_words"])),
                 str(overview["est_read_time"]),
