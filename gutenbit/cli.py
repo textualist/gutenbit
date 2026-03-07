@@ -798,7 +798,14 @@ def _cmd_search(args: argparse.Namespace) -> int:
     limit = args.limit if args.limit > 0 else default_limit
     preview_chars = args.preview_chars
 
+    warnings: list[str] = []
     with Database(args.db) as db:
+        if args.book_id is not None and not db.has_text(args.book_id):
+            warning = f"Book {args.book_id} is not in the database."
+            warnings.append(warning)
+            if not as_json:
+                print(f"warning: {warning}")
+
         results = db.search(
             search_query,
             author=args.author,
@@ -840,6 +847,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
                     for idx, r in enumerate(results, start=1)
                 ],
             },
+            warnings=warnings,
         )
         return 0
 

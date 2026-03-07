@@ -1144,12 +1144,10 @@ def test_delete_json_output(tmp_path):
     assert payload["data"]["deleted_count"] == 1
     assert payload["data"]["missing_count"] == 1
     assert any(
-        row["book_id"] == 1 and row["status"] == "deleted"
-        for row in payload["data"]["results"]
+        row["book_id"] == 1 and row["status"] == "deleted" for row in payload["data"]["results"]
     )
     assert any(
-        row["book_id"] == 999 and row["status"] == "missing"
-        for row in payload["data"]["results"]
+        row["book_id"] == 999 and row["status"] == "missing" for row in payload["data"]["results"]
     )
 
 

@@ -492,8 +492,9 @@ def _find_gutenberg_bounds(soup: BeautifulSoup, tag_positions: dict[int, int]) -
 
     def _find_marker_parent(marker_re: re.Pattern[str]) -> Tag | None:
         marker_text = soup.find(
-            string=lambda text: isinstance(text, str)
-            and marker_re.search(" ".join(text.split())) is not None
+            string=lambda text: (
+                isinstance(text, str) and marker_re.search(" ".join(text.split())) is not None
+            )
         )
         if marker_text is None:
             return None
