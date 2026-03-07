@@ -52,7 +52,7 @@ def test_single_chapter():
     """)
     chunks = chunk_html(html)
     headings = [c for c in chunks if c.kind == "heading"]
-    paragraphs = [c for c in chunks if c.kind == "paragraph"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
 
     assert len(headings) == 1
     assert headings[0].content == "CHAPTER I"
@@ -101,7 +101,7 @@ def test_each_paragraph_is_own_chunk():
     <p>"Perhaps."</p>
     """)
     chunks = chunk_html(html)
-    paragraphs = [c for c in chunks if c.kind == "paragraph"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
     assert len(paragraphs) == 4
     assert paragraphs[0].content == '"Yes?"'
     assert paragraphs[1].content == '"No."'
@@ -333,7 +333,7 @@ def test_opening_prose_before_first_section_is_paragraph():
     <p>Chapter content.</p>
     """)
     chunks = chunk_html(html)
-    paragraphs = [c for c in chunks if c.kind == "paragraph"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
     assert len(paragraphs) >= 2
     assert paragraphs[0].content == "Title Page: A Great Novel by Famous Author."
     assert paragraphs[0].div1 == ""
@@ -350,7 +350,7 @@ def test_toc_paragraphs_not_emitted_as_content():
     <p>Chapter two content.</p>
     """)
     chunks = chunk_html(html)
-    paragraphs = [c.content for c in chunks if c.kind == "paragraph"]
+    paragraphs = [c.content for c in chunks if c.kind == "text"]
     assert "CHAPTER I" not in paragraphs
     assert "CHAPTER II" not in paragraphs
     assert "Title Page: A Great Novel by Famous Author." in paragraphs
@@ -367,7 +367,7 @@ def test_inline_pginternal_links_not_toc():
     </p>
     """)
     chunks = chunk_html(html)
-    paragraphs = [c.content for c in chunks if c.kind == "paragraph"]
+    paragraphs = [c.content for c in chunks if c.kind == "text"]
     assert paragraphs == ["Body text with inline reference [1] remains content."]
 
 
@@ -408,7 +408,7 @@ def test_paragraph_from_img_alt_drop_cap():
     <p><img alt="M" src="dropcap.jpg">r. Bennet was among the earliest.</p>
     """)
     chunks = chunk_html(html)
-    paragraphs = [c for c in chunks if c.kind == "paragraph"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
     assert len(paragraphs) == 1
     assert paragraphs[0].content.startswith("Mr. Bennet")
 
@@ -447,7 +447,7 @@ def test_out_of_order_toc_and_out_of_bounds_links_are_handled():
     """
     chunks = chunk_html(html)
     headings = [c.content for c in chunks if c.kind == "heading"]
-    paragraphs = [c.content for c in chunks if c.kind == "paragraph"]
+    paragraphs = [c.content for c in chunks if c.kind == "text"]
 
     assert headings == ["CHAPTER IV", "CHAPTER V"]
     assert "Hard Times and Reprinted Pieces" not in headings
@@ -512,4 +512,4 @@ def test_chunk_kinds():
     """)
     chunks = chunk_html(html)
     kinds = {c.kind for c in chunks}
-    assert kinds == {"heading", "paragraph"}
+    assert kinds == {"heading", "text"}

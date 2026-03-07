@@ -33,7 +33,7 @@ has chapters in div1, while a book with BOOK + CHAPTER uses div1/div2.
 Heading text has trailing punctuation (`. , ; : ] )`) and whitespace stripped
 for clean display.
 
-Chunk kinds: `"front_matter"`, `"heading"`, `"paragraph"`, `"end_matter"`.
+Chunk kinds: `"heading"`, `"text"`.
 
 Each chunk in the database includes a `char_count` column for efficient
 length-based queries.

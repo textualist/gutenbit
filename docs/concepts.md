@@ -54,12 +54,8 @@ Each chunk has a `kind` field:
 
 | Kind | Meaning |
 |------|---------|
-| `front_matter` | Paragraphs before the first section heading (prefaces, dedications) |
 | `heading` | A section heading extracted from the TOC structure |
-| `paragraph` | A body paragraph within a section |
-| `end_matter` | Paragraphs after the last section (appendices, notes) |
-
-Most search and reading operations focus on `heading` and `paragraph` chunks.
+| `text` | A body paragraph within a section |
 
 ## Corpus policy
 

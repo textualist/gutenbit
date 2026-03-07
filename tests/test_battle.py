@@ -153,7 +153,7 @@ class TestWarAndPeace:
     def test_all_kinds_present(self, chunks: list[Chunk]):
         kinds = {c.kind for c in chunks}
         assert "heading" in kinds
-        assert "paragraph" in kinds
+        assert "text" in kinds
         # War and Peace has no front matter — TOC links start at BOOK ONE
 
     def test_positions_sequential(self, chunks: list[Chunk]):
@@ -195,7 +195,7 @@ class TestCrimeAndPunishment:
         assert len(headings) >= 40
 
     def test_no_toc_labels_as_paragraphs(self, chunks: list[Chunk]):
-        paragraphs = [c.content.strip() for c in chunks if c.kind == "paragraph"]
+        paragraphs = [c.content.strip() for c in chunks if c.kind == "text"]
         toc_like = [
             text
             for text in paragraphs
@@ -227,7 +227,7 @@ class TestChristmasCarol:
             assert h.div1.startswith("STAVE"), f"Expected STAVE in div1, got {h.div1!r}"
 
     def test_paragraphs_have_content(self, chunks: list[Chunk]):
-        paragraphs = [c for c in chunks if c.kind == "paragraph"]
+        paragraphs = [c for c in chunks if c.kind == "text"]
         assert len(paragraphs) > 600
         assert any("Marley" in p.content for p in paragraphs)
         assert any("Scrooge" in p.content for p in paragraphs)
@@ -254,7 +254,7 @@ class TestNicholasNickleby:
         assert any("PREFACE" in h.content.upper() for h in headings)
 
     def test_no_toc_labels_as_paragraphs(self, chunks: list[Chunk]):
-        paragraphs = [c.content.strip() for c in chunks if c.kind == "paragraph"]
+        paragraphs = [c.content.strip() for c in chunks if c.kind == "text"]
         toc_like = [
             text
             for text in paragraphs
@@ -287,7 +287,7 @@ class TestOliverTwist:
     def test_chunk_kinds_are_simplified(self, chunks: list[Chunk]):
         # Simplified chunk kinds: heading + paragraph only.
         kinds = _kind_counts(chunks)
-        assert set(kinds) <= {"heading", "paragraph"}
+        assert set(kinds) <= {"heading", "text"}
 
 
 class TestPrideAndPrejudice:
@@ -308,10 +308,10 @@ class TestPrideAndPrejudice:
 
     def test_chunk_kinds_are_simplified(self, chunks: list[Chunk]):
         kinds = _kind_counts(chunks)
-        assert set(kinds) <= {"heading", "paragraph"}
+        assert set(kinds) <= {"heading", "text"}
 
     def test_dropcap_letters_preserved(self, chunks: list[Chunk]):
-        paragraphs = [c.content for c in chunks if c.kind == "paragraph"]
+        paragraphs = [c.content for c in chunks if c.kind == "text"]
         matches = [p for p in paragraphs if "BENNET was among the earliest" in p]
         assert matches
         assert any("MR. BENNET" in p.upper() for p in matches)
@@ -370,10 +370,10 @@ class TestSherlockHolmes:
 
     def test_chunk_kinds_are_simplified(self, chunks: list[Chunk]):
         kinds = _kind_counts(chunks)
-        assert set(kinds) <= {"heading", "paragraph"}
+        assert set(kinds) <= {"heading", "text"}
 
     def test_holmes_watson_present(self, chunks: list[Chunk]):
-        paragraphs = [c for c in chunks if c.kind == "paragraph"]
+        paragraphs = [c for c in chunks if c.kind == "text"]
         all_text = " ".join(p.content for p in paragraphs)
         assert "Holmes" in all_text
         assert "Watson" in all_text
@@ -418,14 +418,14 @@ class TestBlackstonesCommentaries:
 
     def test_chunk_kinds_are_simplified(self, chunks: list[Chunk]):
         kinds = _kind_counts(chunks)
-        assert set(kinds) <= {"heading", "paragraph"}
+        assert set(kinds) <= {"heading", "text"}
 
     def test_has_paragraphs(self, chunks: list[Chunk]):
         kinds = _kind_counts(chunks)
-        assert kinds.get("paragraph", 0) > 1500
+        assert kinds.get("text", 0) > 1500
 
     def test_legal_content_present(self, chunks: list[Chunk]):
-        paragraphs = [c for c in chunks if c.kind == "paragraph"]
+        paragraphs = [c for c in chunks if c.kind == "text"]
         all_text = " ".join(p.content for p in paragraphs[:200])
         assert "law" in all_text.lower()
 
@@ -540,11 +540,11 @@ class TestIngestionPipeline:
     def test_chunks_filter_by_kind(self, db_path: str):
         with Database(db_path) as db:
             headings = db.chunks(46, kinds=["heading"])
-            paragraphs = db.chunks(46, kinds=["paragraph"])
+            paragraphs = db.chunks(46, kinds=["text"])
         assert len(headings) == 5
         assert all(k == "heading" for _, _, _, _, _, _, k, _ in headings)
         assert len(paragraphs) > 600
-        assert all(k == "paragraph" for _, _, _, _, _, _, k, _ in paragraphs)
+        assert all(k == "text" for _, _, _, _, _, _, k, _ in paragraphs)
 
     def test_char_count_matches(self, db_path: str):
         with Database(db_path) as db:

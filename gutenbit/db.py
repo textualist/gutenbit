@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     div4 TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL,
     content TEXT NOT NULL,
-    kind TEXT NOT NULL DEFAULT 'paragraph',
+    kind TEXT NOT NULL DEFAULT 'text',
     char_count INTEGER NOT NULL DEFAULT 0,
     UNIQUE(book_id, position)
 );
