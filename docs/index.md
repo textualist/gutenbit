@@ -1,23 +1,48 @@
 # Gutenbit
 
-Gutenbit downloads Project Gutenberg HTML books, chunks them into searchable text units, and stores them in SQLite.
+Fast local search across Project Gutenberg's literary works.
+
+Gutenbit downloads public-domain books, parses their HTML into paragraph-level chunks with structural metadata, and stores everything in a local SQLite database with full-text search.
 
 ## Install
 
 ```bash
-uv sync --group dev --extra docs
+pip install gutenbit
 ```
 
-## Docs commands
+Or with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv run hatch run docs:build
-uv run hatch run docs:serve
-uv run hatch run docs:check
+uv add gutenbit
 ```
 
-## Use
+## Python in 30 seconds
 
-- Start with [Quickstart](quickstart.md)
-- See command examples in [CLI](cli.md)
-- Browse generated APIs in [API Reference](reference/index.md)
+```python
+from gutenbit import Catalog, Database
+
+catalog = Catalog.fetch()
+books = catalog.search(title="Pride and Prejudice")
+
+with Database("gutenbit.db") as db:
+    db.ingest(books)
+    for hit in db.search("truth universally acknowledged"):
+        print(hit.title, hit.div1, hit.content[:100])
+```
+
+## CLI in 30 seconds
+
+```bash
+gutenbit catalog --title "Pride and Prejudice"
+gutenbit ingest 1342
+gutenbit search "truth universally acknowledged"
+gutenbit view 1342 --section 1 -n 5
+```
+
+## Next steps
+
+- [Getting Started](getting-started.md) walks through a complete workflow.
+- [Python API](python-api.md) covers the library in full.
+- [CLI](cli.md) documents every subcommand and flag.
+- [Concepts](concepts.md) explains how chunking, divisions, and search work.
+- [API Reference](reference/index.md) has auto-generated module documentation.
