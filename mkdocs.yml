@@ -1,5 +1,5 @@
 site_name: Gutenbit
-site_description: Download, parse, and search Project Gutenberg texts in SQLite.
+site_description: Fast local search across Project Gutenberg's literary works.
 
 repo_name: Gutenbit
 
@@ -39,11 +39,14 @@ plugins:
 
 markdown_extensions:
   - admonition
+  - pymdownx.details
   - pymdownx.highlight
   - pymdownx.superfences
 
 nav:
   - Home: index.md
-  - Quickstart: quickstart.md
+  - Getting Started: getting-started.md
+  - Python API: python-api.md
   - CLI: cli.md
+  - Concepts: concepts.md
   - API Reference: reference/
