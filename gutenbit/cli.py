@@ -12,7 +12,7 @@ from gutenbit.catalog import Catalog
 from gutenbit.db import ChunkRecord, Database
 
 DEFAULT_DB = "gutenbit.db"
-CHUNK_KINDS = ["front_matter", "heading", "paragraph", "end_matter"]
+CHUNK_KINDS = ["heading", "paragraph"]
 JSON_OPENING_LINE_PREVIEW_CHARS = 140
 
 
@@ -148,7 +148,7 @@ typical workflow:
   4. gutenbit view 46                          # browse structure / text
   5. gutenbit search "Marley ghost" --book-id 46  # find relevant chunks
 
-chunk kinds:  front_matter, heading, paragraph, end_matter
+chunk kinds:  heading, paragraph
 section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowest heading)
 
 all data is stored in a local SQLite database (default: gutenbit.db).""",
@@ -288,7 +288,7 @@ tip: use 'gutenbit view <id>' first to see a book's structure, then
     se.add_argument(
         "--kind",
         choices=CHUNK_KINDS,
-        help="filter by chunk kind (front_matter|heading|paragraph|end_matter)",
+        help="filter by chunk kind (heading|paragraph)",
     )
     se.add_argument(
         "-n",
@@ -332,7 +332,7 @@ examples:
 selectors (choose at most one):
   --all | --position <n> | --section <SECTION_PATH>
 
-chunk kinds:  front_matter, heading, paragraph, end_matter
+chunk kinds:  heading, paragraph
 section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowest heading)""",
     )
     vw.add_argument("book_id", type=int, help="Project Gutenberg book ID")
@@ -442,10 +442,13 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
     with Database(args.db) as db:
         for book in books:
             title = _single_line(book.title)
-            if db.has_text(book.id):
+            if db.has_current_text(book.id):
                 print(f"  skipping {book.id}: {title} (already downloaded)")
                 continue
-            print(f"  ingesting {book.id}: {title}…")
+            if db.has_text(book.id):
+                print(f"  reprocessing {book.id}: {title} (chunker updated)…")
+            else:
+                print(f"  ingesting {book.id}: {title}…")
             db.ingest([book], delay=args.delay)
     print(f"Done. Database: {Path(args.db).resolve()}")
     return 0

@@ -12,7 +12,7 @@ from typing import Literal
 
 from gutenbit.catalog import BookRecord, apply_catalog_policy, is_record_allowed
 from gutenbit.download import download_html
-from gutenbit.html_chunker import Chunk, chunk_html
+from gutenbit.html_chunker import CHUNKER_VERSION, Chunk, chunk_html
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS books (
 CREATE TABLE IF NOT EXISTS texts (
     book_id INTEGER PRIMARY KEY REFERENCES books(id),
     content TEXT NOT NULL,
+    chunker_version INTEGER NOT NULL DEFAULT 1,
     downloaded_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -142,6 +143,7 @@ class Database:
         self._conn = sqlite3.connect(self.path)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(SCHEMA)
+        self._ensure_schema_migrations()
         self._conn.executescript(_FTS_SETUP)
 
     # ------------------------------------------------------------------
@@ -175,9 +177,11 @@ class Database:
                 )
 
         for book in canonical_books:
-            if self.has_text(book.id):
+            if self._has_current_text(book.id):
                 logger.info("Skipping %s (already downloaded)", book.title)
                 continue
+            if self._has_text(book.id):
+                logger.info("Reprocessing %s (chunker version updated)", book.title)
             logger.info("Downloading %s (id=%d)", book.title, book.id)
             try:
                 html = download_html(book.id)
@@ -222,8 +226,7 @@ class Database:
 
     def has_text(self, book_id: int) -> bool:
         """Return True when a book has already been downloaded and stored."""
-        row = self._conn.execute("SELECT 1 FROM texts WHERE book_id = ?", (book_id,)).fetchone()
-        return row is not None
+        return self._has_text(book_id)
 
     def chunk_records(
         self,
@@ -261,6 +264,10 @@ class Database:
             )
             for r in rows
         ]
+
+    def has_current_text(self, book_id: int) -> bool:
+        """Return True when stored text matches the current chunker version."""
+        return self._has_current_text(book_id)
 
     def chunks(
         self,
@@ -493,6 +500,30 @@ class Database:
     # Private helpers
     # ------------------------------------------------------------------
 
+    def _ensure_schema_migrations(self) -> None:
+        """Apply lightweight schema migrations for existing databases."""
+        columns = {
+            str(row["name"])
+            for row in self._conn.execute("PRAGMA table_info(texts)").fetchall()
+        }
+        if "chunker_version" not in columns:
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE texts "
+                    "ADD COLUMN chunker_version INTEGER NOT NULL DEFAULT 1"
+                )
+
+    def _has_text(self, book_id: int) -> bool:
+        row = self._conn.execute("SELECT 1 FROM texts WHERE book_id = ?", (book_id,)).fetchone()
+        return row is not None
+
+    def _has_current_text(self, book_id: int) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM texts WHERE book_id = ? AND chunker_version = ?",
+            (book_id, CHUNKER_VERSION),
+        ).fetchone()
+        return row is not None
+
     def _store(self, book: BookRecord, chunks: list[Chunk]) -> None:
         """Store a book and its chunks."""
         text = "\n\n".join(c.content for c in chunks)
@@ -504,8 +535,9 @@ class Database:
                 astuple(book),
             )
             self._conn.execute(
-                "INSERT OR REPLACE INTO texts (book_id, content) VALUES (?, ?)",
-                (book.id, text),
+                "INSERT OR REPLACE INTO texts (book_id, content, chunker_version) "
+                "VALUES (?, ?, ?)",
+                (book.id, text, CHUNKER_VERSION),
             )
             self._conn.execute("DELETE FROM chunks WHERE book_id = ?", (book.id,))
             self._conn.executemany(

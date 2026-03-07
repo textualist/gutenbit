@@ -8,7 +8,7 @@ import json
 from gutenbit.catalog import BookRecord, Catalog
 from gutenbit.cli import main as cli_main
 from gutenbit.db import Database, SearchResult
-from gutenbit.html_chunker import chunk_html
+from gutenbit.html_chunker import CHUNKER_VERSION, chunk_html
 
 # ------------------------------------------------------------------
 # Minimal PG-style HTML builder
@@ -21,10 +21,11 @@ _PG_TEMPLATE = """\
 <body>
 <section class="pg-boilerplate pgheader" id="pg-header">
   <h2>The Project Gutenberg eBook of {title}</h2>
+  <div id="pg-start-separator">*** START OF THE PROJECT GUTENBERG EBOOK {title} ***</div>
 </section>
 {body}
 <section class="pg-boilerplate pgfooter" id="pg-footer">
-  <p>End of the Project Gutenberg eBook</p>
+  <div id="pg-end-separator">*** END OF THE PROJECT GUTENBERG EBOOK {title} ***</div>
 </section>
 </body>
 </html>
@@ -458,8 +459,9 @@ def test_view_position_with_neighbors(tmp_path):
     db = _make_db(tmp_path)
     db_path = db.path
     row = db._conn.execute(
-        "SELECT position FROM chunks WHERE book_id = ? AND kind = 'paragraph'"
-        " ORDER BY position LIMIT 1",
+        "SELECT position FROM chunks "
+        "WHERE book_id = ? AND kind = 'paragraph' "
+        "ORDER BY position LIMIT 1",
         (1,),
     ).fetchone()
     assert row is not None
@@ -699,6 +701,18 @@ def test_database_ingest_enforces_catalog_boundaries(tmp_path, monkeypatch):
     assert seen_downloads == [10]
 
 
+def test_has_current_text_detects_stale_chunker_version(tmp_path):
+    db = _make_db(tmp_path)
+    db._conn.execute(
+        "UPDATE texts SET chunker_version = ? WHERE book_id = ?",
+        (CHUNKER_VERSION - 1, 1),
+    )
+    db._conn.commit()
+    assert db.has_text(1) is True
+    assert db.has_current_text(1) is False
+    db.close()
+
+
 def test_ingest_reports_skip_before_downloading(tmp_path, monkeypatch):
     record = BookRecord(
         id=888,
@@ -712,6 +726,7 @@ def test_ingest_reports_skip_before_downloading(tmp_path, monkeypatch):
         type="Text",
     )
     monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
+    monkeypatch.setattr(Database, "has_current_text", lambda _self, _book_id: True)
     monkeypatch.setattr(Database, "has_text", lambda _self, _book_id: True)
 
     def _ingest_should_not_run(_self, _books, *, delay=1.0):
@@ -722,6 +737,35 @@ def test_ingest_reports_skip_before_downloading(tmp_path, monkeypatch):
     code, out, _err = _run_cli(tmp_path / "skip.db", "ingest", "888", "--delay", "0")
     assert code == 0
     assert "skipping 888: Already There (already downloaded)" in out
+
+
+def test_ingest_reprocesses_stale_chunker_version(tmp_path, monkeypatch):
+    record = BookRecord(
+        id=889,
+        title="Needs Refresh",
+        authors="Test Author",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
+    monkeypatch.setattr(Database, "has_current_text", lambda _self, _book_id: False)
+    monkeypatch.setattr(Database, "has_text", lambda _self, _book_id: True)
+
+    ingested_ids: list[int] = []
+
+    def _capture_ingest(_self, books, *, delay=1.0):
+        ingested_ids.extend(book.id for book in books)
+
+    monkeypatch.setattr(Database, "ingest", _capture_ingest)
+
+    code, out, _err = _run_cli(tmp_path / "stale.db", "ingest", "889", "--delay", "0")
+    assert code == 0
+    assert "reprocessing 889: Needs Refresh (chunker updated)" in out
+    assert ingested_ids == [889]
 
 
 def test_ingest_remaps_to_canonical_catalog_id(tmp_path, monkeypatch):
@@ -738,6 +782,7 @@ def test_ingest_remaps_to_canonical_catalog_id(tmp_path, monkeypatch):
     )
     catalog = Catalog([canonical], canonical_id_by_id={100: 100, 101: 100})
     monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: catalog))
+    monkeypatch.setattr(Database, "has_current_text", lambda _self, _book_id: False)
     monkeypatch.setattr(Database, "has_text", lambda _self, _book_id: False)
 
     ingested_ids: list[int] = []

@@ -13,11 +13,11 @@ _PG_TEMPLATE = """\
 <body>
 <section class="pg-boilerplate pgheader" id="pg-header">
   <h2 id="pg-header-heading">The Project Gutenberg eBook of Test</h2>
-  <div id="pg-start-separator">*** START ***</div>
+  <div id="pg-start-separator">*** START OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***</div>
 </section>
 {body}
 <section class="pg-boilerplate pgfooter" id="pg-footer">
-  <p>End of the Project Gutenberg eBook</p>
+  <div id="pg-end-separator">*** END OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***</div>
 </section>
 </body>
 </html>
@@ -229,7 +229,7 @@ def test_page_number_links_ignored():
 
 
 # ------------------------------------------------------------------
-# PG boilerplate stripping
+# Gutenberg delimiter bounds
 # ------------------------------------------------------------------
 
 
@@ -245,11 +245,11 @@ def test_pg_header_stripped():
 
 
 # ------------------------------------------------------------------
-# Front matter
+# Opening prose before first heading
 # ------------------------------------------------------------------
 
 
-def test_front_matter_before_first_section():
+def test_opening_prose_before_first_section_is_paragraph():
     html = _make_html("""
     <p>Title Page: A Great Novel by Famous Author.</p>
     <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
@@ -257,12 +257,13 @@ def test_front_matter_before_first_section():
     <p>Chapter content.</p>
     """)
     chunks = chunk_html(html)
-    front = [c for c in chunks if c.kind == "front_matter"]
-    assert len(front) >= 1
-    assert "Famous Author" in front[0].content
+    paragraphs = [c for c in chunks if c.kind == "paragraph"]
+    assert len(paragraphs) >= 2
+    assert paragraphs[0].content == "Title Page: A Great Novel by Famous Author."
+    assert paragraphs[0].div1 == ""
 
 
-def test_toc_paragraphs_not_front_matter():
+def test_toc_paragraphs_not_emitted_as_content():
     html = _make_html("""
     <p>Title Page: A Great Novel by Famous Author.</p>
     <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
@@ -273,8 +274,10 @@ def test_toc_paragraphs_not_front_matter():
     <p>Chapter two content.</p>
     """)
     chunks = chunk_html(html)
-    front = [c.content for c in chunks if c.kind == "front_matter"]
-    assert front == ["Title Page: A Great Novel by Famous Author."]
+    paragraphs = [c.content for c in chunks if c.kind == "paragraph"]
+    assert "CHAPTER I" not in paragraphs
+    assert "CHAPTER II" not in paragraphs
+    assert "Title Page: A Great Novel by Famous Author." in paragraphs
 
 
 def test_inline_pginternal_links_not_toc():
@@ -335,21 +338,45 @@ def test_paragraph_from_img_alt_drop_cap():
 
 
 # ------------------------------------------------------------------
-# End matter detection
+# Hard Times regression shape: delimiter-bounded + sorted TOC anchors
 # ------------------------------------------------------------------
 
 
-def test_end_matter_detected():
-    html = _make_html("""
-    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
-    <h2><a id="ch1"></a>CHAPTER I</h2>
-    <p>Chapter content.</p>
-    <p>FOOTNOTES</p>
-    <p>1. This is a footnote.</p>
-    """)
+def test_out_of_order_toc_and_out_of_bounds_links_are_handled():
+    html = """\
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><title>Hard Times</title></head>
+    <body>
+    <h2><a id="front"></a>Hard Times and Reprinted Pieces</h2>
+    <p>This heading is outside START and must be excluded.</p>
+    <section class="pg-boilerplate pgheader" id="pg-header">
+      <div id="pg-start-separator">*** START OF THE PROJECT GUTENBERG EBOOK HARD TIMES ***</div>
+      <p><a href="#front" class="pginternal">Hard Times and Reprinted Pieces</a></p>
+    </section>
+    <p><a href="#ch5" class="pginternal">CHAPTER V</a></p>
+    <p><a href="#ch4" class="pginternal">CHAPTER IV</a></p>
+    <h2><a id="ch4"></a>CHAPTER IV</h2>
+    <p>Chapter four paragraph.</p>
+    <h2><a id="ch5"></a>CHAPTER V</h2>
+    <p>Chapter five paragraph.</p>
+    <section class="pg-boilerplate pgfooter" id="pg-footer">
+      <div id="pg-end-separator">*** END OF THE PROJECT GUTENBERG EBOOK HARD TIMES ***</div>
+      <p><a href="#license" class="pginternal">THE FULL PROJECT GUTENBERG LICENSE</a></p>
+      <h2><a id="license"></a>THE FULL PROJECT GUTENBERG LICENSE</h2>
+    </section>
+    <p>Outside END and must be excluded.</p>
+    </body>
+    </html>
+    """
     chunks = chunk_html(html)
-    end = [c for c in chunks if c.kind == "end_matter"]
-    assert len(end) >= 1
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    paragraphs = [c.content for c in chunks if c.kind == "paragraph"]
+
+    assert headings == ["CHAPTER IV", "CHAPTER V"]
+    assert "Hard Times and Reprinted Pieces" not in headings
+    assert "THE FULL PROJECT GUTENBERG LICENSE" not in headings
+    assert "Outside END and must be excluded." not in paragraphs
 
 
 # ------------------------------------------------------------------
@@ -368,7 +395,4 @@ def test_chunk_kinds():
     """)
     chunks = chunk_html(html)
     kinds = {c.kind for c in chunks}
-    assert "heading" in kinds
-    assert "paragraph" in kinds
-    assert "front_matter" in kinds
-    assert "end_matter" in kinds
+    assert kinds == {"heading", "paragraph"}
