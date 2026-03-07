@@ -90,11 +90,13 @@ WHERE chunks_fts MATCH ?
 """
 
 _DIV_TRAILING_PUNCT_RE = re.compile(r"[.,;:!?]+$")
+_DIV_PUNCT_SPACING_RE = re.compile(r"\s*([.,;:!?])\s*")
 
 
 def _normalize_div_segment(value: str) -> str:
     """Normalize a div path segment for stable matching."""
-    cleaned = " ".join(value.split()).strip()
+    cleaned = " ".join(value.split()).strip().casefold()
+    cleaned = _DIV_PUNCT_SPACING_RE.sub(r"\1", cleaned)
     return _DIV_TRAILING_PUNCT_RE.sub("", cleaned)
 
 

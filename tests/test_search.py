@@ -368,6 +368,14 @@ def test_search_mode_last_orders_reverse_position(tmp_path):
     assert [r.position for r in results] == [3, 0]
 
 
+def test_search_help_documents_mode_ordering(tmp_path):
+    code, out, _err = _run_cli(tmp_path / "any.db", "search", "-h")
+    assert code == 0
+    assert "ranked: BM25 rank, then book_id, then position" in out
+    assert "first:  book_id ascending, then position ascending" in out
+    assert "last:   book_id descending, then position descending" in out
+
+
 # ------------------------------------------------------------------
 # CLI view command
 # ------------------------------------------------------------------
@@ -402,13 +410,22 @@ def test_view_default_json(tmp_path):
     assert code == 0
 
     payload = json.loads(out)
-    assert payload["book"]["id"] == 1
-    assert payload["book"]["title"] == "Moby Dick"
-    assert payload["book"]["authors"] == "Melville, Herman"
-    assert payload["overview"]["sections_total"] == 2
-    assert payload["overview"]["chunk_counts"]["heading"] == 2
-    assert payload["sections"][0]["section"] == "CHAPTER 1"
-    assert list(payload["sections"][0].keys()) == [
+    assert payload["ok"] is True
+    assert payload["command"] == "view"
+    assert payload["warnings"] == []
+    assert payload["errors"] == []
+
+    data = payload["data"]
+    assert data["book_id"] == 1
+    assert data["mode"] == "summary"
+    summary = data["summary"]
+    assert summary["book"]["id"] == 1
+    assert summary["book"]["title"] == "Moby Dick"
+    assert summary["book"]["authors"] == "Melville, Herman"
+    assert summary["overview"]["sections_total"] == 2
+    assert summary["overview"]["chunk_counts"]["heading"] == 2
+    assert summary["sections"][0]["section"] == "CHAPTER 1"
+    assert list(summary["sections"][0].keys()) == [
         "position",
         "section",
         "paras",
@@ -417,28 +434,34 @@ def test_view_default_json(tmp_path):
         "est_read",
         "opening_line",
     ]
-    assert payload["sections"][0]["est_words"] > 0
-    assert payload["sections"][0]["opening_line"].endswith("…")
-    assert len(payload["sections"][0]["opening_line"]) <= 141
-    assert payload["quick_actions"]["search"] == (
+    assert summary["sections"][0]["est_words"] > 0
+    assert summary["sections"][0]["opening_line"].endswith("…")
+    assert len(summary["sections"][0]["opening_line"]) <= 141
+    assert summary["quick_actions"]["search"] == (
         "gutenbit search <query> --book-id 1 --kind paragraph"
     )
-    assert payload["quick_actions"]["view_first_position"].startswith(
+    assert summary["quick_actions"]["view_first_position"].startswith(
         "gutenbit view 1 --position "
     )
-    assert payload["quick_actions"]["view_first_position_around"].startswith(
+    assert summary["quick_actions"]["view_first_position_around"].startswith(
         "gutenbit view 1 --position "
     )
 
 
-def test_view_json_rejects_selectors(tmp_path):
+def test_view_json_all_selector(tmp_path):
     db = _make_db(tmp_path)
     db_path = db.path
     db.close()
 
     code, out, _err = _run_cli(db_path, "view", "1", "--json", "--all")
-    assert code == 1
-    assert "--json can only be used with the default summary view." in out
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["ok"] is True
+    assert payload["command"] == "view"
+    assert payload["data"]["mode"] == "all"
+    assert payload["data"]["book_id"] == 1
+    assert payload["data"]["chars"] > 0
+    assert "Call me Ishmael" in payload["data"]["content"]
 
 
 def test_view_all_and_missing_book(tmp_path):
@@ -524,6 +547,55 @@ def test_chunks_by_div_ignores_trailing_punctuation(tmp_path):
 
     assert len(rows) == 1
     assert rows[0].div1 == "STAVE ONE"
+
+
+def test_chunks_by_div_is_case_and_punctuation_spacing_insensitive(tmp_path):
+    db = Database(tmp_path / "test.db")
+    db._store(_BOOK3, chunk_html(_BOOK3_HTML))
+    rows = db.chunks_by_div(3, "stave one", kinds=["heading"])
+    assert len(rows) >= 1
+    assert rows[0].div1 == "STAVE ONE"
+    db.close()
+
+
+def test_view_section_accepts_punctuation_spacing_variants(tmp_path):
+    html = _make_html(
+        "Spacing Book",
+        """
+<p class="toc"><a href="#a" class="pginternal">BOOK ONE</a></p>
+<p class="toc"><a href="#b" class="pginternal">CHAPTER I.The Beginning</a></p>
+<h2><a id="a"></a>BOOK ONE</h2>
+<h3><a id="b"></a>CHAPTER I.The Beginning</h3>
+<p>First paragraph.</p>
+""",
+    )
+    db = Database(tmp_path / "spacing.db")
+    book = BookRecord(
+        id=22,
+        title="Spacing Book",
+        authors="Author, Test",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="2000-01-01",
+        type="Text",
+    )
+    db._store(book, chunk_html(html))
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(
+        db_path,
+        "view",
+        "22",
+        "--section",
+        "book one / chapter i. the beginning",
+        "-n",
+        "1",
+    )
+    assert code == 0
+    assert "section='book one / chapter i. the beginning'" in out
 
 
 def test_view_rejects_multiple_selectors(tmp_path):
@@ -874,8 +946,18 @@ def test_search_json_output(tmp_path):
     code, out, _err = _run_cli(db_path, "search", "Ishmael", "--json")
     assert code == 0
     payload = json.loads(out)
-    assert len(payload) >= 1
-    result = payload[0]
+    assert payload["ok"] is True
+    assert payload["command"] == "search"
+    assert payload["errors"] == []
+    assert payload["warnings"] == []
+
+    data = payload["data"]
+    assert data["query"]["raw"] == "Ishmael"
+    assert data["mode"] == "ranked"
+    assert data["count"] >= 1
+    assert len(data["items"]) >= 1
+
+    result = data["items"][0]
     assert result["book_id"] == 1
     assert result["title"] == "Moby Dick"
     assert "Ishmael" in result["content"]
@@ -894,7 +976,11 @@ def test_search_json_empty(tmp_path):
 
     code, out, _err = _run_cli(db_path, "search", "xyzzyplugh", "--json")
     assert code == 0
-    assert json.loads(out) == []
+    payload = json.loads(out)
+    assert payload["ok"] is True
+    assert payload["command"] == "search"
+    assert payload["data"]["count"] == 0
+    assert payload["data"]["items"] == []
 
 
 def test_books_json_output(tmp_path):
@@ -905,17 +991,195 @@ def test_books_json_output(tmp_path):
     code, out, _err = _run_cli(db_path, "books", "--json")
     assert code == 0
     payload = json.loads(out)
-    assert len(payload) == 2
-    assert payload[0]["id"] == 1
-    assert payload[0]["title"] == "Moby Dick"
-    assert payload[1]["id"] == 2
-    assert payload[1]["title"] == "Pride and Prejudice"
+    assert payload["ok"] is True
+    assert payload["command"] == "books"
+    assert payload["errors"] == []
+    assert payload["warnings"] == []
+    assert payload["data"]["count"] == 2
+    items = payload["data"]["items"]
+    assert items[0]["id"] == 1
+    assert items[0]["title"] == "Moby Dick"
+    assert items[1]["id"] == 2
+    assert items[1]["title"] == "Pride and Prejudice"
 
 
 def test_books_json_empty(tmp_path):
     code, out, _err = _run_cli(tmp_path / "empty.db", "books", "--json")
     assert code == 0
-    assert json.loads(out) == []
+    payload = json.loads(out)
+    assert payload["ok"] is True
+    assert payload["command"] == "books"
+    assert payload["data"]["count"] == 0
+    assert payload["data"]["items"] == []
+
+
+def test_catalog_json_output(tmp_path, monkeypatch):
+    record = BookRecord(
+        id=777,
+        title="Title Line One\nTitle Line Two",
+        authors="Author One\nAuthor Two",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
+
+    code, out, _err = _run_cli(
+        tmp_path / "any.db",
+        "catalog",
+        "--author",
+        "Author",
+        "-n",
+        "1",
+        "--json",
+    )
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["ok"] is True
+    assert payload["command"] == "catalog"
+    assert payload["data"]["total_matches"] == 1
+    assert payload["data"]["shown"] == 1
+    assert payload["data"]["items"][0]["id"] == 777
+
+
+def test_ingest_json_output(tmp_path, monkeypatch):
+    canonical = BookRecord(
+        id=100,
+        title="Canonical Work",
+        authors="Example, Author",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    catalog = Catalog([canonical], canonical_id_by_id={100: 100, 101: 100})
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: catalog))
+    monkeypatch.setattr(Database, "has_text", lambda _self, _book_id: False)
+
+    ingested_ids: list[int] = []
+    current_ids: set[int] = set()
+
+    def _has_current(_self, book_id):
+        return book_id in current_ids
+
+    def _capture_ingest(_self, books, *, delay=1.0):
+        for book in books:
+            ingested_ids.append(book.id)
+            current_ids.add(book.id)
+
+    monkeypatch.setattr(Database, "has_current_text", _has_current)
+    monkeypatch.setattr(Database, "ingest", _capture_ingest)
+
+    code, out, _err = _run_cli(
+        tmp_path / "canonical.db",
+        "ingest",
+        "101",
+        "--delay",
+        "0",
+        "--json",
+    )
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["ok"] is True
+    assert payload["command"] == "ingest"
+    assert payload["data"]["counts"]["requested"] == 1
+    assert payload["data"]["counts"]["canonical"] == 1
+    assert payload["data"]["results"][0]["requested_id"] == 101
+    assert payload["data"]["results"][0]["canonical_id"] == 100
+    assert payload["data"]["results"][0]["status"] == "ingested"
+    assert ingested_ids == [100]
+
+
+def test_ingest_json_failure_reports_failed_and_stays_parseable(tmp_path, monkeypatch):
+    record = BookRecord(
+        id=555,
+        title="Broken Download",
+        authors="Example, Author",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
+
+    def _boom(_book_id):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("gutenbit.db.download_html", _boom)
+
+    code, out, _err = _run_cli(
+        tmp_path / "broken.db",
+        "ingest",
+        "555",
+        "--delay",
+        "0",
+        "--json",
+    )
+    assert code == 1
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    assert payload["command"] == "ingest"
+    assert payload["data"]["failed_canonical_ids"] == [555]
+    assert payload["data"]["results"][0]["status"] == "failed"
+    assert "Failed to ingest 555: Broken Download" in payload["errors"]
+
+
+def test_delete_json_output(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "delete", "1", "999", "--json")
+    assert code == 1
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    assert payload["command"] == "delete"
+    assert payload["data"]["deleted_count"] == 1
+    assert payload["data"]["missing_count"] == 1
+    assert any(
+        row["book_id"] == 1 and row["status"] == "deleted"
+        for row in payload["data"]["results"]
+    )
+    assert any(
+        row["book_id"] == 999 and row["status"] == "missing"
+        for row in payload["data"]["results"]
+    )
+
+
+def test_view_section_json_output(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--section", "CHAPTER 1", "-n", "1", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["ok"] is True
+    assert payload["command"] == "view"
+    assert payload["data"]["mode"] == "section"
+    assert payload["data"]["section"] == "CHAPTER 1"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["chunks"][0]["section"] == "CHAPTER 1"
+
+
+def test_view_json_validation_error_uses_envelope(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--preview-chars", "0", "--json")
+    assert code == 1
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    assert payload["command"] == "view"
+    assert payload["errors"] == ["--preview-chars must be > 0."]
 
 
 def test_books_has_column_headers(tmp_path):

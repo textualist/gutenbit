@@ -244,6 +244,82 @@ def test_pg_header_stripped():
     assert "Project Gutenberg" not in all_text
 
 
+def test_pg_legacy_this_delimiters_bound_content():
+    html = _make_html("""
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Content that should appear.</p>
+    """)
+    html = html.replace(
+        "*** START OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***",
+        "*** START OF THIS PROJECT GUTENBERG EBOOK TEST BOOK ***",
+    ).replace(
+        "*** END OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***</div>",
+        "*** END OF THIS PROJECT GUTENBERG EBOOK TEST BOOK ***</div>"
+        "<p>Project Gutenberg License content.</p>",
+    )
+
+    chunks = chunk_html(html)
+    all_text = " ".join(c.content for c in chunks)
+    assert "Content that should appear." in all_text
+    assert "Project Gutenberg License content." not in all_text
+
+
+def test_pg_header_fallback_when_start_delimiter_missing():
+    html = """\
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><title>Test Book</title></head>
+    <body>
+    <section class="pg-boilerplate pgheader" id="pg-header">
+      <h2>The Project Gutenberg eBook of Test</h2>
+      <p><a href="#junk" class="pginternal">JUNK HEADING</a></p>
+      <h2><a id="junk"></a>JUNK HEADING</h2>
+    </section>
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Content that should appear.</p>
+    <section class="pg-boilerplate pgfooter" id="pg-footer">
+      <div id="pg-end-separator">*** END OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***</div>
+    </section>
+    </body>
+    </html>
+    """
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    all_text = " ".join(c.content for c in chunks)
+
+    assert headings == ["CHAPTER I"]
+    assert "JUNK HEADING" not in all_text
+
+
+def test_pg_footer_fallback_when_end_delimiter_missing():
+    html = """\
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><title>Test Book</title></head>
+    <body>
+    <section class="pg-boilerplate pgheader" id="pg-header">
+      <div id="pg-start-separator">*** START OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***</div>
+    </section>
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Content that should appear.</p>
+    <section class="pg-boilerplate pgfooter" id="pg-footer">
+      <h2><a id="license"></a>PROJECT GUTENBERG LICENSE</h2>
+      <p><a href="#license" class="pginternal">PROJECT GUTENBERG LICENSE</a></p>
+    </section>
+    </body>
+    </html>
+    """
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    all_text = " ".join(c.content for c in chunks)
+
+    assert headings == ["CHAPTER I"]
+    assert "PROJECT GUTENBERG LICENSE" not in all_text
+
+
 # ------------------------------------------------------------------
 # Opening prose before first heading
 # ------------------------------------------------------------------
