@@ -1,18 +1,21 @@
-site_name: gutenbit
+site_name: Gutenbit
 site_description: Download, parse, and search Project Gutenberg texts in SQLite.
 
-repo_name: gutenbit
+repo_name: Gutenbit
 
 theme:
   name: material
   language: en
   palette:
     - scheme: default
-      primary: blue grey
-      accent: blue
+      primary: custom
+      accent: custom
   features:
     - navigation.sections
     - content.code.copy
+
+extra_css:
+  - stylesheets/extra.css
 
 plugins:
   - search

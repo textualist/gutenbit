@@ -1,6 +1,6 @@
-# gutenbit
+# Gutenbit
 
-gutenbit downloads Project Gutenberg HTML books, chunks them into searchable text units, and stores them in SQLite.
+Gutenbit downloads Project Gutenberg HTML books, chunks them into searchable text units, and stores them in SQLite.
 
 ## Install
 
