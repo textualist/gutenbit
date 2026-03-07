@@ -1,6 +1,6 @@
 # gutenbit
 
-Fast local search across Project Gutenberg's literary works. Download public-domain books, parse their HTML into paragraph-level chunks, and search them with SQLite FTS5.
+Fast local search across Project Gutenberg's public-domain library. Find, browse, and search over 70,000 literary works from your terminal or Python script.
 
 ## Install
 
