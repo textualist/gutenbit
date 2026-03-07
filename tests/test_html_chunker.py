@@ -379,6 +379,47 @@ def test_out_of_order_toc_and_out_of_bounds_links_are_handled():
     assert "Outside END and must be excluded." not in paragraphs
 
 
+def test_page_number_toc_links_fall_back_to_heading_scan():
+    html = """\
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><title>Hard Times</title></head>
+    <body>
+    <section class="pg-boilerplate pgheader" id="pg-header">
+      <div id="pg-start-separator">*** START OF THE PROJECT GUTENBERG EBOOK HARD TIMES ***</div>
+    </section>
+
+    <h1>
+      Hard Times and Reprinted Pieces
+      <a class="citation pginternal" href="#footnote0">[0]</a>
+    </h1>
+    <h2>CONTENTS</h2>
+    <table><tbody>
+      <tr><td>CHAPTER I</td><td><span class="indexpageno">
+        <a href="#page3" class="pginternal">3</a></span></td></tr>
+      <tr><td>CHAPTER II</td><td><span class="indexpageno">
+        <a href="#page4" class="pginternal">4</a></span></td></tr>
+    </tbody></table>
+
+    <h2><a id="page3"></a>BOOK THE FIRST</h2>
+    <h3>CHAPTER I</h3>
+    <p>First chapter paragraph.</p>
+    <h3>CHAPTER II</h3>
+    <p><a id="page4"></a>Second chapter paragraph.</p>
+
+    <section class="pg-boilerplate pgfooter" id="pg-footer">
+      <div id="pg-end-separator">*** END OF THE PROJECT GUTENBERG EBOOK HARD TIMES ***</div>
+    </section>
+    </body>
+    </html>
+    """
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == ["BOOK THE FIRST", "CHAPTER I", "CHAPTER II"]
+    assert "Hard Times and Reprinted Pieces [0" not in headings
+
+
 # ------------------------------------------------------------------
 # Chunk kind coverage
 # ------------------------------------------------------------------

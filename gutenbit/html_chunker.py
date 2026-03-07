@@ -49,7 +49,7 @@ class Chunk:
 # ---------------------------------------------------------------------------
 
 _BROAD_KEYWORDS = frozenset({"book", "part", "act", "epilogue", "volume"})
-CHUNKER_VERSION = 2
+CHUNKER_VERSION = 3
 
 _HEADING_KEYWORD_RE = re.compile(
     r"^(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)\.?\s",
@@ -63,6 +63,8 @@ _END_DELIMITER_RE = re.compile(
     r"\*\*\*\s*END OF THE PROJECT GUTENBERG EBOOK\b",
     re.IGNORECASE,
 )
+_HEADING_CITATION_SUFFIX_RE = re.compile(r"\s*\[\d+\]\s*$")
+_NUMERIC_LINK_TEXT_RE = re.compile(r"^\[?\d+\]?$")
 _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 
 
@@ -106,6 +108,9 @@ def chunk_html(html: str) -> list[Chunk]:
 
     # Build section list from TOC links.
     sections = _parse_toc_sections(soup, tag_positions=tag_positions, bounds=bounds)
+    if not sections:
+        # Some Gutenberg editions expose page-number TOC links only.
+        sections = _parse_heading_sections(soup, tag_positions=tag_positions, bounds=bounds)
     if not sections:
         return []
 
@@ -181,6 +186,8 @@ def _parse_toc_sections(
     for link in toc_links:
         if not _tag_within_bounds(link, tag_positions, bounds):
             continue
+        if not _is_structural_toc_link(link):
+            continue
         href = link.get("href", "")
         if not href.startswith("#"):
             continue
@@ -209,7 +216,7 @@ def _parse_toc_sections(
             continue
         used_headings.add(id(heading_el))
 
-        heading_text = _extract_heading_text(heading_el).rstrip(" .,;:])")
+        heading_text = _clean_heading_text(_extract_heading_text(heading_el))
         if not heading_text:
             continue
 
@@ -218,6 +225,45 @@ def _parse_toc_sections(
         sections.append(_Section(anchor_id, heading_text, level, body_anchor))
 
     sections.sort(key=lambda section: tag_positions.get(id(section.body_anchor), float("inf")))
+    return sections
+
+
+def _parse_heading_sections(
+    soup: BeautifulSoup,
+    *,
+    tag_positions: dict[int, int],
+    bounds: _ContentBounds,
+) -> list[_Section]:
+    """Fallback section extraction directly from body headings.
+
+    Used when TOC links don't point at structural anchors (e.g., page-number
+    links only). We start from the first heading that looks structural.
+    """
+    heading_rows: list[tuple[Tag, str]] = []
+    for heading in soup.find_all(_HEADING_TAGS):
+        if not _tag_within_bounds(heading, tag_positions, bounds):
+            continue
+        heading_text = _clean_heading_text(_extract_heading_text(heading))
+        if not heading_text:
+            continue
+        heading_rows.append((heading, heading_text))
+
+    if not heading_rows:
+        return []
+
+    start_idx = 0
+    for idx, (_heading, heading_text) in enumerate(heading_rows):
+        if _HEADING_KEYWORD_RE.match(heading_text):
+            start_idx = idx
+            break
+
+    sections: list[_Section] = []
+    for heading, heading_text in heading_rows[start_idx:]:
+        level = _classify_level(heading_text, False)
+        anchor = heading.find("a", id=True) or heading
+        anchor_id = str(anchor.get("id", ""))
+        sections.append(_Section(anchor_id, heading_text, level, anchor))
+
     return sections
 
 
@@ -267,6 +313,13 @@ def _extract_heading_text(heading_el: Tag) -> str:
 
     # Fall back to full text content.
     return " ".join(root.get_text().split()).strip()
+
+
+def _clean_heading_text(heading_text: str) -> str:
+    """Normalize heading text and strip trailing citation counters."""
+    text = " ".join(heading_text.split()).strip()
+    text = _HEADING_CITATION_SUFFIX_RE.sub("", text)
+    return text.rstrip(" .,;:])")
 
 
 def _classify_level(heading_text: str, is_bold_in_toc: bool) -> int:
@@ -393,6 +446,29 @@ def _is_toc_paragraph(paragraph: Tag) -> bool:
 
     residue = " ".join(paragraph_copy.get_text().split()).strip()
     return re.sub(r"[^A-Za-z0-9]+", "", residue) == ""
+
+
+def _is_structural_toc_link(link: Tag) -> bool:
+    """Return True for TOC links that can map to actual section headings."""
+    link_classes = {str(cls).lower() for cls in (link.get("class") or [])}
+    if "citation" in link_classes:
+        return False
+
+    href = str(link.get("href", ""))
+    if href.startswith("#"):
+        target_id = href[1:].lower()
+        if target_id.startswith(("page", "footnote", "citation")):
+            return False
+
+    if link.find_parent("span", class_="indexpageno"):
+        return False
+    if link.find_parent("span", class_="pagenum"):
+        return False
+
+    link_text = " ".join(link.get_text().split()).strip()
+    if not link_text:
+        return False
+    return not _NUMERIC_LINK_TEXT_RE.fullmatch(link_text)
 
 
 def _tag_positions(soup: BeautifulSoup) -> dict[int, int]:

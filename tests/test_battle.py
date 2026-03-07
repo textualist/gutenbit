@@ -454,6 +454,18 @@ class TestHardTimes:
         heading_text = [h.content for h in _headings(chunks)]
         assert not any("PROJECT GUTENBERG" in text.upper() for text in heading_text)
 
+    def test_no_spurious_title_page_section_heading(self, chunks: list[Chunk]):
+        heading_text = [h.content for h in _headings(chunks)]
+        assert not any("HARD TIMES AND REPRINTED PIECES" in text.upper() for text in heading_text)
+
+    def test_chapter_i_present_in_all_three_books(self, chunks: list[Chunk]):
+        chapter_one_books = {
+            h.div1
+            for h in _headings(chunks)
+            if h.content == "CHAPTER I" and h.div1.startswith("BOOK")
+        }
+        assert chapter_one_books == {"BOOK THE FIRST", "BOOK THE SECOND", "BOOK THE THIRD"}
+
 
 # ===================================================================
 # INGESTION + CLI TESTS — end-to-end pipeline
