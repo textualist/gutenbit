@@ -194,11 +194,11 @@ class TestCrimeAndPunishment:
         # Total: ~48 headings (translator's preface + title + 6 parts + epilogue + ~41 chapters)
         assert len(headings) >= 40
 
-    def test_no_toc_labels_in_front_matter(self, chunks: list[Chunk]):
-        front = [c.content.strip() for c in chunks if c.kind == "front_matter"]
+    def test_no_toc_labels_as_paragraphs(self, chunks: list[Chunk]):
+        paragraphs = [c.content.strip() for c in chunks if c.kind == "paragraph"]
         toc_like = [
             text
-            for text in front
+            for text in paragraphs
             if re.fullmatch(r"(?:PART|CHAPTER)\.?\s+[IVXLCDM0-9]+\.?", text, re.IGNORECASE)
         ]
         assert toc_like == []
@@ -253,11 +253,11 @@ class TestNicholasNickleby:
         headings = _headings(chunks)
         assert any("PREFACE" in h.content.upper() for h in headings)
 
-    def test_no_toc_labels_in_front_matter(self, chunks: list[Chunk]):
-        front = [c.content.strip() for c in chunks if c.kind == "front_matter"]
+    def test_no_toc_labels_as_paragraphs(self, chunks: list[Chunk]):
+        paragraphs = [c.content.strip() for c in chunks if c.kind == "paragraph"]
         toc_like = [
             text
-            for text in front
+            for text in paragraphs
             if re.fullmatch(r"CHAPTER\.?\s+[IVXLCDM0-9]+\.?", text, re.IGNORECASE)
         ]
         assert toc_like == []
@@ -284,10 +284,10 @@ class TestOliverTwist:
         assert "CHAPTER I" in ch1.content
         assert "OLIVER TWIST" in ch1.content.upper()
 
-    def test_no_front_matter(self, chunks: list[Chunk]):
-        # Oliver Twist starts directly with chapters, no front matter
+    def test_chunk_kinds_are_simplified(self, chunks: list[Chunk]):
+        # Simplified chunk kinds: heading + paragraph only.
         kinds = _kind_counts(chunks)
-        assert kinds.get("front_matter", 0) == 0
+        assert set(kinds) <= {"heading", "paragraph"}
 
 
 class TestPrideAndPrejudice:
@@ -306,9 +306,9 @@ class TestPrideAndPrejudice:
         # Should have ~61 chapter headings (some editions have preface/illustrations list)
         assert len(chapter_headings) >= 55
 
-    def test_has_front_matter(self, chunks: list[Chunk]):
+    def test_chunk_kinds_are_simplified(self, chunks: list[Chunk]):
         kinds = _kind_counts(chunks)
-        assert kinds.get("front_matter", 0) >= 1
+        assert set(kinds) <= {"heading", "paragraph"}
 
     def test_dropcap_letters_preserved(self, chunks: list[Chunk]):
         paragraphs = [c.content for c in chunks if c.kind == "paragraph"]
@@ -371,9 +371,9 @@ class TestSherlockHolmes:
         for h in headings:
             assert h.div1, f"Expected div1 for story heading {h.content!r}"
 
-    def test_has_front_matter(self, chunks: list[Chunk]):
+    def test_chunk_kinds_are_simplified(self, chunks: list[Chunk]):
         kinds = _kind_counts(chunks)
-        assert kinds.get("front_matter", 0) >= 1
+        assert set(kinds) <= {"heading", "paragraph"}
 
     def test_holmes_watson_present(self, chunks: list[Chunk]):
         paragraphs = [c for c in chunks if c.kind == "paragraph"]
@@ -419,9 +419,9 @@ class TestBlackstonesCommentaries:
         sections = [h for h in headings if h.content.startswith("Section the")]
         assert len(sections) == 4
 
-    def test_has_front_matter(self, chunks: list[Chunk]):
+    def test_chunk_kinds_are_simplified(self, chunks: list[Chunk]):
         kinds = _kind_counts(chunks)
-        assert kinds.get("front_matter", 0) >= 1
+        assert set(kinds) <= {"heading", "paragraph"}
 
     def test_has_paragraphs(self, chunks: list[Chunk]):
         kinds = _kind_counts(chunks)
@@ -431,6 +431,40 @@ class TestBlackstonesCommentaries:
         paragraphs = [c for c in chunks if c.kind == "paragraph"]
         all_text = " ".join(p.content for p in paragraphs[:200])
         assert "law" in all_text.lower()
+
+
+class TestHardTimes:
+    """PG 786 — regression for TOC ordering and delimiter-bounded content."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(786)
+
+    def test_book_second_chapter_iv_precedes_chapter_v(self, chunks: list[Chunk]):
+        headings = [
+            h.content
+            for h in _headings(chunks)
+            if h.div1 == "BOOK THE SECOND" and h.div2.startswith("CHAPTER")
+        ]
+        assert "CHAPTER IV" in headings
+        assert "CHAPTER V" in headings
+        assert headings.index("CHAPTER IV") < headings.index("CHAPTER V")
+
+    def test_excludes_pg_license_heading(self, chunks: list[Chunk]):
+        heading_text = [h.content for h in _headings(chunks)]
+        assert not any("PROJECT GUTENBERG" in text.upper() for text in heading_text)
+
+    def test_no_spurious_title_page_section_heading(self, chunks: list[Chunk]):
+        heading_text = [h.content for h in _headings(chunks)]
+        assert not any("HARD TIMES AND REPRINTED PIECES" in text.upper() for text in heading_text)
+
+    def test_chapter_i_present_in_all_three_books(self, chunks: list[Chunk]):
+        chapter_one_books = {
+            h.div1
+            for h in _headings(chunks)
+            if h.content == "CHAPTER I" and h.div1.startswith("BOOK")
+        }
+        assert chapter_one_books == {"BOOK THE FIRST", "BOOK THE SECOND", "BOOK THE THIRD"}
 
 
 # ===================================================================
