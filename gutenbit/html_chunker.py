@@ -241,10 +241,7 @@ def _parse_toc_sections(
     # heading (e.g. "ADVENTURES OF SHERLOCK HOLMES" before "ADVENTURES OF SHERLOCK
     # HOLMES A SCANDAL IN BOHEMIA"). Require a space after the prefix to avoid
     # false matches like "CHAPTER I" / "CHAPTER II".
-    if (
-        len(sections) >= 2
-        and sections[1].heading_text.startswith(sections[0].heading_text + " ")
-    ):
+    if len(sections) >= 2 and sections[1].heading_text.startswith(sections[0].heading_text + " "):
         sections = sections[1:]
     return sections
 
@@ -309,8 +306,8 @@ def _find_next_heading(
 def _extract_heading_text(heading_el: Tag) -> str:
     """Get clean heading text from a heading tag.
 
-    Handles: direct text, ``<a>`` anchors, ``<img alt="...">``,
-    and strips ``<span class="pagenum">`` elements.
+    Handles: ``<br>`` line breaks, inline formatting (``<i>``, ``<b>``, etc.),
+    ``<img alt="...">``, and strips ``<span class="pagenum">`` elements.
     """
     heading_copy = BeautifulSoup(str(heading_el), "html.parser")
     for pagenum in heading_copy.select("span.pagenum"):
@@ -318,12 +315,10 @@ def _extract_heading_text(heading_el: Tag) -> str:
 
     root = heading_copy.find(_HEADING_TAGS) or heading_copy
 
-    # Try direct text nodes first (only accept if it has real words,
-    # not just stray punctuation between <span> elements).
-    direct_text = "".join(child for child in root.children if isinstance(child, str))
-    cleaned = " ".join(direct_text.split()).strip()
-    if cleaned and re.search(r"[A-Za-z0-9]", cleaned):
-        return cleaned
+    # Replace <br> with spaces so line-broken headings stay clean
+    # (e.g. "CHAPTER I.<br>The Period" → "CHAPTER I. The Period").
+    for br in root.find_all("br"):
+        br.replace_with(" ")
 
     # Try img alt text (illustrated editions).
     img = root.find("img", alt=True)
@@ -332,7 +327,7 @@ def _extract_heading_text(heading_el: Tag) -> str:
         if alt:
             return alt
 
-    # Fall back to full text content.
+    # Use full text content (pagenum spans already removed, <br> replaced).
     return " ".join(root.get_text().split()).strip()
 
 

@@ -89,7 +89,7 @@ def _format_int(value: int) -> str:
 
 
 def _section_path(*levels: str) -> str:
-    return " / ".join(level for level in levels if level) or "(root)"
+    return " / ".join(level for level in levels if level) or "(unsectioned opening)"
 
 
 def _truncate_section_label(label: str, width: int) -> str:
@@ -122,7 +122,7 @@ def _section_examples(db: Database, book_id: int, *, limit: int = 5) -> list[str
         book_id, kinds=["heading"]
     ):
         section = _section_path(div1, div2, div3, div4)
-        if section == "(root)" or section in seen:
+        if section == "(unsectioned opening)" or section in seen:
             continue
         seen.add(section)
         examples.append(section)
@@ -919,7 +919,7 @@ def _build_section_summary(db: Database, book_id: int) -> dict[str, object] | No
 
         if rec.kind == "heading":
             path = _section_path(rec.div1, rec.div2, rec.div3, rec.div4)
-            if path == "(root)":
+            if path == "(unsectioned opening)":
                 path = ""
             sections.append(
                 {
