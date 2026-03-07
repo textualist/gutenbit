@@ -92,6 +92,29 @@ def _section_path(*levels: str) -> str:
     return " / ".join(level for level in levels if level) or "(root)"
 
 
+def _truncate_section_label(label: str, width: int) -> str:
+    """Truncate a section path, preferring the most specific (deepest) level.
+
+    When the full path ("BOOK TITLE / CHAPTER 1") exceeds *width*,
+    show the deepest level with a ".../ " prefix so users see the
+    chapter name rather than a truncated book title.
+    """
+    if len(label) <= width:
+        return label
+    parts = label.split(" / ")
+    if len(parts) > 1:
+        deepest = parts[-1]
+        prefix = ".../ "
+        if len(prefix) + len(deepest) <= width:
+            return prefix + deepest
+        # Deepest level itself is too long — truncate it with prefix
+        keep = max(1, width - len(prefix) - 3)
+        return prefix + deepest[:keep] + "..."
+    # Single level, just truncate
+    keep = max(1, width - 3)
+    return label[:keep] + "..."
+
+
 def _section_examples(db: Database, book_id: int, *, limit: int = 5) -> list[str]:
     examples: list[str] = []
     seen: set[str] = set()
@@ -1133,8 +1156,7 @@ def _render_section_summary(db: Database, book_id: int) -> int:
             position = str(sec["position"])
             section_label = str(sec["section"])
             if len(section_label) > section_width:
-                keep = max(1, section_width - 3)
-                section_label = section_label[:keep] + "..."
+                section_label = _truncate_section_label(section_label, section_width)
             paragraphs = _format_int(int(sec["paras"]))
             chars = _format_int(int(sec["chars"]))
             est_words = _format_int(int(sec["est_words"]))
