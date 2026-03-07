@@ -1,7 +1,7 @@
 [project]
 name = "gutenbit"
 version = "0.1.0"
-description = "Fast local search across Project Gutenberg's literary works"
+description = "Fast local search across public-domain literary works"
 requires-python = ">=3.11"
 dependencies = [
     "beautifulsoup4>=4.12",

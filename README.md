@@ -1,4 +1,4 @@
-# gutenbit
+# Gutenbit
 
 Fast local search across public-domain literary works. Find, browse, and search books from your terminal or Python script.
 
