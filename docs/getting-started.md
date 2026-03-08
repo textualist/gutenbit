@@ -30,10 +30,10 @@ gutenbit catalog --author "Austen, Jane"
 
 ### Download and store
 
-Pass one or more Project Gutenberg IDs to `ingest`:
+Pass one or more Project Gutenberg IDs to `add`:
 
 ```bash
-gutenbit ingest 1342
+gutenbit add 1342
 ```
 
 The book's HTML is downloaded, parsed into paragraph-level chunks with structural metadata, and stored in a local SQLite database (`gutenbit.db` by default).

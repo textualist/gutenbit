@@ -26,7 +26,7 @@ with Database("gutenbit.db") as db:
 
 ```bash
 gutenbit catalog --author "Austen, Jane"
-gutenbit ingest 1342
+gutenbit add 1342
 gutenbit search "pride"
 gutenbit view 1342 --section 1 -n 5
 ```

@@ -1215,7 +1215,7 @@ def test_ingest_reports_skip_before_downloading(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Database, "ingest", _ingest_should_not_run)
 
-    code, out, _err = _run_cli(tmp_path / "skip.db", "ingest", "888", "--delay", "0")
+    code, out, _err = _run_cli(tmp_path / "skip.db", "add", "888", "--delay", "0")
     assert code == 0
     assert "skipping 888: Already There (already downloaded)" in out
 
@@ -1243,7 +1243,7 @@ def test_ingest_reprocesses_stale_chunker_version(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Database, "ingest", _capture_ingest)
 
-    code, out, _err = _run_cli(tmp_path / "stale.db", "ingest", "889", "--delay", "0")
+    code, out, _err = _run_cli(tmp_path / "stale.db", "add", "889", "--delay", "0")
     assert code == 0
     assert "reprocessing 889: Needs Refresh (chunker updated)" in out
     assert ingested_ids == [889]
@@ -1273,7 +1273,7 @@ def test_ingest_remaps_to_canonical_catalog_id(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Database, "ingest", _capture_ingest)
 
-    code, out, _err = _run_cli(tmp_path / "canonical.db", "ingest", "101", "--delay", "0")
+    code, out, _err = _run_cli(tmp_path / "canonical.db", "add", "101", "--delay", "0")
     assert code == 0
     assert "remapped 101 -> 100" in out
     assert ingested_ids == [100]
@@ -1346,8 +1346,8 @@ def test_view_negative_n_rejected(tmp_path):
     assert "-n must be >= 0." in out
 
 
-def test_ingest_rejects_non_positive_ids(tmp_path):
-    code, out, _err = _run_cli(tmp_path / "any.db", "ingest", "0", "-1")
+def test_add_rejects_non_positive_ids(tmp_path):
+    code, out, _err = _run_cli(tmp_path / "any.db", "add", "0", "-1")
     assert code == 1
     assert "must be positive" in out
     assert "0" in out
@@ -1466,7 +1466,7 @@ def test_catalog_json_output(tmp_path, monkeypatch):
     assert payload["data"]["items"][0]["id"] == 777
 
 
-def test_ingest_json_output(tmp_path, monkeypatch):
+def test_add_json_output(tmp_path, monkeypatch):
     canonical = BookRecord(
         id=100,
         title="Canonical Work",
@@ -1498,7 +1498,7 @@ def test_ingest_json_output(tmp_path, monkeypatch):
 
     code, out, _err = _run_cli(
         tmp_path / "canonical.db",
-        "ingest",
+        "add",
         "101",
         "--delay",
         "0",
@@ -1507,16 +1507,17 @@ def test_ingest_json_output(tmp_path, monkeypatch):
     assert code == 0
     payload = json.loads(out)
     assert payload["ok"] is True
-    assert payload["command"] == "ingest"
+    assert payload["command"] == "add"
     assert payload["data"]["counts"]["requested"] == 1
     assert payload["data"]["counts"]["canonical"] == 1
     assert payload["data"]["results"][0]["requested_id"] == 101
     assert payload["data"]["results"][0]["canonical_id"] == 100
-    assert payload["data"]["results"][0]["status"] == "ingested"
+    assert payload["data"]["results"][0]["status"] == "added"
+    assert payload["data"]["results"][0]["add_status"] == "added"
     assert ingested_ids == [100]
 
 
-def test_ingest_json_failure_reports_failed_and_stays_parseable(tmp_path, monkeypatch):
+def test_add_json_failure_reports_failed_and_stays_parseable(tmp_path, monkeypatch):
     record = BookRecord(
         id=555,
         title="Broken Download",
@@ -1537,7 +1538,7 @@ def test_ingest_json_failure_reports_failed_and_stays_parseable(tmp_path, monkey
 
     code, out, _err = _run_cli(
         tmp_path / "broken.db",
-        "ingest",
+        "add",
         "555",
         "--delay",
         "0",
@@ -1546,10 +1547,10 @@ def test_ingest_json_failure_reports_failed_and_stays_parseable(tmp_path, monkey
     assert code == 1
     payload = json.loads(out)
     assert payload["ok"] is False
-    assert payload["command"] == "ingest"
+    assert payload["command"] == "add"
     assert payload["data"]["failed_canonical_ids"] == [555]
     assert payload["data"]["results"][0]["status"] == "failed"
-    assert "Failed to ingest 555: Broken Download" in payload["errors"]
+    assert "Failed to add 555: Broken Download" in payload["errors"]
 
 
 def test_delete_json_output(tmp_path):

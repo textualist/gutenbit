@@ -158,7 +158,7 @@ def _command_error(
 def _no_chunks_message(db: Database, book_id: int) -> str:
     """Return a descriptive error for a book with no chunks."""
     if db.book(book_id) is None:
-        return f"Book {book_id} is not in the database. Use 'gutenbit ingest {book_id}' to add it."
+        return f"Book {book_id} is not in the database. Use 'gutenbit add {book_id}' to add it."
     return f"No chunks found for book {book_id}."
 
 
@@ -488,7 +488,7 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog="""\
 typical workflow:
   1. gutenbit catalog --author Dickens         # find book IDs
-  2. gutenbit ingest 46 730                    # download & store
+  2. gutenbit add 46 730                       # download & store
   3. gutenbit books                            # list stored books
   4. gutenbit toc 46                           # inspect structure / sections
   5. gutenbit view 46 --section 3 -n 20        # read part of a book
@@ -526,9 +526,9 @@ all filters use case-insensitive substring matching (AND logic).""",
     cat.add_argument("--json", action="store_true", help="output as JSON")
     _add_global_args(cat)
 
-    # --- ingest ---
-    ing = sub.add_parser(
-        "ingest",
+    # --- add ---
+    add = sub.add_parser(
+        "add",
         formatter_class=fmt,
         help="download and store books by PG id",
         description=(
@@ -538,19 +538,19 @@ all filters use case-insensitive substring matching (AND logic).""",
         ),
         epilog="""\
 examples:
-  gutenbit ingest 2600                  # War and Peace
-  gutenbit ingest 46 730 967            # multiple books
-  gutenbit ingest 2600 --delay 2.0      # polite crawling""",
+  gutenbit add 2600                     # War and Peace
+  gutenbit add 46 730 967               # multiple books
+  gutenbit add 2600 --delay 2.0         # polite crawling""",
     )
-    ing.add_argument("book_ids", nargs="+", type=int, help="Project Gutenberg book IDs")
-    ing.add_argument(
+    add.add_argument("book_ids", nargs="+", type=int, help="Project Gutenberg book IDs")
+    add.add_argument(
         "--delay",
         type=float,
         default=1.0,
         help="seconds between downloads (default: 1.0)",
     )
-    ing.add_argument("--json", action="store_true", help="output as JSON")
-    _add_global_args(ing)
+    add.add_argument("--json", action="store_true", help="output as JSON")
+    _add_global_args(add)
 
     # --- delete ---
     de = sub.add_parser(
@@ -558,7 +558,7 @@ examples:
         formatter_class=fmt,
         help="delete stored books by PG id",
         description=(
-            "Delete previously ingested books from the SQLite database, including "
+            "Delete previously added books from the SQLite database, including "
             "their reconstructed text and all chunks."
         ),
         epilog="""\
@@ -578,7 +578,7 @@ if a book ID is not present, a warning is printed and exit code is 1.""",
         "books",
         formatter_class=fmt,
         help="list books stored in the database",
-        description="List all books that have been ingested into the database.",
+        description="List all books that have been added to the database.",
         epilog="""\
 examples:
   gutenbit books
@@ -843,15 +843,15 @@ def _cmd_catalog(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_ingest(args: argparse.Namespace) -> int:
+def _cmd_add(args: argparse.Namespace) -> int:
     as_json = getattr(args, "json", False)
     if args.delay < 0:
-        return _command_error("ingest", "--delay must be >= 0.", as_json=as_json)
+        return _command_error("add", "--delay must be >= 0.", as_json=as_json)
 
     invalid_ids = [bid for bid in args.book_ids if bid <= 0]
     if invalid_ids:
         return _command_error(
-            "ingest",
+            "add",
             f"Book IDs must be positive integers, got: {', '.join(map(str, invalid_ids))}",
             as_json=as_json,
             data={"invalid_ids": invalid_ids},
@@ -908,7 +908,7 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
             "results": request_results,
         }
         return _command_error(
-            "ingest",
+            "add",
             "No valid book IDs provided.",
             as_json=as_json,
             data=data,
@@ -927,13 +927,13 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
                     print(f"  skipping {book.id}: {title} (already downloaded)")
                 continue
             was_present = db.has_text(book.id)
-            target_status = "reprocessed" if was_present else "ingested"
+            target_status = "reprocessed" if was_present else "added"
             if was_present:
                 if not as_json:
                     print(f"  reprocessing {book.id}: {title} (chunker updated)…")
             else:
                 if not as_json:
-                    print(f"  ingesting {book.id}: {title}…")
+                    print(f"  adding {book.id}: {title}…")
             if as_json:
                 previous_disable = logging.root.manager.disable
                 logging.disable(logging.CRITICAL)
@@ -945,7 +945,7 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
                     canonical_statuses[book.id] = target_status
                 else:
                     canonical_statuses[book.id] = "failed"
-                    errors.append(f"Failed to ingest {book.id}: {title}")
+                    errors.append(f"Failed to add {book.id}: {title}")
             else:
                 canonical_statuses[book.id] = target_status
                 db.ingest([book], delay=args.delay)
@@ -957,11 +957,11 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
             result = dict(row)
             canonical_id = result.get("canonical_id")
             if isinstance(canonical_id, int):
-                ingest_status = canonical_statuses.get(canonical_id)
-                if ingest_status:
-                    result["ingest_status"] = ingest_status
+                add_status = canonical_statuses.get(canonical_id)
+                if add_status:
+                    result["add_status"] = add_status
                     if result["status"] == "selected":
-                        result["status"] = ingest_status
+                        result["status"] = add_status
                     status_totals[result["status"]] = status_totals.get(result["status"], 0) + 1
                 else:
                     status_totals[result["status"]] = status_totals.get(result["status"], 0) + 1
@@ -986,7 +986,7 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         )
         data["failed_canonical_ids"] = failed_canonical_ids
         ok = len(failed_canonical_ids) == 0
-        _print_json_envelope("ingest", ok=ok, data=data, warnings=warnings, errors=errors)
+        _print_json_envelope("add", ok=ok, data=data, warnings=warnings, errors=errors)
         return 0 if ok else 1
 
     print(f"Done. Database: {Path(args.db).resolve()}")
@@ -1005,7 +1005,7 @@ def _cmd_books(args: argparse.Namespace) -> int:
                 data={"count": 0, "items": []},
             )
         else:
-            print("No books stored yet. Use 'gutenbit ingest <id> ...' to add some.")
+            print("No books stored yet. Use 'gutenbit add <id> ...' to add some.")
         return 0
     if as_json:
         _print_json_envelope(
@@ -1938,7 +1938,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
 
 _COMMANDS = {
     "catalog": _cmd_catalog,
-    "ingest": _cmd_ingest,
+    "add": _cmd_add,
     "delete": _cmd_delete,
     "books": _cmd_books,
     "search": _cmd_search,

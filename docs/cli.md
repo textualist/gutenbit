@@ -1,6 +1,6 @@
 # CLI
 
-The `gutenbit` command-line tool provides seven subcommands that follow a natural workflow: find books, download them, explore their structure, read text, and search.
+The `gutenbit` command-line tool provides seven subcommands that follow a natural workflow: find books, add them, explore their structure, read text, and search.
 
 All commands store data in a local SQLite file. Use `--db PATH` to specify a non-default location (default: `gutenbit.db`). All commands support `--json` for machine-readable output.
 
@@ -25,14 +25,14 @@ gutenbit catalog --subject "Philosophy" -n 50
 
 Filters combine with AND logic. All matching is case-insensitive. The catalog is fetched from Project Gutenberg on each call and filtered to English text records.
 
-## ingest
+## add
 
 Download books from Project Gutenberg and store them in the database.
 
 ```bash
-gutenbit ingest 1342
-gutenbit ingest 46 730 967
-gutenbit ingest 2600 --delay 2.0
+gutenbit add 1342
+gutenbit add 46 730 967
+gutenbit add 2600 --delay 2.0
 ```
 
 | Flag | Description |
