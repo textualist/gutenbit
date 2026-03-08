@@ -100,6 +100,28 @@ def _normalize_div_segment(value: str) -> str:
     return _DIV_TRAILING_PUNCT_RE.sub("", cleaned)
 
 
+def _div_parts_match(query: list[str], row: list[str]) -> bool:
+    """Check if *query* segments match the leading segments of *row*.
+
+    All segments except the deepest query segment require exact equality.
+    The deepest query segment also accepts a prefix match on a word boundary,
+    so ``"chapter i"`` matches ``"chapter i description of a palace"``.
+    """
+    if len(query) > len(row):
+        return False
+    # All segments except the last must be exact.
+    for q, r in zip(query[:-1], row, strict=False):
+        if q != r:
+            return False
+    # Deepest segment: exact or word-boundary prefix.
+    last_q = query[-1]
+    last_r = row[len(query) - 1]
+    if last_q == last_r:
+        return True
+    # Prefix match: query must align on a word boundary.
+    return last_r.startswith(last_q) and (len(last_r) == len(last_q) or last_r[len(last_q)] == " ")
+
+
 @dataclass(frozen=True, slots=True)
 class SearchResult:
     """A single search hit — one chunk with its book metadata."""
@@ -387,7 +409,10 @@ class Database:
     ) -> list[ChunkRecord]:
         """Return chunks under a division path prefix.
 
-        Matching is exact by segment except that trailing punctuation is ignored.
+        Each segment is matched exactly, except that the deepest query segment
+        also accepts a prefix match (so ``"CHAPTER I"`` matches
+        ``"CHAPTER I DESCRIPTION OF A PALACE"``).  Trailing punctuation is
+        always ignored.
         """
         parts = [_normalize_div_segment(p) for p in div_path.split("/") if p.strip()]
         if len(parts) > 4:
@@ -406,7 +431,7 @@ class Database:
                 for d in [row["div1"], row["div2"], row["div3"], row["div4"]]
                 if d
             ]
-            if parts and row_parts[: len(parts)] != parts:
+            if parts and not _div_parts_match(parts, row_parts):
                 continue
             out.append(
                 ChunkRecord(
@@ -440,10 +465,16 @@ class Database:
         subject: str | None = None,
         book_id: int | None = None,
         kind: str | None = None,
+        div_path: str | None = None,
         mode: Literal["ranked", "first", "last"] = "ranked",
         limit: int = 20,
     ) -> list[SearchResult]:
-        """Search chunks via FTS5 with BM25 ranking."""
+        """Search chunks via FTS5 with BM25 ranking.
+
+        When *div_path* is given, results are post-filtered using the same
+        path-prefix matching as :meth:`chunks_by_div` (normalized, with
+        word-boundary prefix on the deepest segment).
+        """
         sql = _SEARCH_SQL
         params: list[object] = [query]
 
@@ -473,30 +504,50 @@ class Database:
         else:
             raise ValueError("mode must be one of: ranked, first, last")
 
-        sql += " LIMIT ?"
-        params.append(limit)
+        # When post-filtering by div_path, skip the SQL LIMIT so we don't
+        # under-fetch, then apply the limit in Python after filtering.
+        if div_path is None:
+            sql += " LIMIT ?"
+            params.append(limit)
 
         rows = self._conn.execute(sql, params).fetchall()
-        return [
-            SearchResult(
-                chunk_id=row["id"],
-                book_id=row["book_id"],
-                title=row["title"],
-                authors=row["authors"],
-                language=row["language"],
-                subjects=row["subjects"],
-                div1=row["div1"],
-                div2=row["div2"],
-                div3=row["div3"],
-                div4=row["div4"],
-                position=row["position"],
-                content=row["content"],
-                kind=row["kind"],
-                char_count=row["char_count"],
-                score=-row["rank"],
+
+        div_parts: list[str] | None = None
+        if div_path is not None:
+            div_parts = [_normalize_div_segment(p) for p in div_path.split("/") if p.strip()]
+
+        out: list[SearchResult] = []
+        for row in rows:
+            if div_parts is not None:
+                row_parts = [
+                    _normalize_div_segment(d)
+                    for d in [row["div1"], row["div2"], row["div3"], row["div4"]]
+                    if d
+                ]
+                if not _div_parts_match(div_parts, row_parts):
+                    continue
+            out.append(
+                SearchResult(
+                    chunk_id=row["id"],
+                    book_id=row["book_id"],
+                    title=row["title"],
+                    authors=row["authors"],
+                    language=row["language"],
+                    subjects=row["subjects"],
+                    div1=row["div1"],
+                    div2=row["div2"],
+                    div3=row["div3"],
+                    div4=row["div4"],
+                    position=row["position"],
+                    content=row["content"],
+                    kind=row["kind"],
+                    char_count=row["char_count"],
+                    score=-row["rank"],
+                )
             )
-            for row in rows
-        ]
+            if len(out) >= limit:
+                break
+        return out
 
     # ------------------------------------------------------------------
     # Private helpers

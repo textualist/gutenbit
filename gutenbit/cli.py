@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
+import sqlite3
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from gutenbit.catalog import Catalog
 from gutenbit.db import ChunkRecord, Database
@@ -18,6 +20,90 @@ JSON_OPENING_LINE_PREVIEW_CHARS = 140
 DEFAULT_OPENING_CHUNK_COUNT = 3
 DEFAULT_VIEW_SELECTOR_N = 1
 DEFAULT_PREVIEW_CHARS = 140
+OPENING_SECTION_SKIP_HEADINGS = frozenset(
+    {
+        "preface",
+        "introduction",
+        "foreword",
+        "prologue",
+        "contents",
+        "table of contents",
+        "list of illustrations",
+        "illustrations",
+        "transcriber's note",
+        "transcribers note",
+        "author's note",
+        "authors note",
+    }
+)
+
+
+def _normalize_apostrophes(s: str) -> str:
+    """Replace curly/typographic apostrophes with ASCII for matching."""
+    return s.replace("\u2019", "'").replace("\u2018", "'")
+
+
+class _SectionState(TypedDict):
+    heading: str
+    path: str
+    position: int
+    paragraphs: int
+    chars: int
+    first_position: int
+    opening_line: str
+
+
+class _BookSummary(TypedDict):
+    id: int
+    title: str
+    authors: str
+    language: str
+    issued: str
+    type: str
+    locc: str
+    subjects: list[str]
+    bookshelves: list[str]
+
+
+class _ChunkCounts(TypedDict):
+    heading: int
+    text: int
+
+
+class _OverviewSummary(TypedDict):
+    chunks_total: int
+    chunk_counts: _ChunkCounts
+    sections_total: int
+    paragraphs_total: int
+    chars_total: int
+    est_words: int
+    est_read_time: str
+
+
+class _SectionRow(TypedDict):
+    section_number: int
+    section: str
+    position: int
+    paras: int
+    chars: int
+    est_words: int
+    est_read: str
+    opening_line: str
+
+
+class _QuickActions(TypedDict):
+    search: str
+    view_first_section: str
+    view_first_position: str
+    view_from_position: str
+    view_full: str
+
+
+class _SectionSummary(TypedDict):
+    book: _BookSummary
+    overview: _OverviewSummary
+    sections: list[_SectionRow]
+    quick_actions: _QuickActions
 
 
 def _json_envelope(
@@ -69,6 +155,13 @@ def _command_error(
     return code
 
 
+def _no_chunks_message(db: Database, book_id: int) -> str:
+    """Return a descriptive error for a book with no chunks."""
+    if db.book(book_id) is None:
+        return f"Book {book_id} is not in the database. Use 'gutenbit ingest {book_id}' to add it."
+    return f"No chunks found for book {book_id}."
+
+
 def _preview(text: str, limit: int) -> str:
     flat = text.replace("\n", " ")
     if len(flat) <= limit:
@@ -85,6 +178,36 @@ def _fts_phrase_query(query: str) -> str:
     """Wrap a raw query as an exact FTS5 phrase, escaping inner quotes."""
     escaped = query.replace('"', '""')
     return f'"{escaped}"'
+
+
+# FTS5 operator tokens that signal an intentional advanced query.
+_FTS_OPERATOR_RE = re.compile(
+    r"""
+    \bAND\b | \bOR\b | \bNOT\b | \bNEAR\b
+    | [*"()\^]
+    """,
+    re.VERBOSE,
+)
+
+
+def _has_fts_operators(query: str) -> bool:
+    """Return True if *query* contains FTS5 operator syntax."""
+    return bool(_FTS_OPERATOR_RE.search(query))
+
+
+def _safe_fts_query(query: str) -> str:
+    """Escape a plain-text query so punctuation doesn't trigger FTS5 errors.
+
+    Each whitespace-separated token is individually quoted so that
+    apostrophes, hyphens, periods, and other punctuation are treated as
+    literal characters while FTS5 still performs an implicit-AND across
+    tokens.
+    """
+    tokens = query.split()
+    if not tokens:
+        return query
+    quoted = [_fts_phrase_query(t) for t in tokens]
+    return " ".join(quoted)
 
 
 def _format_int(value: int) -> str:
@@ -121,20 +244,14 @@ def _truncate_section_label(label: str, width: int) -> str:
 def _section_examples(db: Database, book_id: int, *, limit: int = 5) -> list[str]:
     summary = _build_section_summary(db, book_id)
     if summary is not None:
-        raw_sections = summary.get("sections", [])
-        if isinstance(raw_sections, list):
-            numbered_examples: list[str] = []
-            for sec in raw_sections:
-                if not isinstance(sec, dict):
-                    continue
-                number = sec.get("section_number")
-                label = str(sec.get("section", "")).strip()
-                if isinstance(number, int) and number > 0 and label:
-                    numbered_examples.append(f"{number}. {label}")
-                if len(numbered_examples) >= limit:
-                    break
-            if numbered_examples:
-                return numbered_examples
+        numbered_examples: list[str] = []
+        for sec in summary["sections"]:
+            if sec["section_number"] > 0 and sec["section"].strip():
+                numbered_examples.append(f"{sec['section_number']}. {sec['section'].strip()}")
+            if len(numbered_examples) >= limit:
+                break
+        if numbered_examples:
+            return numbered_examples
 
     examples: list[str] = []
     seen: set[str] = set()
@@ -178,14 +295,14 @@ def _estimate_read_time(words: int, *, wpm: int = 250) -> str:
 def _book_payload(book: Any) -> dict[str, Any]:
     return {
         "id": book.id,
-        "title": book.title,
-        "authors": book.authors,
-        "language": book.language,
-        "subjects": book.subjects,
-        "locc": book.locc,
-        "bookshelves": book.bookshelves,
-        "issued": book.issued,
-        "type": book.type,
+        "title": _single_line(book.title),
+        "authors": _single_line(book.authors),
+        "language": _single_line(book.language),
+        "subjects": _single_line(book.subjects),
+        "locc": _single_line(book.locc),
+        "bookshelves": _single_line(book.bookshelves),
+        "issued": _single_line(book.issued),
+        "type": _single_line(book.type),
     }
 
 
@@ -229,8 +346,8 @@ def _search_result_payload(
         "rank": rank,
         "book_id": result.book_id,
         "position": result.position,
-        "title": result.title,
-        "authors": result.authors,
+        "title": _single_line(result.title),
+        "authors": _single_line(result.authors),
         "section": _section_path(result.div1, result.div2, result.div3, result.div4),
         "div1": result.div1,
         "div2": result.div2,
@@ -290,10 +407,76 @@ def _print_block_header(title: str) -> None:
 
 def _add_global_args(parser: argparse.ArgumentParser) -> None:
     """Add --db and -v to a subparser so they work after the subcommand too."""
-    parser.add_argument("--db", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     parser.add_argument(
-        "-v", "--verbose", action="store_true", default=argparse.SUPPRESS, help=argparse.SUPPRESS
+        "--db",
+        default=argparse.SUPPRESS,
+        help="SQLite database path (works before or after the subcommand)",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="enable debug logging",
+    )
+
+
+def _opening_rows(db: Database, book_id: int, n: int) -> list[ChunkRecord]:
+    """Return a default reading window, skipping common front-matter headings.
+
+    Skips headings that match the book title, byline patterns ("by ..."),
+    and well-known front-matter labels (preface, introduction, etc.).
+    """
+    rows = db.chunk_records(book_id)
+    if not rows:
+        return []
+
+    skip = set(OPENING_SECTION_SKIP_HEADINGS)
+    book = db.book(book_id)
+    title_lower = ""
+    if book:
+        title_lower = _normalize_apostrophes(book.title.casefold())
+        skip.add(title_lower)
+
+    first_heading_index = 0
+    for idx, row in enumerate(rows):
+        if row.kind != "heading":
+            continue
+        heading = _normalize_apostrophes(row.content.casefold())
+        if heading in skip:
+            continue
+        if heading.startswith("by "):
+            continue
+        # Skip headings that match the book title or a prefix/expansion of it
+        # (e.g. "NOSTROMO" for "Nostromo: A Tale of the Seaboard", or
+        # "THE MIRROR OF THE SEA MEMORIES AND IMPRESSIONS" for "The Mirror of the Sea").
+        if (
+            title_lower
+            and len(heading) >= 3
+            and (title_lower.startswith(heading) or heading.startswith(title_lower))
+        ):
+            continue
+        first_heading_index = idx
+        break
+
+    window = rows[first_heading_index : first_heading_index + n]
+    # Ensure the window includes at least one text chunk when possible.
+    # Books with nested headings (PART → SUBTITLE → CHAPTER) can exhaust
+    # the default window with headings only, showing no prose.
+    if window and all(r.kind == "heading" for r in window):
+        end = first_heading_index + n
+        while end < len(rows) and rows[end].kind == "heading":
+            end += 1
+        if end < len(rows):
+            window = rows[first_heading_index : end + 1]
+    return window
+
+
+def _format_fts_error(exc: sqlite3.Error) -> str:
+    detail = " ".join(str(exc).split()).strip().rstrip(".")
+    if not detail:
+        return "Invalid FTS query syntax."
+    return f"Invalid FTS query syntax: {detail}."
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -309,7 +492,7 @@ typical workflow:
   3. gutenbit books                            # list stored books
   4. gutenbit toc 46                           # inspect structure / sections
   5. gutenbit view 46 --section 3 -n 20        # read part of a book
-  6. gutenbit search "Marley ghost" --book-id 46  # find relevant chunks
+  6. gutenbit search "Marley's ghost" --book-id 46  # find relevant chunks
 
 chunk kinds:  heading, text
 section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowest heading)
@@ -414,40 +597,56 @@ output columns:  ID  AUTHORS  TITLE""",
         help="full-text search across stored books",
         description=(
             "Full-text search using SQLite FTS5 with BM25 ranking. "
-            "Searches across all stored books unless filtered. "
-            "Supports standard FTS5 query syntax: quoted phrases, "
-            "AND/OR/NOT operators, prefix queries (word*), and positional modes."
+            "Plain-text queries are auto-escaped so apostrophes, hyphens, "
+            "and other punctuation just work. Use --raw for advanced FTS5 "
+            "syntax (AND/OR/NOT, prefix*, NEAR, parentheses)."
         ),
         epilog="""\
 examples:
-  gutenbit search "battle"                                  # relevance-ranked
-  gutenbit search "Levin" --book-id 1399 --mode first       # earliest position in book 1399
-  gutenbit search "Levin" --book-id 1399 --mode last        # latest position in book 1399
-  gutenbit search "door" --mode first                       # lowest book_id first
-  gutenbit search "door" --mode last                        # highest book_id first
-  gutenbit search "may it be" --phrase --book-id 2554 -n 20 # exact phrase
-  gutenbit search "freedom" --kind text -n 5                 # filtered top hits
+  gutenbit search "ghost"                                   # simple search
+  gutenbit search "don't stop"                              # punctuation just works
+  gutenbit search "half-hour"                               # hyphens just work
+  gutenbit search "may it be" --phrase                      # exact phrase match
+  gutenbit search "ghost OR spirit" --raw                   # FTS5 boolean query
+  gutenbit search "(ghost OR spirit) AND NOT haunt*" --raw  # advanced FTS5
+  gutenbit search "battle" --book-id 2600                   # restrict to one book
+  gutenbit search "battle" --section "BOOK ONE"             # restrict to a section
+  gutenbit search "door" --mode first                       # reading order (earliest)
+  gutenbit search "door" --mode last                        # reverse reading order
+  gutenbit search "freedom" --kind text -n 5                # filter by chunk kind
   gutenbit search "ghost" --full -n 3                       # full chunk text
-  gutenbit search "battle" --json                            # JSON output
+  gutenbit search "battle" --count                          # just show match count
+  gutenbit search "battle" --json                           # JSON output
+
+query modes:
+  (default)  plain text — punctuation is auto-escaped, words are AND'd
+  --phrase   exact phrase — word order and adjacency must match exactly
+  --raw      FTS5 syntax — AND, OR, NOT, NEAR(), prefix*, "phrases", (groups)
 
 output fields:
   rank, book_id, position, title
   section, score, kind, char_count
   preview text (or full text with --full)
 
-tip: use 'gutenbit toc <id>' first to see a book's structure, then
-     narrow searches with --book-id and --kind.
-
 mode ordering:
-  ranked: BM25 rank, then book_id, then position
-  first:  book_id ascending, then position ascending
-  last:   book_id descending, then position descending""",
+  ranked  BM25 rank, then book_id, then position (default)
+  first   book_id ascending, then position ascending
+  last    book_id descending, then position descending
+
+tip: use 'gutenbit toc <id>' first to see a book's structure, then
+     narrow searches with --book-id, --section, and --kind.""",
     )
-    se.add_argument("query", help="FTS5 search query (supports phrases, AND/OR/NOT, prefix*)")
-    se.add_argument(
+    se.add_argument("query", help="search query (plain text by default; see --raw, --phrase)")
+    query_group = se.add_mutually_exclusive_group()
+    query_group.add_argument(
         "--phrase",
         action="store_true",
-        help="treat query as an exact phrase (auto-wrap in FTS5 quotes)",
+        help="treat query as an exact phrase (word order must match)",
+    )
+    query_group.add_argument(
+        "--raw",
+        action="store_true",
+        help="pass query directly to FTS5 (AND/OR/NOT, prefix*, NEAR, groups)",
     )
     se.add_argument(
         "--mode",
@@ -463,16 +662,27 @@ mode ordering:
     se.add_argument("--title", help="filter results by title (substring match)")
     se.add_argument("--book-id", type=int, help="restrict to a single book by PG ID")
     se.add_argument(
+        "--section",
+        help=(
+            "restrict to a section by path prefix (e.g. 'STAVE ONE') or section number from 'toc'"
+        ),
+    )
+    se.add_argument(
         "--kind",
         choices=CHUNK_KINDS,
-        help="filter by chunk kind (heading|text)",
+        help="filter by chunk kind (heading or text)",
     )
     se.add_argument(
         "-n",
         "--limit",
         type=int,
         default=0,
-        help="max results (default: ranked=20, first/last=1)",
+        help="max results (default: ranked=20, first/last=1; 0=default)",
+    )
+    se.add_argument(
+        "--count",
+        action="store_true",
+        help="just print the number of matching chunks",
     )
     se.add_argument(
         "--full", action="store_true", help="print full chunk text instead of previews"
@@ -513,7 +723,7 @@ section numbers in this output can be passed to:
         formatter_class=fmt,
         help="read stored book text, or focused parts of it",
         description=(
-            "Read an opening excerpt by default, or focus from an exact position "
+            "Read from the first structural section by default, or focus from an exact position "
             "or section selector. Section selectors accept path text or a section "
             "number from `gutenbit toc <book_id>`. Use -n consistently to control "
             "how much text to return."
@@ -521,7 +731,7 @@ section numbers in this output can be passed to:
         epilog="""\
 examples:
   gutenbit toc 2600                                  # inspect structure first
-  gutenbit view 2600                                 # opening excerpt + quick actions
+  gutenbit view 2600                                 # first structural section + quick actions
   gutenbit view 2600 -n 0                            # full reconstructed text
   gutenbit view 2600 --section 3                     # first chunk in section 3
   gutenbit view 2600 --section 3 -n 20               # first 20 chunks in section 3
@@ -543,7 +753,7 @@ section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowes
         action="store_true",
         help="output as JSON",
     )
-    vw.add_argument("--position", type=int, help="retrieve one exact chunk by position")
+    vw.add_argument("--position", type=int, help="retrieve chunks starting at this position")
     vw.add_argument(
         "--section",
         help=(
@@ -552,7 +762,9 @@ section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowes
         ),
     )
     vw.add_argument(
-        "--meta", action="store_true", help="show chunk metadata headers in text output"
+        "--meta",
+        action="store_true",
+        help="show chunk metadata (position, kind, section) in text output",
     )
     vw.add_argument(
         "--preview",
@@ -862,10 +1074,31 @@ def _cmd_search(args: argparse.Namespace) -> int:
     if not query_text:
         return _command_error("search", "Search query must not be empty.", as_json=as_json)
 
-    search_query = _fts_phrase_query(query_text) if args.phrase else query_text
-    default_limit = 1 if args.mode in {"first", "last"} else 20
-    limit = args.limit if args.limit > 0 else default_limit
+    # Query mode: --phrase wraps as exact phrase, --raw passes through to FTS5,
+    # default auto-escapes plain text so punctuation just works.
+    if args.phrase:
+        search_query = _fts_phrase_query(query_text)
+        query_mode = "phrase"
+    elif args.raw:
+        search_query = query_text
+        query_mode = "raw"
+    else:
+        search_query = _safe_fts_query(query_text)
+        query_mode = "auto"
+
+    kind = args.kind
     preview_chars = args.preview_chars
+
+    # Resolve --section: accept a section number (from 'toc') or path prefix.
+    div_path: str | None = None
+    section_arg: str | None = args.section
+
+    # --count uses a large limit to get the full count.
+    if args.count:
+        limit = 10_000_000
+    else:
+        default_limit = 1 if args.mode in {"first", "last"} else 20
+        limit = args.limit if args.limit > 0 else default_limit
 
     warnings: list[str] = []
     with Database(args.db) as db:
@@ -875,15 +1108,100 @@ def _cmd_search(args: argparse.Namespace) -> int:
             if not as_json:
                 print(f"warning: {warning}")
 
-        results = db.search(
-            search_query,
-            author=args.author,
-            title=args.title,
-            book_id=args.book_id,
-            kind=args.kind,
-            mode=args.mode,
-            limit=limit,
-        )
+        # Resolve section number → div path (requires book_id).
+        if section_arg is not None:
+            if section_arg.isdigit():
+                section_number = int(section_arg)
+                if section_number <= 0:
+                    return _command_error(
+                        "search", "--section number must be >= 1.", as_json=as_json
+                    )
+                if args.book_id is None:
+                    return _command_error(
+                        "search",
+                        "--section with a number requires --book-id.",
+                        as_json=as_json,
+                    )
+                summary = _build_section_summary(db, args.book_id)
+                if summary is None:
+                    return _command_error(
+                        "search",
+                        f"Book {args.book_id} has no sections.",
+                        as_json=as_json,
+                    )
+                sections = summary["sections"]
+                if section_number > len(sections):
+                    return _command_error(
+                        "search",
+                        f"Section {section_number} is out of range "
+                        f"(book {args.book_id} has {len(sections)} sections).",
+                        as_json=as_json,
+                    )
+                div_path = sections[section_number - 1]["section"]
+            else:
+                div_path = section_arg
+
+        try:
+            results = db.search(
+                search_query,
+                author=args.author,
+                title=args.title,
+                book_id=args.book_id,
+                kind=kind,
+                div_path=div_path,
+                mode=args.mode,
+                limit=limit,
+            )
+        except sqlite3.Error as exc:
+            return _command_error(
+                "search",
+                _format_fts_error(exc),
+                as_json=as_json,
+                data={
+                    "query": {
+                        "raw": args.query,
+                        "fts": search_query,
+                        "mode": query_mode,
+                    },
+                    "filters": {
+                        "author": args.author,
+                        "title": args.title,
+                        "book_id": args.book_id,
+                        "section": section_arg,
+                        "kind": kind,
+                    },
+                    "mode": args.mode,
+                    "limit": limit,
+                },
+                warnings=warnings,
+            )
+
+    # --count: just print the total.
+    if args.count:
+        if as_json:
+            _print_json_envelope(
+                "search",
+                ok=True,
+                data={
+                    "query": {
+                        "raw": args.query,
+                        "fts": search_query,
+                        "mode": query_mode,
+                    },
+                    "filters": {
+                        "author": args.author,
+                        "title": args.title,
+                        "book_id": args.book_id,
+                        "section": section_arg,
+                        "kind": kind,
+                    },
+                    "count": len(results),
+                },
+                warnings=warnings,
+            )
+        else:
+            print(len(results))
+        return 0
 
     if as_json:
         _print_json_envelope(
@@ -893,13 +1211,14 @@ def _cmd_search(args: argparse.Namespace) -> int:
                 "query": {
                     "raw": args.query,
                     "fts": search_query,
-                    "phrase": bool(args.phrase),
+                    "mode": query_mode,
                 },
                 "filters": {
                     "author": args.author,
                     "title": args.title,
                     "book_id": args.book_id,
-                    "kind": args.kind,
+                    "section": section_arg,
+                    "kind": kind,
                 },
                 "mode": args.mode,
                 "limit": limit,
@@ -928,7 +1247,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
     for idx, r in enumerate(results, start=1):
         section = _section_path(r.div1, r.div2, r.div3, r.div4)
         body = r.content if args.full else _preview(r.content, preview_chars)
-        print(f"\n{idx:>2}. book={r.book_id} position={r.position}  title={r.title}")
+        print(f"\n{idx:>2}. book={r.book_id} position={r.position}  title={_single_line(r.title)}")
         print(f"    section={section}")
         print(f"    score={r.score:.2f}  kind={r.kind}  chars={r.char_count}")
         print(f"    {body}")
@@ -937,7 +1256,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
-def _build_section_summary(db: Database, book_id: int) -> dict[str, object] | None:
+def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None:
     chunk_records = db.chunk_records(book_id)
     if not chunk_records:
         return None
@@ -952,11 +1271,14 @@ def _build_section_summary(db: Database, book_id: int) -> dict[str, object] | No
     subjects = _split_semicolon_list(book.subjects) if book else []
     bookshelves = _split_semicolon_list(book.bookshelves) if book else []
 
-    sections: list[dict[str, object]] = []
-    kind_counts = {kind: 0 for kind in CHUNK_KINDS}
+    sections: list[_SectionState] = []
+    kind_counts: _ChunkCounts = {"heading": 0, "text": 0}
     total_chars = 0
     for rec in chunk_records:
-        kind_counts[rec.kind] = kind_counts.get(rec.kind, 0) + 1
+        if rec.kind == "heading":
+            kind_counts["heading"] += 1
+        elif rec.kind == "text":
+            kind_counts["text"] += 1
         total_chars += rec.char_count
 
         if rec.kind == "heading":
@@ -987,10 +1309,15 @@ def _build_section_summary(db: Database, book_id: int) -> dict[str, object] | No
     read_time = _estimate_read_time(est_words)
 
     search_cmd = f"gutenbit search <query> --book-id {book_id}"
-    first_path = str(sections[0]["path"]) if sections else ""
+    # Find the first section that has actual paragraph content.
+    first_content_section_num: int | None = None
+    for idx, sec in enumerate(sections, start=1):
+        if int(sec["paragraphs"]) > 0:
+            first_content_section_num = idx
+            break
     first_section_cmd = ""
-    if first_path:
-        first_section_cmd = f"gutenbit view {book_id} --section 1 -n 20"
+    if first_content_section_num is not None:
+        first_section_cmd = f"gutenbit view {book_id} --section {first_content_section_num} -n 20"
     first_position = chunk_records[0].position if chunk_records else None
     view_first_position_cmd = ""
     view_from_position_cmd = ""
@@ -999,7 +1326,7 @@ def _build_section_summary(db: Database, book_id: int) -> dict[str, object] | No
         view_from_position_cmd = f"gutenbit view {book_id} --position {first_position} -n 20"
     view_full_cmd = f"gutenbit view {book_id} -n 0"
 
-    section_rows: list[dict[str, object]] = []
+    section_rows: list[_SectionRow] = []
     for idx, sec in enumerate(sections, start=1):
         chars = int(sec["chars"])
         est_words_for_section = round(chars / 5)
@@ -1052,28 +1379,28 @@ def _build_section_summary(db: Database, book_id: int) -> dict[str, object] | No
     }
 
 
-def _section_summary_json_payload(summary: dict[str, Any]) -> dict[str, Any]:
-    json_summary = dict(summary)
-    raw_sections = summary.get("sections", [])
-    if isinstance(raw_sections, list):
-        json_sections: list[dict[str, Any]] = []
-        for sec in raw_sections:
-            if not isinstance(sec, dict):
-                continue
-            sec_json = dict(sec)
-            sec_json["opening_line"] = _preview(
-                str(sec_json.get("opening_line", "")),
-                JSON_OPENING_LINE_PREVIEW_CHARS,
-            )
-            json_sections.append(sec_json)
-        json_summary["sections"] = json_sections
-    return json_summary
+def _section_summary_json_payload(summary: _SectionSummary) -> dict[str, Any]:
+    json_sections: list[dict[str, Any]] = []
+    for sec in summary["sections"]:
+        sec_json = dict(sec)
+        sec_json["opening_line"] = _preview(sec["opening_line"], JSON_OPENING_LINE_PREVIEW_CHARS)
+        json_sections.append(sec_json)
+
+    return {
+        "book": dict(summary["book"]),
+        "overview": {
+            **summary["overview"],
+            "chunk_counts": dict(summary["overview"]["chunk_counts"]),
+        },
+        "sections": json_sections,
+        "quick_actions": dict(summary["quick_actions"]),
+    }
 
 
 def _render_section_summary(db: Database, book_id: int) -> int:
     summary = _build_section_summary(db, book_id)
     if summary is None:
-        print(f"No chunks found for book {book_id}.")
+        print(_no_chunks_message(db, book_id))
         return 1
 
     book = summary["book"]
@@ -1081,12 +1408,7 @@ def _render_section_summary(db: Database, book_id: int) -> int:
     sections = summary["sections"]
     quick_actions = summary["quick_actions"]
 
-    assert isinstance(book, dict)
-    assert isinstance(overview, dict)
-    assert isinstance(sections, list)
-    assert isinstance(quick_actions, dict)
-
-    authors = str(book["authors"])
+    authors = book["authors"]
     subjects = _summarize_semicolon_list(";".join(book["subjects"]), max_items=5)
     shelves = _summarize_semicolon_list(";".join(book["bookshelves"]), max_items=7)
 
@@ -1096,13 +1418,13 @@ def _render_section_summary(db: Database, book_id: int) -> int:
     if authors:
         book_rows.append(("Authors", authors))
     if book["language"]:
-        book_rows.append(("Language", str(book["language"])))
+        book_rows.append(("Language", book["language"]))
     if book["issued"]:
-        book_rows.append(("Issued", str(book["issued"])))
+        book_rows.append(("Issued", book["issued"]))
     if book["type"]:
-        book_rows.append(("Type", str(book["type"])))
+        book_rows.append(("Type", book["type"]))
     if book["locc"]:
-        book_rows.append(("LoCC", str(book["locc"])))
+        book_rows.append(("LoCC", book["locc"]))
     if subjects:
         book_rows.append(("Subjects", subjects))
     if shelves:
@@ -1122,11 +1444,11 @@ def _render_section_summary(db: Database, book_id: int) -> int:
         ],
         [
             [
-                _format_int(int(overview["chunk_counts"]["heading"])),
-                _format_int(int(overview["chunk_counts"]["text"])),
-                _format_int(int(overview["chars_total"])),
-                _format_int(int(overview["est_words"])),
-                str(overview["est_read_time"]),
+                _format_int(overview["chunk_counts"]["heading"]),
+                _format_int(overview["chunk_counts"]["text"]),
+                _format_int(overview["chars_total"]),
+                _format_int(overview["est_words"]),
+                overview["est_read_time"],
             ]
         ],
         right_align=set(range(5)),
@@ -1136,12 +1458,12 @@ def _render_section_summary(db: Database, book_id: int) -> int:
     if not sections:
         print("  (no headings found)")
     else:
-        number_values = [str(int(sec["section_number"])) for sec in sections]
+        number_values = [str(sec["section_number"]) for sec in sections]
         section_values = [str(sec["section"]) for sec in sections]
         position_values = [str(sec["position"]) for sec in sections]
-        paras_values = [_format_int(int(sec["paras"])) for sec in sections]
-        char_values = [_format_int(int(sec["chars"])) for sec in sections]
-        est_word_values = [_format_int(int(sec["est_words"])) for sec in sections]
+        paras_values = [_format_int(sec["paras"]) for sec in sections]
+        char_values = [_format_int(sec["chars"]) for sec in sections]
+        est_word_values = [_format_int(sec["est_words"]) for sec in sections]
         est_read_values = [str(sec["est_read"]) for sec in sections]
         opening_values = [str(sec["opening_line"]) or "-" for sec in sections]
 
@@ -1170,16 +1492,16 @@ def _render_section_summary(db: Database, book_id: int) -> int:
         )
 
         for sec in sections:
-            number = str(int(sec["section_number"]))
-            section_label = str(sec["section"])
+            number = str(sec["section_number"])
+            section_label = sec["section"]
             position = str(sec["position"])
             if len(section_label) > section_width:
                 section_label = _truncate_section_label(section_label, section_width)
-            paragraphs = _format_int(int(sec["paras"]))
-            chars = _format_int(int(sec["chars"]))
-            est_words = _format_int(int(sec["est_words"]))
-            est_read = str(sec["est_read"])
-            opening = str(sec["opening_line"]) or "-"
+            paragraphs = _format_int(sec["paras"])
+            chars = _format_int(sec["chars"])
+            est_words = _format_int(sec["est_words"])
+            est_read = sec["est_read"]
+            opening = sec["opening_line"] or "-"
             if len(opening) > opening_width:
                 keep = max(1, opening_width - 3)
                 opening = opening[:keep] + "..."
@@ -1228,33 +1550,30 @@ def _print_chunk_blocks(
 
 
 def _chunk_rows_json_payload(
-    rows: list[ChunkRecord], *, full: bool, preview_chars: int, include_meta: bool
-) -> list[dict[str, Any]] | list[str]:
-    if include_meta:
-        return [_chunk_payload(row, full=full, preview_chars=preview_chars) for row in rows]
-    return [row.content if full else _preview(row.content, preview_chars) for row in rows]
+    rows: list[ChunkRecord], *, full: bool, preview_chars: int
+) -> list[dict[str, Any]]:
+    return [_chunk_payload(row, full=full, preview_chars=preview_chars) for row in rows]
 
 
-def _view_action_hints(book_id: int, summary: dict[str, object] | None) -> dict[str, str]:
-    quick_actions = summary.get("quick_actions", {}) if isinstance(summary, dict) else {}
-    view_first_section = ""
-    view_first_position = ""
-    view_from_position = ""
-    view_full = ""
-    search_in_book = ""
-    if isinstance(quick_actions, dict):
-        view_first_section = str(quick_actions.get("view_first_section", ""))
-        view_first_position = str(quick_actions.get("view_first_position", ""))
-        view_from_position = str(quick_actions.get("view_from_position", ""))
-        view_full = str(quick_actions.get("view_full", ""))
-        search_in_book = str(quick_actions.get("search", ""))
+def _view_action_hints(book_id: int, summary: _SectionSummary | None) -> dict[str, str]:
+    quick_actions: _QuickActions = (
+        summary["quick_actions"]
+        if summary is not None
+        else {
+            "search": "",
+            "view_first_section": "",
+            "view_first_position": "",
+            "view_from_position": "",
+            "view_full": "",
+        }
+    )
     return {
         "toc": f"gutenbit toc {book_id}",
-        "view_first_section": view_first_section,
-        "view_first_position": view_first_position,
-        "view_from_position": view_from_position,
-        "view_full": view_full,
-        "search": search_in_book,
+        "view_first_section": quick_actions["view_first_section"],
+        "view_first_position": quick_actions["view_first_position"],
+        "view_from_position": quick_actions["view_from_position"],
+        "view_full": quick_actions["view_full"],
+        "search": quick_actions["search"],
     }
 
 
@@ -1281,7 +1600,7 @@ def _cmd_toc(args: argparse.Namespace) -> int:
             if summary is None:
                 return _command_error(
                     "toc",
-                    f"No chunks found for book {args.book_id}.",
+                    _no_chunks_message(db, args.book_id),
                     as_json=True,
                     data={"book_id": args.book_id},
                 )
@@ -1358,13 +1677,11 @@ def _cmd_view(args: argparse.Namespace) -> int:
                         "n": n,
                         "full": full,
                         "chars": preview_chars,
-                        "meta": bool(args.meta),
                         "count": len(rows),
                         "chunks": _chunk_rows_json_payload(
                             rows,
                             full=full,
                             preview_chars=preview_chars,
-                            include_meta=bool(args.meta),
                         ),
                     },
                 )
@@ -1409,7 +1726,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                 if summary is None:
                     return _command_error(
                         "view",
-                        f"No chunks found for book {args.book_id}.",
+                        _no_chunks_message(db, args.book_id),
                         as_json=as_json,
                         data={
                             "book_id": args.book_id,
@@ -1419,9 +1736,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                             "n": n,
                         },
                     )
-                raw_sections = summary.get("sections", [])
-                if not isinstance(raw_sections, list):
-                    raw_sections = []
+                raw_sections = summary["sections"]
                 if section_number > len(raw_sections):
                     message = (
                         f"Section {section_number} is out of range for book "
@@ -1469,7 +1784,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                             "n": n,
                         },
                     )
-                resolved_section = str(selected_section.get("section", "")).strip()
+                resolved_section = selected_section["section"].strip()
                 if not resolved_section:
                     return _command_error(
                         "view",
@@ -1532,13 +1847,11 @@ def _cmd_view(args: argparse.Namespace) -> int:
                         "n": n,
                         "full": full,
                         "chars": preview_chars,
-                        "meta": bool(args.meta),
                         "count": len(rows),
                         "chunks": _chunk_rows_json_payload(
                             rows,
                             full=full,
                             preview_chars=preview_chars,
-                            include_meta=bool(args.meta),
                         ),
                     },
                 )
@@ -1581,11 +1894,11 @@ def _cmd_view(args: argparse.Namespace) -> int:
             print(content)
             return 0
 
-        rows = db.chunk_records(args.book_id)[:n]
+        rows = _opening_rows(db, args.book_id, n)
         if not rows:
             return _command_error(
                 "view",
-                f"No chunks found for book {args.book_id}.",
+                _no_chunks_message(db, args.book_id),
                 as_json=as_json,
                 data={"book_id": args.book_id, "mode": "opening", "n": n},
             )
@@ -1603,12 +1916,10 @@ def _cmd_view(args: argparse.Namespace) -> int:
                     "count": len(rows),
                     "full": full,
                     "chars": preview_chars,
-                    "meta": bool(args.meta),
                     "chunks": _chunk_rows_json_payload(
                         rows,
                         full=full,
                         preview_chars=preview_chars,
-                        include_meta=bool(args.meta),
                     ),
                     "action_hints": action_hints,
                 },

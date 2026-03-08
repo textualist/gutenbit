@@ -24,6 +24,7 @@ CatalogDedupeStrategy = Literal["lowest_id_per_work", "none"]
 
 _TOKEN_SPLIT_RE = re.compile(r"[;,/|]+")
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+_AUTHOR_ROLE_SUFFIX_RE = re.compile(r"\s*(?:\[[^\]]+\]|\([^)]+\))\s*$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +63,17 @@ def _normalize_work_text(raw: str) -> str:
     return _NON_ALNUM_RE.sub(" ", collapsed).strip()
 
 
+def _primary_author_text(raw: str) -> str:
+    """Return the first listed author, stripped of editorial role suffixes."""
+    primary = raw.split(";", 1)[0].strip()
+    while primary:
+        cleaned = _AUTHOR_ROLE_SUFFIX_RE.sub("", primary).strip()
+        if cleaned == primary:
+            break
+        primary = cleaned
+    return primary
+
+
 def is_record_allowed(
     record: BookRecord, *, policy: CatalogPolicy = DEFAULT_CATALOG_POLICY
 ) -> bool:
@@ -78,7 +90,7 @@ def is_record_allowed(
 def work_key(record: BookRecord) -> tuple[str, str] | None:
     """Return a conservative key for canonical duplicate detection."""
     title_key = _normalize_work_text(record.title)
-    author_key = _normalize_work_text(record.authors)
+    author_key = _normalize_work_text(_primary_author_text(record.authors))
     if not title_key or not author_key:
         return None
     return title_key, author_key
@@ -201,7 +213,13 @@ class Catalog:
         language: str = "",
         subject: str = "",
     ) -> list[BookRecord]:
-        """Search for books matching all given criteria (case-insensitive substring match)."""
+        """Search for books matching all given criteria.
+
+        All filters use case-insensitive matching. Each query is first tried as
+        a contiguous substring; if it contains multiple words and the substring
+        fails, every word must appear individually (so ``"Jane Austen"`` matches
+        ``"Austen, Jane, 1775-1817"``).
+        """
         results = self.records
         filters = {
             "authors": author,
@@ -212,5 +230,11 @@ class Catalog:
         for field, value in filters.items():
             if value:
                 q = value.lower()
-                results = [b for b in results if q in getattr(b, field).lower()]
+                words = q.split()
+                results = [
+                    b
+                    for b in results
+                    if q in getattr(b, field).lower()
+                    or (len(words) > 1 and all(w in getattr(b, field).lower() for w in words))
+                ]
         return results

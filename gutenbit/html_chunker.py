@@ -49,7 +49,15 @@ class Chunk:
 # ---------------------------------------------------------------------------
 
 _BROAD_KEYWORDS = frozenset({"book", "part", "act", "epilogue", "volume"})
-CHUNKER_VERSION = 5
+CHUNKER_VERSION = 10
+
+# Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
+# with no subtitle text — used to merge consecutive number + title headings.
+_BARE_HEADING_NUMBER_RE = re.compile(
+    r"^(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)"
+    r"\.?\s+[IVXLCDM0-9]+\.?$",
+    re.IGNORECASE,
+)
 
 _HEADING_KEYWORD_RE = re.compile(
     r"^(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)\.?\s",
@@ -64,8 +72,26 @@ _END_DELIMITER_RE = re.compile(
     re.IGNORECASE,
 )
 _HEADING_CITATION_SUFFIX_RE = re.compile(r"\s*\[\d+\]\s*$")
+_STRUCTURAL_HEADING_SPACING_RE = re.compile(
+    r"\b(BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)(\.?)\s*([IVXLCDM0-9]+)\b",
+    re.IGNORECASE,
+)
+_STRUCTURAL_HEADING_TRAILER_RE = re.compile(
+    r"(\b(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)\.?\s*[IVXLCDM0-9]+\b.*)$",
+    re.IGNORECASE,
+)
 _NUMERIC_LINK_TEXT_RE = re.compile(r"^\[?\d+\]?$")
 _ROMAN_NUMERAL_RE = re.compile(r"^[IVXLCDM]+$")
+_PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
+_NON_STRUCTURAL_HEADING_RE = re.compile(
+    r"^(?:notes?|footnotes?|endnotes?|transcriber's note|transcribers note|"
+    r"editor's note|editors note)\b",
+    re.IGNORECASE,
+)
+_FRONT_MATTER_ATTRIBUTION_RE = re.compile(
+    r"^(?:by|translated\s+by|edited\s+by|illustrated\s+by)\s",
+    re.IGNORECASE,
+)
 _FRONT_MATTER_HEADINGS = frozenset(
     {
         "contents",
@@ -149,6 +175,13 @@ def chunk_html(html: str) -> list[Chunk]:
         chunks.append(Chunk(pos, "", "", "", "", text, "text"))
         pos += 1
 
+    # Find a tail boundary: the first non-structural heading (e.g. FOOTNOTES,
+    # NOTES) that appears after the last section.  This prevents endnotes from
+    # being lumped into the last chapter.
+    tail_anchor = _find_non_structural_boundary_after(
+        sections[-1].body_anchor, tag_positions=tag_positions, bounds=bounds
+    )
+
     # Body sections.
     for i, section in enumerate(sections):
         # Update division tracking.
@@ -162,8 +195,8 @@ def chunk_html(html: str) -> list[Chunk]:
         )
         pos += 1
 
-        # Paragraphs until next section.
-        next_anchor = sections[i + 1].body_anchor if i + 1 < len(sections) else None
+        # Paragraphs until next section (or tail boundary for the last section).
+        next_anchor = sections[i + 1].body_anchor if i + 1 < len(sections) else tail_anchor
         for text in _paragraphs_between(
             section.body_anchor,
             next_anchor,
@@ -200,7 +233,7 @@ def _parse_toc_sections(
             continue
         if not _is_structural_toc_link(link):
             continue
-        href = link.get("href", "")
+        href = str(link.get("href", ""))
         if not href.startswith("#"):
             continue
         anchor_id = href[1:]
@@ -231,6 +264,8 @@ def _parse_toc_sections(
         heading_text = _clean_heading_text(_extract_heading_text(heading_el))
         if not heading_text:
             continue
+        if _is_non_structural_heading_text(heading_text):
+            continue
 
         is_bold = link.find("b") is not None
         level = _classify_level(heading_text, is_bold)
@@ -243,7 +278,68 @@ def _parse_toc_sections(
     # false matches like "CHAPTER I" / "CHAPTER II".
     if len(sections) >= 2 and sections[1].heading_text.startswith(sections[0].heading_text + " "):
         sections = sections[1:]
-    return sections
+    return _merge_bare_heading_pairs(sections)
+
+
+# Matches a structural heading pattern anywhere in text (keyword + number).
+# Used to reject subtitles that contain embedded headings like "... CHAPTER II".
+_EMBEDDED_HEADING_RE = re.compile(
+    r"(?:BOOK|PART|ACT|VOLUME|CHAPTER|STAVE|SCENE|SECTION)"
+    r"\.?\s+[IVXLCDM0-9]+",
+    re.IGNORECASE,
+)
+
+# Keywords that are almost exclusively structural even without a trailing number.
+_STANDALONE_STRUCTURAL_RE = re.compile(
+    r"\bEPILOGUE\b|\bPROLOGUE\b|\bAPPENDIX\b",
+    re.IGNORECASE,
+)
+
+
+def _next_heading_is_subtitle(heading_text: str) -> bool:
+    """Return True when a heading looks like a chapter subtitle, not a structural division."""
+    if _HEADING_KEYWORD_RE.match(heading_text):
+        return False
+    # Reject if the text contains an embedded structural heading pattern
+    # (e.g. "I hope Mr. Bingley will like it. CHAPTER II"), but allow
+    # incidental uses of keywords as ordinary words (e.g. "ACT OF PARLIAMENT",
+    # "A LOVE SCENE", "THE DEAN AND CHAPTER TAKE COUNSEL").
+    if _EMBEDDED_HEADING_RE.search(heading_text):
+        return False
+    # EPILOGUE, PROLOGUE, APPENDIX are almost always structural divisions.
+    return not _STANDALONE_STRUCTURAL_RE.search(heading_text)
+
+
+def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
+    """Merge bare chapter-number headings with their immediately following subtitle.
+
+    Detects the pattern ``<h3>CHAPTER I</h3><h5>WHO WILL BE THE NEW BISHOP?</h5>``
+    (common in Project Gutenberg editions) and combines them into a single section
+    with heading text ``"CHAPTER I WHO WILL BE THE NEW BISHOP?"``.
+    """
+    if len(sections) < 2:
+        return sections
+
+    merged: list[_Section] = []
+    i = 0
+    while i < len(sections):
+        sec = sections[i]
+        if (
+            i + 1 < len(sections)
+            and _BARE_HEADING_NUMBER_RE.fullmatch(sec.heading_text)
+            and _next_heading_is_subtitle(sections[i + 1].heading_text)
+        ):
+            # Merge: keep anchor and level from the chapter-number heading,
+            # combine heading text.
+            next_sec = sections[i + 1]
+            combined_text = f"{sec.heading_text} {next_sec.heading_text}"
+            combined_level = _classify_level(combined_text, False)
+            merged.append(_Section(sec.anchor_id, combined_text, combined_level, sec.body_anchor))
+            i += 2
+        else:
+            merged.append(sec)
+            i += 1
+    return merged
 
 
 def _parse_heading_sections(
@@ -264,6 +360,8 @@ def _parse_heading_sections(
         heading_text = _clean_heading_text(_extract_heading_text(heading))
         if not heading_text:
             continue
+        if _is_non_structural_heading_text(heading_text):
+            continue
         heading_rows.append((heading, heading_text))
 
     if not heading_rows:
@@ -282,7 +380,38 @@ def _parse_heading_sections(
         anchor_id = str(anchor.get("id", ""))
         sections.append(_Section(anchor_id, heading_text, level, anchor))
 
-    return sections
+    return _merge_bare_heading_pairs(sections)
+
+
+# Tail-boundary pattern: only clearly apparatus headings, not ambiguous
+# singular "NOTE" which can be a narrative epilogue (e.g. Dracula).
+_TAIL_BOUNDARY_HEADING_RE = re.compile(
+    r"^(?:footnotes?|endnotes?|notes\b|transcriber'?s?\s+note|editor'?s?\s+note)",
+    re.IGNORECASE,
+)
+
+
+def _find_non_structural_boundary_after(
+    anchor: Tag,
+    *,
+    tag_positions: dict[int, int],
+    bounds: _ContentBounds,
+) -> Tag | None:
+    """Find the first apparatus heading after *anchor* (e.g. FOOTNOTES, NOTES).
+
+    Returns the heading tag itself so its position can be used as a stop boundary
+    for paragraph collection.  Uses a restrictive pattern to avoid false positives
+    on narrative headings like a singular "NOTE" epilogue.
+    """
+    for el in anchor.find_all_next(_HEADING_TAGS):
+        if not isinstance(el, Tag):
+            continue
+        if not _tag_within_bounds(el, tag_positions, bounds):
+            continue
+        heading_text = _clean_heading_text(_extract_heading_text(el))
+        if heading_text and _TAIL_BOUNDARY_HEADING_RE.match(heading_text):
+            return el
+    return None
 
 
 def _find_next_heading(
@@ -307,7 +436,7 @@ def _extract_heading_text(heading_el: Tag) -> str:
     """Get clean heading text from a heading tag.
 
     Handles: ``<br>`` line breaks, inline formatting (``<i>``, ``<b>``, etc.),
-    ``<img alt="...">``, and strips ``<span class="pagenum">`` elements.
+    ``<img alt="...">`` fallback, and strips ``<span class="pagenum">`` elements.
     """
     heading_copy = BeautifulSoup(str(heading_el), "html.parser")
     for pagenum in heading_copy.select("span.pagenum"):
@@ -320,22 +449,44 @@ def _extract_heading_text(heading_el: Tag) -> str:
     for br in root.find_all("br"):
         br.replace_with(" ")
 
-    # Try img alt text (illustrated editions).
+    # Prefer actual heading text. Illustrated editions often embed decorative
+    # image alt text alongside the real chapter label.
+    text = " ".join(root.get_text().split()).strip()
+    if text:
+        return text
+
+    # Fall back to image alt text only when no textual heading remains.
     img = root.find("img", alt=True)
     if img:
-        alt = " ".join(img["alt"].split()).strip()
-        if alt:
-            return alt
-
-    # Use full text content (pagenum spans already removed, <br> replaced).
-    return " ".join(root.get_text().split()).strip()
+        return " ".join(str(img["alt"]).split()).strip()
+    return ""
 
 
 def _clean_heading_text(heading_text: str) -> str:
     """Normalize heading text and strip trailing citation counters."""
     text = " ".join(heading_text.split()).strip()
     text = _HEADING_CITATION_SUFFIX_RE.sub("", text)
-    return text.rstrip(" .,;:])")
+    text = _STRUCTURAL_HEADING_SPACING_RE.sub(r"\1\2 \3", text)
+    text = text.rstrip(" .,;:])")
+    trailer_match = _STRUCTURAL_HEADING_TRAILER_RE.search(text)
+    if trailer_match:
+        prefix = text[: trailer_match.start()].strip(" .,:;!?'\"-")
+        if prefix:
+            text = trailer_match.group(1).strip()
+    return text
+
+
+def _is_non_structural_heading_text(heading_text: str) -> bool:
+    """Return True for apparatus headings that should not become sections."""
+    text = " ".join(heading_text.split()).strip()
+    lowered = text.lower()
+    if lowered in _FRONT_MATTER_HEADINGS:
+        return True
+    if _PAGE_HEADING_RE.match(text):
+        return True
+    if _FRONT_MATTER_ATTRIBUTION_RE.match(text):
+        return True
+    return _NON_STRUCTURAL_HEADING_RE.match(text) is not None
 
 
 def _classify_level(heading_text: str, is_bold_in_toc: bool) -> int:
@@ -444,10 +595,17 @@ def _paragraphs_between(
 
 
 def _extract_paragraph_text(paragraph: Tag) -> str:
-    """Get clean paragraph text, preserving drop-cap img ``alt`` text."""
+    """Get clean paragraph text, preserving drop-cap img ``alt`` text.
+
+    Strips ``<span class="pagenum">`` page-number markers and replaces
+    ``<img>`` tags with their ``alt`` text.
+    """
     paragraph_copy = BeautifulSoup(str(paragraph), "html.parser").find("p")
     if paragraph_copy is None:
         return ""
+
+    for pagenum in paragraph_copy.select("span.pagenum"):
+        pagenum.decompose()
 
     for img in paragraph_copy.find_all("img"):
         alt_value = img.get("alt")
@@ -502,7 +660,7 @@ def _is_structural_toc_link(link: Tag) -> bool:
     if _NUMERIC_LINK_TEXT_RE.fullmatch(link_text):
         return False
     # Filter front-matter headings (CONTENTS, ILLUSTRATIONS, etc.)
-    if link_text.lower() in _FRONT_MATTER_HEADINGS:
+    if _is_non_structural_heading_text(link_text):
         return False
     # Filter bare roman numerals (I, II, III — sub-section markers, not chapters)
     return not _ROMAN_NUMERAL_RE.fullmatch(link_text)
