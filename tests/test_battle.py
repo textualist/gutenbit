@@ -103,6 +103,20 @@ _BOOKS: dict[int, BookRecord] = {
         "",
         "Text",
     ),
+    15: BookRecord(15, "Moby Dick", "Melville, Herman", "en", "", "", "", "", "Text"),
+    1727: BookRecord(1727, "The Odyssey", "Homer; Butler, Samuel", "en", "", "", "", "", "Text"),
+    84: BookRecord(84, "Frankenstein", "Shelley, Mary", "en", "", "", "", "", "Text"),
+    345: BookRecord(345, "Dracula", "Stoker, Bram", "en", "", "", "", "", "Text"),
+    150: BookRecord(150, "The Republic", "Plato; Jowett, Benjamin", "en", "", "", "", "", "Text"),
+    74: BookRecord(
+        74, "The Adventures of Tom Sawyer", "Twain, Mark", "en", "", "", "", "", "Text"
+    ),
+    5200: BookRecord(5200, "Metamorphosis", "Kafka, Franz", "en", "", "", "", "", "Text"),
+    132: BookRecord(132, "The Art of War", "Sun Tzu; Giles, Lionel", "en", "", "", "", "", "Text"),
+    4300: BookRecord(4300, "Ulysses", "Joyce, James", "en", "", "", "", "", "Text"),
+    28054: BookRecord(
+        28054, "The Brothers Karamazov", "Dostoyevsky, Fyodor", "en", "", "", "", "", "Text"
+    ),
 }
 
 
@@ -428,6 +442,320 @@ class TestBlackstonesCommentaries:
         paragraphs = [c for c in chunks if c.kind == "text"]
         all_text = " ".join(p.content for p in paragraphs[:200])
         assert "law" in all_text.lower()
+
+
+class TestMobyDick:
+    """PG 15 — 136 chapters, ETYMOLOGY/EXTRACTS as unsectioned opening."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(15)
+
+    def test_produces_chunks(self, chunks: list[Chunk]):
+        assert len(chunks) > 2000
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert len(headings) == 136
+
+    def test_chapters_as_div1(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        chapter_headings = [h for h in headings if "CHAPTER" in h.content.upper()]
+        assert len(chapter_headings) >= 134
+        for h in chapter_headings:
+            assert h.div1.startswith("CHAPTER"), f"Expected div1=CHAPTER, got {h.div1!r}"
+
+    def test_epilogue_present(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert any("EPILOGUE" in h.content.upper() for h in headings)
+
+    def test_unsectioned_opening_has_etymology(self, chunks: list[Chunk]):
+        opening = [c for c in chunks if c.kind == "text" and c.div1 == ""]
+        assert len(opening) > 50
+        all_text = " ".join(c.content for c in opening)
+        assert "ETYMOLOGY" in all_text.upper() or "whale" in all_text.lower()
+
+    def test_positions_sequential(self, chunks: list[Chunk]):
+        positions = [c.position for c in chunks]
+        assert positions == list(range(len(chunks)))
+
+
+class TestOdyssey:
+    """PG 1727 — BOOK-based epic with endnotes after the last section."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(1727)
+
+    def test_produces_chunks(self, chunks: list[Chunk]):
+        assert len(chunks) > 1000
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        # PREFACE + THE ODYSSEY + BOOK I..XXIV = 27
+        assert len(headings) == 27
+
+    def test_book_headings(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        book_headings = [h for h in headings if h.content.startswith("BOOK")]
+        assert len(book_headings) == 24
+
+    def test_endnotes_excluded_from_last_book(self, chunks: list[Chunk]):
+        """Endnotes should not be lumped into BOOK XXIV."""
+        book_xxiv_paras = [c for c in chunks if c.kind == "text" and "BOOK XXIV" in c.div1]
+        # Real text is ~46 paragraphs; without fix it was ~250 (with ~200 footnotes)
+        assert len(book_xxiv_paras) < 60
+
+    def test_no_footnote_brackets_in_text(self, chunks: list[Chunk]):
+        """Footnote markers like [1] should not appear as chunks."""
+        book_xxiv_paras = [c for c in chunks if c.kind == "text" and "BOOK XXIV" in c.div1]
+        footnote_like = [c for c in book_xxiv_paras if re.match(r"^\[\d+\]", c.content)]
+        assert len(footnote_like) == 0
+
+
+class TestFrankenstein:
+    """PG 84 — Letter + Chapter mixed structure."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(84)
+
+    def test_produces_chunks(self, chunks: list[Chunk]):
+        assert len(chunks) > 700
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        # 4 letters + 24 chapters = 28
+        assert len(headings) == 28
+
+    def test_has_letters(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        letter_headings = [h for h in headings if "LETTER" in h.content.upper()]
+        assert len(letter_headings) == 4
+
+    def test_has_chapters(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        chapter_headings = [h for h in headings if "CHAPTER" in h.content.upper()]
+        assert len(chapter_headings) == 24
+
+    def test_creature_content(self, chunks: list[Chunk]):
+        paragraphs = [c for c in chunks if c.kind == "text"]
+        all_text = " ".join(p.content for p in paragraphs)
+        assert "Frankenstein" in all_text
+
+
+class TestDracula:
+    """PG 345 — Journal-attributed chapters, singular 'NOTE' epilogue."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(345)
+
+    def test_produces_chunks(self, chunks: list[Chunk]):
+        assert len(chunks) > 1900
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert len(headings) == 27
+
+    def test_journal_attribution_in_chapter_titles(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        journal_chapters = [h for h in headings if "JOURNAL" in h.content.upper()]
+        assert len(journal_chapters) >= 5
+
+    def test_note_epilogue_not_excluded(self, chunks: list[Chunk]):
+        """The singular 'NOTE' heading is a narrative epilogue, not apparatus."""
+        last_chapter_paras = [c for c in chunks if c.kind == "text" and "CHAPTER XXVII" in c.div1]
+        all_text = " ".join(c.content for c in last_chapter_paras)
+        # The NOTE epilogue content should be included (within or after Ch XXVII)
+        assert "Seven years ago" in all_text or any(
+            "Seven years ago" in c.content for c in chunks if c.kind == "text"
+        )
+
+
+class TestRepublic:
+    """PG 150 — BOOK + speaker sub-sections."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(150)
+
+    def test_produces_chunks(self, chunks: list[Chunk]):
+        assert len(chunks) > 4000
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert len(headings) == 35
+
+    def test_ten_books(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        div1_values = sorted({h.div1 for h in headings if h.div1})
+        book_headings = [d for d in div1_values if d.startswith("BOOK")]
+        assert len(book_headings) == 10
+
+    def test_speaker_subsections(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        socrates_headings = [h for h in headings if "SOCRATES" in h.content.upper()]
+        assert len(socrates_headings) > 20
+
+
+class TestTomSawyer:
+    """PG 74 — Simple chapters with CONCLUSION."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(74)
+
+    def test_produces_chunks(self, chunks: list[Chunk]):
+        assert len(chunks) > 1800
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert len(headings) == 35
+
+    def test_chapter_headings(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        chapter_headings = [h for h in headings if "CHAPTER" in h.content.upper()]
+        assert len(chapter_headings) >= 33
+
+    def test_all_chapters_present(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert headings[-1].content == "CHAPTER XXXV"
+
+    def test_tom_in_content(self, chunks: list[Chunk]):
+        paragraphs = [c for c in chunks if c.kind == "text"]
+        all_text = " ".join(p.content for p in paragraphs[:100])
+        assert "Tom" in all_text
+
+
+class TestMetamorphosis:
+    """PG 5200 — No TOC links, heading-fallback with front-matter attribution."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(5200)
+
+    def test_produces_chunks(self, chunks: list[Chunk]):
+        assert len(chunks) > 90
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        # Metamorphosis (title) + I + II + III = 4
+        assert len(headings) == 4
+
+    def test_no_attribution_headings(self, chunks: list[Chunk]):
+        """Front-matter 'by Franz Kafka' and 'Translated by David Wyllie' excluded."""
+        headings = _headings(chunks)
+        heading_texts = [h.content.lower() for h in headings]
+        assert not any(t.startswith("by ") for t in heading_texts)
+        assert not any("translated by" in t for t in heading_texts)
+
+    def test_three_parts(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        roman_headings = [h for h in headings if h.content in ("I", "II", "III")]
+        assert len(roman_headings) == 3
+
+    def test_gregor_in_content(self, chunks: list[Chunk]):
+        paragraphs = [c for c in chunks if c.kind == "text"]
+        all_text = " ".join(p.content for p in paragraphs[:20])
+        assert "Gregor" in all_text
+
+
+class TestArtOfWar:
+    """PG 132 — Short numbered chapters with prefaces."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(132)
+
+    def test_produces_chunks(self, chunks: list[Chunk]):
+        assert len(chunks) > 1000
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert len(headings) == 22
+
+    def test_has_chapters(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        # Chapters like "I. LAYING PLANS", "II. WAGING WAR", etc.
+        # These are not keyword-prefixed, so count content headings
+        assert len(headings) >= 13
+
+    def test_positions_sequential(self, chunks: list[Chunk]):
+        positions = [c.position for c in chunks]
+        assert positions == list(range(len(chunks)))
+
+
+class TestUlysses:
+    """PG 4300 — '— I —' parts with '[ 1' episode numbers."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(4300)
+
+    def test_produces_chunks(self, chunks: list[Chunk]):
+        assert len(chunks) > 7000
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        # 3 parts (— I —, — II —, — III —) + 18 episodes ([ 1 .. [ 18) = 21
+        assert len(headings) == 21
+
+    def test_three_parts(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        part_headings = [h for h in headings if h.content.startswith("—")]
+        assert len(part_headings) == 3
+
+    def test_eighteen_episodes(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        episode_headings = [h for h in headings if h.content.startswith("[")]
+        assert len(episode_headings) == 18
+
+    def test_bloom_in_content(self, chunks: list[Chunk]):
+        paragraphs = [c for c in chunks if c.kind == "text"]
+        all_text = " ".join(p.content for p in paragraphs[:500])
+        assert "Bloom" in all_text or "Mulligan" in all_text
+
+
+class TestBrothersKaramazov:
+    """PG 28054 — PART + Book + Chapter three-level hierarchy with EPILOGUE."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(28054)
+
+    def test_produces_chunks(self, chunks: list[Chunk]):
+        assert len(chunks) > 5000
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert len(headings) == 113
+
+    def test_four_parts_and_epilogue(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        div1_values = sorted({h.div1 for h in headings if h.div1})
+        part_headings = [d for d in div1_values if d.startswith("PART")]
+        assert len(part_headings) == 4
+        assert any("EPILOGUE" in d for d in div1_values)
+
+    def test_twelve_books(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        # Book headings are level 1 (broad keyword "book"), compacted to div1
+        div1_values = {h.div1 for h in headings if h.div1}
+        book_headings = [d for d in div1_values if d.startswith("Book")]
+        assert len(book_headings) == 12
+
+    def test_chapters_in_div2(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        # Chapters are level 2, compacted to div2
+        chapter_headings = [h for h in headings if h.div2 and "Chapter" in h.div2]
+        assert len(chapter_headings) > 80
+
+    def test_endnotes_excluded(self, chunks: list[Chunk]):
+        """FOOTNOTES section at end should not leak into the last chapter."""
+        last_chapter_paras = [c for c in chunks if c.kind == "text" and "Ilusha" in c.div3]
+        footnote_like = [c for c in last_chapter_paras if re.match(r"^\[\d+\]", c.content)]
+        assert len(footnote_like) == 0
 
 
 class TestHardTimes:

@@ -53,6 +53,16 @@ Canonical test corpus (covers diverse structural patterns):
 | Oliver Twist (Dickens) | 730 | Short dialogue accumulation |
 | Pride and Prejudice (Austen) | 1342 | Illustrated edition with `Chapter I.]` bracket artifacts |
 | Locke's Second Treatise | 7370 | `CHAPTER. I.` period-after-keyword format |
+| Moby Dick (Melville) | 15 | 136 chapters, ETYMOLOGY/EXTRACTS as unsectioned opening |
+| The Odyssey (Homer/Butler) | 1727 | BOOK-based epic, endnotes after last section |
+| Frankenstein (Shelley) | 84 | Letter + Chapter mixed structure |
+| Dracula (Stoker) | 345 | Journal-attributed chapters, singular "NOTE" epilogue |
+| The Republic (Plato/Jowett) | 150 | BOOK + speaker sub-sections, early PG edition |
+| Tom Sawyer (Twain) | 74 | Simple chapters with CONCLUSION |
+| Metamorphosis (Kafka) | 5200 | No TOC links, heading-fallback with front-matter attribution |
+| The Art of War (Sun Tzu/Giles) | 132 | Short numbered chapters with prefaces |
+| Ulysses (Joyce) | 4300 | `— I —` parts with `[ 1` episode numbers |
+| Brothers Karamazov (Dostoyevsky) | 28054 | PART + Book + Chapter three-level hierarchy with EPILOGUE |
 
 Typical live check:
 
