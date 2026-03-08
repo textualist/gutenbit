@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
+from typing import Any, cast
 
-import mkdocs_gen_files
+mkdocs_gen_files = cast(Any, importlib.import_module("mkdocs_gen_files"))
 
 PACKAGE_ROOT = Path("gutenbit")
 nav = mkdocs_gen_files.Nav()

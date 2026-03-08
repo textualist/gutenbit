@@ -15,7 +15,7 @@ uv add gutenbit
 Search the Project Gutenberg catalog by author, title, subject, or language:
 
 ```bash
-gutenbit catalog --author "Austen"
+gutenbit catalog --author "Austen, Jane"
 ```
 
 ```
@@ -100,12 +100,12 @@ All commands accept `--json` for machine-readable output.
 from gutenbit import Catalog
 
 catalog = Catalog.fetch()
-books = catalog.search(author="Austen")
+books = catalog.search(author="Austen, Jane")
 for book in books[:5]:
     print(book.id, book.title)
 ```
 
-The catalog is fetched from Project Gutenberg on each call, filtered to English text, and deduplicated.
+The catalog is fetched from Project Gutenberg on each call, filtered to English text, and deduplicated by normalized title plus primary author, keeping the lowest Project Gutenberg ID as canonical.
 
 ### Ingest books
 

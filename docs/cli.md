@@ -80,7 +80,7 @@ Full-text search across all stored books using SQLite FTS5 with BM25 ranking.
 gutenbit search "battle"
 gutenbit search "truth universally acknowledged" --phrase
 gutenbit search "Levin" --book-id 1399 --mode first
-gutenbit search "freedom" --kind paragraph -n 5
+gutenbit search "freedom" --kind text -n 5
 gutenbit search "ghost" --full -n 3
 ```
 
@@ -92,7 +92,7 @@ gutenbit search "ghost" --full -n 3
 | `--author TEXT` | Filter by author (substring match) |
 | `--title TEXT` | Filter by title (substring match) |
 | `--book-id ID` | Restrict to a single book |
-| `--kind KIND` | Filter by chunk kind: `heading` or `paragraph` |
+| `--kind KIND` | Filter by chunk kind: `heading` or `text` (`paragraph` is accepted as an alias for `text`) |
 | `-n`, `--limit N` | Maximum results (default: 20 for ranked, 1 for first/last) |
 | `--full` | Print full chunk text instead of previews |
 | `--preview-chars N` | Preview length per result (default: 140) |
@@ -136,10 +136,10 @@ Section numbers in the output can be passed to `view --section`.
 
 ## view
 
-Read stored book text. Opens with an excerpt by default. Use selectors to focus on a specific part.
+Read stored book text. Starts at the first structural section by default. Use selectors to focus on a specific part.
 
 ```bash
-gutenbit view 1342                              # opening excerpt
+gutenbit view 1342                              # first structural section
 gutenbit view 1342 -n 0                         # full text
 gutenbit view 1342 --section 3                  # section by number
 gutenbit view 1342 --section "Chapter 1" -n 10  # section by path

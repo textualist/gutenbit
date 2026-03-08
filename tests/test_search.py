@@ -5,7 +5,7 @@ import gzip
 import io
 import json
 
-from gutenbit.catalog import BookRecord, Catalog
+from gutenbit.catalog import BookRecord, Catalog, apply_catalog_policy
 from gutenbit.cli import main as cli_main
 from gutenbit.db import Database, SearchResult
 from gutenbit.html_chunker import CHUNKER_VERSION, chunk_html
@@ -376,6 +376,39 @@ def test_search_help_documents_mode_ordering(tmp_path):
     assert "last:   book_id descending, then position descending" in out
 
 
+def test_search_help_shows_post_subcommand_global_flags(tmp_path):
+    code, out, _err = _run_cli(tmp_path / "any.db", "search", "-h")
+    assert code == 0
+    assert "--db" in out
+    assert "--verbose" in out
+
+
+def test_search_accepts_paragraph_alias_for_text(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--kind", "paragraph", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["ok"] is True
+    assert payload["data"]["filters"]["kind"] == "text"
+    assert payload["data"]["count"] >= 1
+    assert all(item["kind"] == "text" for item in payload["data"]["items"])
+
+
+def test_search_invalid_fts_syntax_returns_friendly_error(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", '"unclosed phrase', "--json")
+    assert code == 1
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    assert payload["errors"] == ["Invalid FTS query syntax: unterminated string."]
+
+
 # ------------------------------------------------------------------
 # CLI view/toc commands
 # ------------------------------------------------------------------
@@ -395,6 +428,76 @@ def test_view_default_shows_opening_and_hints(tmp_path):
     assert "gutenbit view 1 -n 0" in out
     assert "position=" not in out
     assert "section=" not in out
+
+
+def test_view_default_skips_unsectioned_front_matter(tmp_path):
+    db = Database(tmp_path / "front-matter.db")
+    book = BookRecord(
+        id=10,
+        title="Front Matter Book",
+        authors="Author, Test",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="2000-01-01",
+        type="Text",
+    )
+    html = _make_html(
+        "Front Matter Book",
+        """
+<p>Title Page: Printed for Testing.</p>
+<p class="toc"><a href="#ch1" class="pginternal">CHAPTER 1</a></p>
+<h2><a id="ch1"></a>CHAPTER 1</h2>
+<p>First chapter paragraph.</p>
+<p>Second chapter paragraph.</p>
+""",
+    )
+    db._store(book, chunk_html(html))
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "10")
+    assert code == 0
+    assert "CHAPTER 1" in out
+    assert "First chapter paragraph." in out
+    assert "Title Page: Printed for Testing." not in out
+
+
+def test_view_default_skips_preface_when_main_section_exists(tmp_path):
+    db = Database(tmp_path / "preface.db")
+    book = BookRecord(
+        id=11,
+        title="Preface Book",
+        authors="Author, Test",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="2000-01-01",
+        type="Text",
+    )
+    html = _make_html(
+        "Preface Book",
+        """
+<p class="toc"><a href="#preface" class="pginternal">PREFACE</a></p>
+<p class="toc"><a href="#ch1" class="pginternal">CHAPTER 1</a></p>
+<h2><a id="preface"></a>PREFACE</h2>
+<p>Preface paragraph.</p>
+<h2><a id="ch1"></a>CHAPTER 1</h2>
+<p>First chapter paragraph.</p>
+""",
+    )
+    db._store(book, chunk_html(html))
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "11")
+    assert code == 0
+    assert "CHAPTER 1" in out
+    assert "First chapter paragraph." in out
+    assert "PREFACE" not in out
+    assert "Preface paragraph." not in out
 
 
 def test_toc_default_shows_structure(tmp_path):
@@ -719,6 +822,31 @@ def test_catalog_output_collapses_embedded_newlines(tmp_path, monkeypatch):
     assert "Title Line One\nTitle Line Two" not in out
 
 
+def test_catalog_json_collapses_embedded_newlines(tmp_path, monkeypatch):
+    record = BookRecord(
+        id=777,
+        title="Title Line One\nTitle Line Two",
+        authors="Author One\nAuthor Two",
+        language="en",
+        subjects="Subject One\nSubject Two",
+        locc="PR\nPS",
+        bookshelves="Shelf One\nShelf Two",
+        issued="2000-01-01",
+        type="Text",
+    )
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
+
+    code, out, _err = _run_cli(tmp_path / "any.db", "catalog", "--author", "Author", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    item = payload["data"]["items"][0]
+    assert item["title"] == "Title Line One Title Line Two"
+    assert item["authors"] == "Author One Author Two"
+    assert item["subjects"] == "Subject One Subject Two"
+    assert item["locc"] == "PR PS"
+    assert item["bookshelves"] == "Shelf One Shelf Two"
+
+
 def test_catalog_fetch_enforces_english_text_policy_and_canonical_ids(monkeypatch):
     csv_payload = "\n".join(
         [
@@ -755,6 +883,39 @@ def test_catalog_fetch_enforces_english_text_policy_and_canonical_ids(monkeypatc
     assert catalog.get(400) is None
 
 
+def test_catalog_policy_dedupes_by_primary_author_and_title():
+    canonical = BookRecord(
+        id=1342,
+        title="Pride and Prejudice",
+        authors="Austen, Jane, 1775-1817",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    annotated = BookRecord(
+        id=42671,
+        title="Pride and Prejudice",
+        authors=(
+            "Austen, Jane, 1775-1817; Tanner, Tony, 1935-1998 [Introduction]; "
+            "Price, Martin, 1919-2010 [Editor]"
+        ),
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+
+    canonical_books, canonical_id_by_id = apply_catalog_policy([annotated, canonical])
+    assert [book.id for book in canonical_books] == [1342]
+    assert canonical_id_by_id[1342] == 1342
+    assert canonical_id_by_id[42671] == 1342
+
+
 def test_books_output_collapses_embedded_newlines(tmp_path):
     db = Database(tmp_path / "test.db")
     weird_book = BookRecord(
@@ -779,6 +940,35 @@ def test_books_output_collapses_embedded_newlines(tmp_path):
     assert "Book Title" in out
     assert "Writer\nName" not in out
     assert "Book\nTitle" not in out
+
+
+def test_books_json_collapses_embedded_newlines(tmp_path):
+    db = Database(tmp_path / "test.db")
+    weird_book = BookRecord(
+        id=99,
+        title="Book\nTitle",
+        authors="Writer\nName",
+        language="en",
+        subjects="Subject\nLine",
+        locc="PR\nPS",
+        bookshelves="Shelf\nName",
+        issued="",
+        type="Text",
+    )
+    html = _make_html("Book Title", "<h2><a id='c1'></a>CHAPTER 1</h2><p>Body.</p>")
+    db._store(weird_book, chunk_html(html))
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "books", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    item = payload["data"]["items"][0]
+    assert item["title"] == "Book Title"
+    assert item["authors"] == "Writer Name"
+    assert item["subjects"] == "Subject Line"
+    assert item["locc"] == "PR PS"
+    assert item["bookshelves"] == "Shelf Name"
 
 
 def test_database_ingest_enforces_catalog_boundaries(tmp_path, monkeypatch):

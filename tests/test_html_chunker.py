@@ -401,6 +401,42 @@ def test_heading_from_img_alt():
     assert headings[0].content == "CHAPTER I"
 
 
+def test_heading_text_preferred_over_img_alt_caption():
+    html = _make_html("""
+    <p><a href="#ch3" class="pginternal">CHAPTER III</a></p>
+    <h2><a id="ch3"></a><img alt="He rode a black horse." src="plate.jpg">CHAPTER III</h2>
+    <p>Content paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    assert len(headings) == 1
+    assert headings[0].content == "CHAPTER III"
+
+
+def test_heading_keeps_structural_suffix_when_caption_precedes_it():
+    html = _make_html("""
+    <p><a href="#ch27" class="pginternal">On the Stairs. CHAPTERXXVII</a></p>
+    <h2><a id="ch27"></a>On the Stairs. CHAPTERXXVII</h2>
+    <p>Content paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    assert len(headings) == 1
+    assert headings[0].content == "CHAPTER XXVII"
+
+
+def test_heading_cleanup_does_not_treat_part_inside_word_as_keyword():
+    html = _make_html("""
+    <p><a href="#ch37" class="pginternal">His parting obeisance. CHAPTER XXXVII</a></p>
+    <h2><a id="ch37"></a>His parting obeisance. CHAPTER XXXVII</h2>
+    <p>Content paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    assert len(headings) == 1
+    assert headings[0].content == "CHAPTER XXXVII"
+
+
 def test_paragraph_from_img_alt_drop_cap():
     html = _make_html("""
     <p><a href="#ch1" class="pginternal">CHAPTER I</a></p>
@@ -411,6 +447,53 @@ def test_paragraph_from_img_alt_drop_cap():
     paragraphs = [c for c in chunks if c.kind == "text"]
     assert len(paragraphs) == 1
     assert paragraphs[0].content.startswith("Mr. Bennet")
+
+
+def test_apparatus_toc_links_do_not_become_sections():
+    html = _make_html("""
+    <p><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <p><a href="#notes" class="pginternal">NOTES</a></p>
+    <p><a href="#page1" class="pginternal">Page 1</a></p>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Content paragraph.</p>
+    <h2><a id="notes"></a>NOTES</h2>
+    <p>Editorial note.</p>
+    <h2><a id="page1"></a>Page 1</h2>
+    <p>Page marker text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    assert headings == ["CHAPTER I"]
+
+
+def test_heading_scan_skips_notes_and_page_markers():
+    html = """\
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><title>Test Book</title></head>
+    <body>
+    <section class="pg-boilerplate pgheader" id="pg-header">
+      <div id="pg-start-separator">*** START OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***</div>
+    </section>
+    <table><tbody>
+      <tr><td>CHAPTER I</td><td><span class="indexpageno">
+        <a href="#page1" class="pginternal">1</a></span></td></tr>
+    </tbody></table>
+    <h2><a id="page1"></a>CHAPTER I</h2>
+    <p>First chapter paragraph.</p>
+    <h2>NOTES</h2>
+    <p>Editorial note paragraph.</p>
+    <h2>Page 2</h2>
+    <p>Page marker paragraph.</p>
+    <section class="pg-boilerplate pgfooter" id="pg-footer">
+      <div id="pg-end-separator">*** END OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***</div>
+    </section>
+    </body>
+    </html>
+    """
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    assert headings == ["CHAPTER I"]
 
 
 # ------------------------------------------------------------------

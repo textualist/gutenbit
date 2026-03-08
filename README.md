@@ -14,7 +14,7 @@ uv add gutenbit
 from gutenbit import Catalog, Database
 
 catalog = Catalog.fetch()
-books = catalog.search(author="Austen")
+books = catalog.search(author="Austen, Jane")
 
 with Database("gutenbit.db") as db:
     db.ingest(books)
@@ -25,7 +25,7 @@ with Database("gutenbit.db") as db:
 ## CLI
 
 ```bash
-gutenbit catalog --author "Austen"
+gutenbit catalog --author "Austen, Jane"
 gutenbit ingest 1342
 gutenbit search "pride"
 gutenbit view 1342 --section 1 -n 5

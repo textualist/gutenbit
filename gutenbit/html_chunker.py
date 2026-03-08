@@ -49,7 +49,7 @@ class Chunk:
 # ---------------------------------------------------------------------------
 
 _BROAD_KEYWORDS = frozenset({"book", "part", "act", "epilogue", "volume"})
-CHUNKER_VERSION = 7
+CHUNKER_VERSION = 9
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
@@ -72,8 +72,22 @@ _END_DELIMITER_RE = re.compile(
     re.IGNORECASE,
 )
 _HEADING_CITATION_SUFFIX_RE = re.compile(r"\s*\[\d+\]\s*$")
+_STRUCTURAL_HEADING_SPACING_RE = re.compile(
+    r"\b(BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)(\.?)\s*([IVXLCDM0-9]+)\b",
+    re.IGNORECASE,
+)
+_STRUCTURAL_HEADING_TRAILER_RE = re.compile(
+    r"(\b(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)\.?\s*[IVXLCDM0-9]+\b.*)$",
+    re.IGNORECASE,
+)
 _NUMERIC_LINK_TEXT_RE = re.compile(r"^\[?\d+\]?$")
 _ROMAN_NUMERAL_RE = re.compile(r"^[IVXLCDM]+$")
+_PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
+_NON_STRUCTURAL_HEADING_RE = re.compile(
+    r"^(?:notes?|footnotes?|endnotes?|transcriber's note|transcribers note|"
+    r"editor's note|editors note)\b",
+    re.IGNORECASE,
+)
 _FRONT_MATTER_HEADINGS = frozenset(
     {
         "contents",
@@ -208,7 +222,7 @@ def _parse_toc_sections(
             continue
         if not _is_structural_toc_link(link):
             continue
-        href = link.get("href", "")
+        href = str(link.get("href", ""))
         if not href.startswith("#"):
             continue
         anchor_id = href[1:]
@@ -238,6 +252,8 @@ def _parse_toc_sections(
 
         heading_text = _clean_heading_text(_extract_heading_text(heading_el))
         if not heading_text:
+            continue
+        if _is_non_structural_heading_text(heading_text):
             continue
 
         is_bold = link.find("b") is not None
@@ -333,6 +349,8 @@ def _parse_heading_sections(
         heading_text = _clean_heading_text(_extract_heading_text(heading))
         if not heading_text:
             continue
+        if _is_non_structural_heading_text(heading_text):
+            continue
         heading_rows.append((heading, heading_text))
 
     if not heading_rows:
@@ -376,7 +394,7 @@ def _extract_heading_text(heading_el: Tag) -> str:
     """Get clean heading text from a heading tag.
 
     Handles: ``<br>`` line breaks, inline formatting (``<i>``, ``<b>``, etc.),
-    ``<img alt="...">``, and strips ``<span class="pagenum">`` elements.
+    ``<img alt="...">`` fallback, and strips ``<span class="pagenum">`` elements.
     """
     heading_copy = BeautifulSoup(str(heading_el), "html.parser")
     for pagenum in heading_copy.select("span.pagenum"):
@@ -389,22 +407,42 @@ def _extract_heading_text(heading_el: Tag) -> str:
     for br in root.find_all("br"):
         br.replace_with(" ")
 
-    # Try img alt text (illustrated editions).
+    # Prefer actual heading text. Illustrated editions often embed decorative
+    # image alt text alongside the real chapter label.
+    text = " ".join(root.get_text().split()).strip()
+    if text:
+        return text
+
+    # Fall back to image alt text only when no textual heading remains.
     img = root.find("img", alt=True)
     if img:
-        alt = " ".join(img["alt"].split()).strip()
-        if alt:
-            return alt
-
-    # Use full text content (pagenum spans already removed, <br> replaced).
-    return " ".join(root.get_text().split()).strip()
+        return " ".join(str(img["alt"]).split()).strip()
+    return ""
 
 
 def _clean_heading_text(heading_text: str) -> str:
     """Normalize heading text and strip trailing citation counters."""
     text = " ".join(heading_text.split()).strip()
     text = _HEADING_CITATION_SUFFIX_RE.sub("", text)
-    return text.rstrip(" .,;:])")
+    text = _STRUCTURAL_HEADING_SPACING_RE.sub(r"\1\2 \3", text)
+    text = text.rstrip(" .,;:])")
+    trailer_match = _STRUCTURAL_HEADING_TRAILER_RE.search(text)
+    if trailer_match:
+        prefix = text[: trailer_match.start()].strip(" .,:;!?'\"-")
+        if prefix:
+            text = trailer_match.group(1).strip()
+    return text
+
+
+def _is_non_structural_heading_text(heading_text: str) -> bool:
+    """Return True for apparatus headings that should not become sections."""
+    text = " ".join(heading_text.split()).strip()
+    lowered = text.lower()
+    if lowered in _FRONT_MATTER_HEADINGS:
+        return True
+    if _PAGE_HEADING_RE.match(text):
+        return True
+    return _NON_STRUCTURAL_HEADING_RE.match(text) is not None
 
 
 def _classify_level(heading_text: str, is_bold_in_toc: bool) -> int:
@@ -571,7 +609,7 @@ def _is_structural_toc_link(link: Tag) -> bool:
     if _NUMERIC_LINK_TEXT_RE.fullmatch(link_text):
         return False
     # Filter front-matter headings (CONTENTS, ILLUSTRATIONS, etc.)
-    if link_text.lower() in _FRONT_MATTER_HEADINGS:
+    if _is_non_structural_heading_text(link_text):
         return False
     # Filter bare roman numerals (I, II, III — sub-section markers, not chapters)
     return not _ROMAN_NUMERAL_RE.fullmatch(link_text)
