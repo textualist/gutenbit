@@ -213,7 +213,13 @@ class Catalog:
         language: str = "",
         subject: str = "",
     ) -> list[BookRecord]:
-        """Search for books matching all given criteria (case-insensitive substring match)."""
+        """Search for books matching all given criteria.
+
+        All filters use case-insensitive matching. Each query is first tried as
+        a contiguous substring; if it contains multiple words and the substring
+        fails, every word must appear individually (so ``"Jane Austen"`` matches
+        ``"Austen, Jane, 1775-1817"``).
+        """
         results = self.records
         filters = {
             "authors": author,
@@ -224,5 +230,11 @@ class Catalog:
         for field, value in filters.items():
             if value:
                 q = value.lower()
-                results = [b for b in results if q in getattr(b, field).lower()]
+                words = q.split()
+                results = [
+                    b
+                    for b in results
+                    if q in getattr(b, field).lower()
+                    or (len(words) > 1 and all(w in getattr(b, field).lower() for w in words))
+                ]
         return results
