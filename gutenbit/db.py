@@ -159,6 +159,22 @@ class ChunkRecord:
     char_count: int
 
 
+def _row_to_chunk_record(row: sqlite3.Row) -> ChunkRecord:
+    """Convert a database row to a ChunkRecord."""
+    return ChunkRecord(
+        chunk_id=row["id"],
+        book_id=row["book_id"],
+        div1=row["div1"],
+        div2=row["div2"],
+        div3=row["div3"],
+        div4=row["div4"],
+        position=row["position"],
+        content=row["content"],
+        kind=row["kind"],
+        char_count=row["char_count"],
+    )
+
+
 class Database:
     """SQLite database for storing and searching Project Gutenberg books."""
 
@@ -273,21 +289,7 @@ class Database:
                 f"SELECT {fields} FROM chunks WHERE book_id = ? ORDER BY position",
                 (book_id,),
             ).fetchall()
-        return [
-            ChunkRecord(
-                chunk_id=r["id"],
-                book_id=r["book_id"],
-                div1=r["div1"],
-                div2=r["div2"],
-                div3=r["div3"],
-                div4=r["div4"],
-                position=r["position"],
-                content=r["content"],
-                kind=r["kind"],
-                char_count=r["char_count"],
-            )
-            for r in rows
-        ]
+        return [_row_to_chunk_record(r) for r in rows]
 
     def has_current_text(self, book_id: int) -> bool:
         """Return True when stored text matches the current chunker version."""
@@ -336,18 +338,7 @@ class Database:
         ).fetchone()
         if row is None:
             return None
-        return ChunkRecord(
-            chunk_id=row["id"],
-            book_id=row["book_id"],
-            div1=row["div1"],
-            div2=row["div2"],
-            div3=row["div3"],
-            div4=row["div4"],
-            position=row["position"],
-            content=row["content"],
-            kind=row["kind"],
-            char_count=row["char_count"],
-        )
+        return _row_to_chunk_record(row)
 
     def chunk_by_position(self, book_id: int, position: int) -> ChunkRecord | None:
         """Return one chunk by structural position within a specific book."""
@@ -357,18 +348,7 @@ class Database:
         ).fetchone()
         if row is None:
             return None
-        return ChunkRecord(
-            chunk_id=row["id"],
-            book_id=row["book_id"],
-            div1=row["div1"],
-            div2=row["div2"],
-            div3=row["div3"],
-            div4=row["div4"],
-            position=row["position"],
-            content=row["content"],
-            kind=row["kind"],
-            char_count=row["char_count"],
-        )
+        return _row_to_chunk_record(row)
 
     def chunk_window(self, book_id: int, position: int, *, around: int = 0) -> list[ChunkRecord]:
         """Return the selected position and N neighboring chunks on each side."""
@@ -383,21 +363,7 @@ class Database:
             "ORDER BY position",
             (book_id, lo, hi),
         ).fetchall()
-        return [
-            ChunkRecord(
-                chunk_id=row["id"],
-                book_id=row["book_id"],
-                div1=row["div1"],
-                div2=row["div2"],
-                div3=row["div3"],
-                div4=row["div4"],
-                position=row["position"],
-                content=row["content"],
-                kind=row["kind"],
-                char_count=row["char_count"],
-            )
-            for row in rows
-        ]
+        return [_row_to_chunk_record(row) for row in rows]
 
     def chunks_by_div(
         self,
@@ -433,20 +399,7 @@ class Database:
             ]
             if parts and not _div_parts_match(parts, row_parts):
                 continue
-            out.append(
-                ChunkRecord(
-                    chunk_id=row["id"],
-                    book_id=row["book_id"],
-                    div1=row["div1"],
-                    div2=row["div2"],
-                    div3=row["div3"],
-                    div4=row["div4"],
-                    position=row["position"],
-                    content=row["content"],
-                    kind=row["kind"],
-                    char_count=row["char_count"],
-                )
-            )
+            out.append(_row_to_chunk_record(row))
             if limit > 0 and len(out) >= limit:
                 break
         return out

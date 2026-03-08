@@ -14,6 +14,7 @@ Each ``<p>`` element becomes its own chunk — no accumulation or merging.
 from __future__ import annotations
 
 import re
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 
 from bs4 import BeautifulSoup, NavigableString, Tag
@@ -159,21 +160,29 @@ def chunk_html(html: str) -> list[Chunk]:
             for s in sections
         ]
 
+    # Pre-collect all <p> tags with their document positions for fast range
+    # lookups (avoids O(sections * paragraphs) find_all_next traversal).
+    p_index = _build_paragraph_index(soup, tag_positions, bounds)
+
     chunks: list[Chunk] = []
     pos = 0
     divs = ["", "", "", ""]
 
     # Opening paragraphs before first section remain unsectioned prose.
     heading_texts = {s.heading_text.lower() for s in sections}
-    for text in _paragraphs_before(
-        soup,
-        sections[0].body_anchor,
-        tag_positions=tag_positions,
-        bounds=bounds,
-        heading_texts=heading_texts,
-    ):
-        chunks.append(Chunk(pos, "", "", "", "", text, "text"))
-        pos += 1
+    first_heading = sections[0].body_anchor.find_parent(_HEADING_TAGS)
+    stop_tag = first_heading or sections[0].body_anchor
+    stop_pos = tag_positions.get(id(stop_tag))
+    if stop_pos is not None:
+        for text in _paragraphs_in_range(
+            p_index,
+            bounds.start_pos,
+            stop_pos,
+            heading_texts=heading_texts,
+            min_length=20,
+        ):
+            chunks.append(Chunk(pos, "", "", "", "", text, "text"))
+            pos += 1
 
     # Find a tail boundary: the first non-structural heading (e.g. FOOTNOTES,
     # NOTES) that appears after the last section.  This prevents endnotes from
@@ -196,15 +205,25 @@ def chunk_html(html: str) -> list[Chunk]:
         pos += 1
 
         # Paragraphs until next section (or tail boundary for the last section).
-        next_anchor = sections[i + 1].body_anchor if i + 1 < len(sections) else tail_anchor
-        for text in _paragraphs_between(
-            section.body_anchor,
-            next_anchor,
-            tag_positions=tag_positions,
-            bounds=bounds,
-        ):
-            chunks.append(Chunk(pos, divs[0], divs[1], divs[2], divs[3], text, "text"))
-            pos += 1
+        heading_el = section.body_anchor.find_parent(_HEADING_TAGS)
+        start_el = heading_el or section.body_anchor
+        start_pos_val = tag_positions.get(id(start_el))
+
+        stop_pos_val: int | None = None
+        if i + 1 < len(sections):
+            next_heading = sections[i + 1].body_anchor.find_parent(_HEADING_TAGS)
+            next_stop = next_heading or sections[i + 1].body_anchor
+            stop_pos_val = tag_positions.get(id(next_stop))
+        elif tail_anchor is not None:
+            tail_heading = tail_anchor.find_parent(_HEADING_TAGS)
+            is_heading_tag = tail_heading and tail_heading.name in _HEADING_TAGS
+            tail_stop = tail_heading if is_heading_tag else tail_anchor
+            stop_pos_val = tag_positions.get(id(tail_stop))
+
+        if start_pos_val is not None:
+            for text in _paragraphs_in_range(p_index, start_pos_val, stop_pos_val):
+                chunks.append(Chunk(pos, divs[0], divs[1], divs[2], divs[3], text, "text"))
+                pos += 1
 
     return chunks
 
@@ -438,24 +457,35 @@ def _extract_heading_text(heading_el: Tag) -> str:
     Handles: ``<br>`` line breaks, inline formatting (``<i>``, ``<b>``, etc.),
     ``<img alt="...">`` fallback, and strips ``<span class="pagenum">`` elements.
     """
+    has_pagenum = heading_el.find("span", class_="pagenum") is not None
+    has_br = heading_el.find("br") is not None
+    has_img = heading_el.find("img") is not None
+
+    # Fast path: no special elements to strip or replace.
+    if not has_pagenum and not has_br:
+        text = " ".join(heading_el.get_text().split()).strip()
+        if text:
+            return text
+        if has_img:
+            img = heading_el.find("img", alt=True)
+            if img:
+                return " ".join(str(img["alt"]).split()).strip()
+        return ""
+
+    # Slow path: re-parse only when we need to modify the tree.
     heading_copy = BeautifulSoup(str(heading_el), "html.parser")
     for pagenum in heading_copy.select("span.pagenum"):
         pagenum.decompose()
 
     root = heading_copy.find(_HEADING_TAGS) or heading_copy
 
-    # Replace <br> with spaces so line-broken headings stay clean
-    # (e.g. "CHAPTER I.<br>The Period" → "CHAPTER I. The Period").
     for br in root.find_all("br"):
         br.replace_with(" ")
 
-    # Prefer actual heading text. Illustrated editions often embed decorative
-    # image alt text alongside the real chapter label.
     text = " ".join(root.get_text().split()).strip()
     if text:
         return text
 
-    # Fall back to image alt text only when no textual heading remains.
     img = root.find("img", alt=True)
     if img:
         return " ".join(str(img["alt"]).split()).strip()
@@ -504,93 +534,67 @@ def _classify_level(heading_text: str, is_bold_in_toc: bool) -> int:
     return 2
 
 
-def _paragraphs_before(
+@dataclass(frozen=True, slots=True)
+class _IndexedParagraph:
+    """A paragraph tag with its pre-computed position and extracted text."""
+
+    position: int
+    text: str
+
+
+def _build_paragraph_index(
     soup: BeautifulSoup,
-    stop_anchor: Tag,
-    *,
     tag_positions: dict[int, int],
     bounds: _ContentBounds,
-    heading_texts: set[str] | None = None,
-) -> list[str]:
-    """Collect paragraph text from body start up to *stop_anchor*.
+) -> list[_IndexedParagraph]:
+    """Pre-collect all usable paragraphs with positions and text.
 
-    Filters out TOC-like paragraphs (those matching known headings or
-    front-matter keywords) and micro-paragraphs (< 20 chars) that are
-    typically title-page lines or decorative elements.
+    Builds a sorted list once so section-range queries use bisect instead of
+    repeated ``find_all_next("p")`` traversals.
     """
     body = soup.find("body")
     if not body:
         return []
-    stop_heading = stop_anchor.find_parent(_HEADING_TAGS)
-    stop_tag = stop_heading or stop_anchor
-    stop_pos = _tag_position(stop_tag, tag_positions)
-    if stop_pos is None:
-        return []
+    result: list[_IndexedParagraph] = []
+    for p in body.find_all("p"):
+        pos = tag_positions.get(id(p))
+        if pos is None or not bounds.contains(pos):
+            continue
+        if _is_toc_paragraph(p):
+            continue
+        text = _extract_paragraph_text(p)
+        if text:
+            result.append(_IndexedParagraph(pos, text))
+    return result
+
+
+def _paragraphs_in_range(
+    p_index: list[_IndexedParagraph],
+    start_pos: int | None,
+    stop_pos: int | None,
+    *,
+    heading_texts: set[str] | None = None,
+    min_length: int = 0,
+) -> list[str]:
+    """Return paragraph texts within (start_pos, stop_pos) using bisect.
+
+    *start_pos* is exclusive (paragraphs must be strictly after it).
+    *stop_pos* is exclusive (paragraphs must be strictly before it).
+    """
+    positions = [ip.position for ip in p_index]
+    lo = bisect_right(positions, start_pos) if start_pos is not None else 0
+    hi = bisect_left(positions, stop_pos) if stop_pos is not None else len(p_index)
 
     _heading_texts = heading_texts or set()
-
     paragraphs: list[str] = []
-    for paragraph in body.find_all("p"):
-        paragraph_pos = _tag_position(paragraph, tag_positions)
-        if paragraph_pos is None:
+    for ip in p_index[lo:hi]:
+        if min_length and len(ip.text) < min_length:
             continue
-        if paragraph_pos >= stop_pos:
-            break
-        if not bounds.contains(paragraph_pos):
-            continue
-        if _is_toc_paragraph(paragraph):
-            continue
-        text = _extract_paragraph_text(paragraph)
-        if not text:
-            continue
-        # Skip micro-paragraphs in front matter (title-page lines, etc.)
-        if len(text) < 20:
-            continue
-        # Skip paragraphs whose text matches a known section heading (TOC entries)
-        if text.lower() in _heading_texts or text.lower() in _FRONT_MATTER_HEADINGS:
-            continue
-        paragraphs.append(text)
-    return paragraphs
-
-
-def _paragraphs_between(
-    start_anchor: Tag,
-    stop_anchor: Tag | None,
-    *,
-    tag_positions: dict[int, int],
-    bounds: _ContentBounds,
-) -> list[str]:
-    """Collect paragraph text between two body anchors."""
-    heading_el = start_anchor.find_parent(_HEADING_TAGS)
-    start_el = heading_el or start_anchor
-    start_pos = _tag_position(start_el, tag_positions)
-    if start_pos is None:
-        return []
-
-    stop_pos: int | None = None
-    if stop_anchor:
-        stop_heading = stop_anchor.find_parent(_HEADING_TAGS)
-        stop_tag = stop_heading or stop_anchor
-        stop_pos = _tag_position(stop_tag, tag_positions)
-
-    paragraphs: list[str] = []
-    for paragraph in start_el.find_all_next("p"):
-        paragraph_pos = _tag_position(paragraph, tag_positions)
-        if paragraph_pos is None:
-            continue
-        if paragraph_pos <= start_pos:
-            continue
-        if stop_pos is not None and paragraph_pos >= stop_pos:
-            break
-        if bounds.end_pos is not None and paragraph_pos >= bounds.end_pos:
-            break
-        if not bounds.contains(paragraph_pos):
-            continue
-        if _is_toc_paragraph(paragraph):
-            continue
-        text = _extract_paragraph_text(paragraph)
-        if text:
-            paragraphs.append(text)
+        if _heading_texts:
+            lowered = ip.text.lower()
+            if lowered in _heading_texts or lowered in _FRONT_MATTER_HEADINGS:
+                continue
+        paragraphs.append(ip.text)
     return paragraphs
 
 
@@ -600,6 +604,14 @@ def _extract_paragraph_text(paragraph: Tag) -> str:
     Strips ``<span class="pagenum">`` page-number markers and replaces
     ``<img>`` tags with their ``alt`` text.
     """
+    # Fast path: most paragraphs have no pagenum spans or images.
+    has_pagenum = paragraph.find("span", class_="pagenum") is not None
+    has_img = paragraph.find("img") is not None
+
+    if not has_pagenum and not has_img:
+        return " ".join(paragraph.get_text().split()).strip()
+
+    # Slow path: re-parse only the rare paragraphs that need modification.
     paragraph_copy = BeautifulSoup(str(paragraph), "html.parser").find("p")
     if paragraph_copy is None:
         return ""
@@ -618,23 +630,29 @@ def _extract_paragraph_text(paragraph: Tag) -> str:
     return " ".join(paragraph_copy.get_text().split()).strip()
 
 
+_NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]+")
+
+
 def _is_toc_paragraph(paragraph: Tag) -> bool:
     """Return True for TOC/navigation paragraphs."""
-    if paragraph.find("a", class_="pginternal") is None:
+    links = paragraph.find_all("a", class_="pginternal")
+    if not links:
         return False
 
     classes = {str(c).lower() for c in (paragraph.get("class") or [])}
     if "toc" in classes:
         return True
 
-    paragraph_copy = BeautifulSoup(str(paragraph), "html.parser").find("p")
-    if paragraph_copy is None:
-        return False
-    for anchor in paragraph_copy.find_all("a", class_="pginternal"):
-        anchor.decompose()
-
-    residue = " ".join(paragraph_copy.get_text().split()).strip()
-    return re.sub(r"[^A-Za-z0-9]+", "", residue) == ""
+    # Check if removing pginternal link text leaves only punctuation/whitespace,
+    # without re-parsing the paragraph.
+    full_text = paragraph.get_text()
+    residue = full_text
+    for link in links:
+        link_text = link.get_text()
+        if link_text:
+            residue = residue.replace(link_text, "", 1)
+    residue = " ".join(residue.split()).strip()
+    return _NON_ALNUM_RE.sub("", residue) == ""
 
 
 def _is_structural_toc_link(link: Tag) -> bool:
