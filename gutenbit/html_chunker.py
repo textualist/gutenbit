@@ -551,10 +551,17 @@ def _paragraphs_between(
 
 
 def _extract_paragraph_text(paragraph: Tag) -> str:
-    """Get clean paragraph text, preserving drop-cap img ``alt`` text."""
+    """Get clean paragraph text, preserving drop-cap img ``alt`` text.
+
+    Strips ``<span class="pagenum">`` page-number markers and replaces
+    ``<img>`` tags with their ``alt`` text.
+    """
     paragraph_copy = BeautifulSoup(str(paragraph), "html.parser").find("p")
     if paragraph_copy is None:
         return ""
+
+    for pagenum in paragraph_copy.select("span.pagenum"):
+        pagenum.decompose()
 
     for img in paragraph_copy.find_all("img"):
         alt_value = img.get("alt")
