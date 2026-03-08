@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -177,6 +178,36 @@ def _fts_phrase_query(query: str) -> str:
     """Wrap a raw query as an exact FTS5 phrase, escaping inner quotes."""
     escaped = query.replace('"', '""')
     return f'"{escaped}"'
+
+
+# FTS5 operator tokens that signal an intentional advanced query.
+_FTS_OPERATOR_RE = re.compile(
+    r"""
+    \bAND\b | \bOR\b | \bNOT\b | \bNEAR\b
+    | [*"()\^]
+    """,
+    re.VERBOSE,
+)
+
+
+def _has_fts_operators(query: str) -> bool:
+    """Return True if *query* contains FTS5 operator syntax."""
+    return bool(_FTS_OPERATOR_RE.search(query))
+
+
+def _safe_fts_query(query: str) -> str:
+    """Escape a plain-text query so punctuation doesn't trigger FTS5 errors.
+
+    Each whitespace-separated token is individually quoted so that
+    apostrophes, hyphens, periods, and other punctuation are treated as
+    literal characters while FTS5 still performs an implicit-AND across
+    tokens.
+    """
+    tokens = query.split()
+    if not tokens:
+        return query
+    quoted = [_fts_phrase_query(t) for t in tokens]
+    return " ".join(quoted)
 
 
 def _format_int(value: int) -> str:
@@ -461,7 +492,7 @@ typical workflow:
   3. gutenbit books                            # list stored books
   4. gutenbit toc 46                           # inspect structure / sections
   5. gutenbit view 46 --section 3 -n 20        # read part of a book
-  6. gutenbit search "Marley ghost" --book-id 46  # find relevant chunks
+  6. gutenbit search "Marley's ghost" --book-id 46  # find relevant chunks
 
 chunk kinds:  heading, text
 section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowest heading)
@@ -566,40 +597,56 @@ output columns:  ID  AUTHORS  TITLE""",
         help="full-text search across stored books",
         description=(
             "Full-text search using SQLite FTS5 with BM25 ranking. "
-            "Searches across all stored books unless filtered. "
-            "Supports standard FTS5 query syntax: quoted phrases, "
-            "AND/OR/NOT operators, prefix queries (word*), and positional modes."
+            "Plain-text queries are auto-escaped so apostrophes, hyphens, "
+            "and other punctuation just work. Use --raw for advanced FTS5 "
+            "syntax (AND/OR/NOT, prefix*, NEAR, parentheses)."
         ),
         epilog="""\
 examples:
-  gutenbit search "battle"                                  # relevance-ranked
-  gutenbit search "Levin" --book-id 1399 --mode first       # earliest position in book 1399
-  gutenbit search "Levin" --book-id 1399 --mode last        # latest position in book 1399
-  gutenbit search "door" --mode first                       # lowest book_id first
-  gutenbit search "door" --mode last                        # highest book_id first
-  gutenbit search "may it be" --phrase --book-id 2554 -n 20 # exact phrase
-  gutenbit search "freedom" --kind text -n 5                 # filtered top hits
+  gutenbit search "ghost"                                   # simple search
+  gutenbit search "don't stop"                              # punctuation just works
+  gutenbit search "half-hour"                               # hyphens just work
+  gutenbit search "may it be" --phrase                      # exact phrase match
+  gutenbit search "ghost OR spirit" --raw                   # FTS5 boolean query
+  gutenbit search "(ghost OR spirit) AND NOT haunt*" --raw  # advanced FTS5
+  gutenbit search "battle" --book-id 2600                   # restrict to one book
+  gutenbit search "battle" --section "BOOK ONE"             # restrict to a section
+  gutenbit search "door" --mode first                       # reading order (earliest)
+  gutenbit search "door" --mode last                        # reverse reading order
+  gutenbit search "freedom" --kind text -n 5                # filter by chunk kind
   gutenbit search "ghost" --full -n 3                       # full chunk text
-  gutenbit search "battle" --json                            # JSON output
+  gutenbit search "battle" --count                          # just show match count
+  gutenbit search "battle" --json                           # JSON output
+
+query modes:
+  (default)  plain text — punctuation is auto-escaped, words are AND'd
+  --phrase   exact phrase — word order and adjacency must match exactly
+  --raw      FTS5 syntax — AND, OR, NOT, NEAR(), prefix*, "phrases", (groups)
 
 output fields:
   rank, book_id, position, title
   section, score, kind, char_count
   preview text (or full text with --full)
 
-tip: use 'gutenbit toc <id>' first to see a book's structure, then
-     narrow searches with --book-id and --kind.
-
 mode ordering:
-  ranked: BM25 rank, then book_id, then position
-  first:  book_id ascending, then position ascending
-  last:   book_id descending, then position descending""",
+  ranked  BM25 rank, then book_id, then position (default)
+  first   book_id ascending, then position ascending
+  last    book_id descending, then position descending
+
+tip: use 'gutenbit toc <id>' first to see a book's structure, then
+     narrow searches with --book-id, --section, and --kind.""",
     )
-    se.add_argument("query", help="FTS5 search query (supports phrases, AND/OR/NOT, prefix*)")
-    se.add_argument(
+    se.add_argument("query", help="search query (plain text by default; see --raw, --phrase)")
+    query_group = se.add_mutually_exclusive_group()
+    query_group.add_argument(
         "--phrase",
         action="store_true",
-        help="treat query as an exact phrase (auto-wrap in FTS5 quotes)",
+        help="treat query as an exact phrase (word order must match)",
+    )
+    query_group.add_argument(
+        "--raw",
+        action="store_true",
+        help="pass query directly to FTS5 (AND/OR/NOT, prefix*, NEAR, groups)",
     )
     se.add_argument(
         "--mode",
@@ -615,6 +662,12 @@ mode ordering:
     se.add_argument("--title", help="filter results by title (substring match)")
     se.add_argument("--book-id", type=int, help="restrict to a single book by PG ID")
     se.add_argument(
+        "--section",
+        help=(
+            "restrict to a section by path prefix (e.g. 'STAVE ONE') or section number from 'toc'"
+        ),
+    )
+    se.add_argument(
         "--kind",
         choices=CHUNK_KINDS,
         help="filter by chunk kind (heading or text)",
@@ -624,7 +677,12 @@ mode ordering:
         "--limit",
         type=int,
         default=0,
-        help="max results (default: ranked=20, first/last=1)",
+        help="max results (default: ranked=20, first/last=1; 0=default)",
+    )
+    se.add_argument(
+        "--count",
+        action="store_true",
+        help="just print the number of matching chunks",
     )
     se.add_argument(
         "--full", action="store_true", help="print full chunk text instead of previews"
@@ -1016,11 +1074,31 @@ def _cmd_search(args: argparse.Namespace) -> int:
     if not query_text:
         return _command_error("search", "Search query must not be empty.", as_json=as_json)
 
-    search_query = _fts_phrase_query(query_text) if args.phrase else query_text
-    default_limit = 1 if args.mode in {"first", "last"} else 20
-    limit = args.limit if args.limit > 0 else default_limit
-    preview_chars = args.preview_chars
+    # Query mode: --phrase wraps as exact phrase, --raw passes through to FTS5,
+    # default auto-escapes plain text so punctuation just works.
+    if args.phrase:
+        search_query = _fts_phrase_query(query_text)
+        query_mode = "phrase"
+    elif args.raw:
+        search_query = query_text
+        query_mode = "raw"
+    else:
+        search_query = _safe_fts_query(query_text)
+        query_mode = "auto"
+
     kind = args.kind
+    preview_chars = args.preview_chars
+
+    # Resolve --section: accept a section number (from 'toc') or path prefix.
+    div_path: str | None = None
+    section_arg: str | None = args.section
+
+    # --count uses a large limit to get the full count.
+    if args.count:
+        limit = 10_000_000
+    else:
+        default_limit = 1 if args.mode in {"first", "last"} else 20
+        limit = args.limit if args.limit > 0 else default_limit
 
     warnings: list[str] = []
     with Database(args.db) as db:
@@ -1030,6 +1108,39 @@ def _cmd_search(args: argparse.Namespace) -> int:
             if not as_json:
                 print(f"warning: {warning}")
 
+        # Resolve section number → div path (requires book_id).
+        if section_arg is not None:
+            if section_arg.isdigit():
+                section_number = int(section_arg)
+                if section_number <= 0:
+                    return _command_error(
+                        "search", "--section number must be >= 1.", as_json=as_json
+                    )
+                if args.book_id is None:
+                    return _command_error(
+                        "search",
+                        "--section with a number requires --book-id.",
+                        as_json=as_json,
+                    )
+                summary = _build_section_summary(db, args.book_id)
+                if summary is None:
+                    return _command_error(
+                        "search",
+                        f"Book {args.book_id} has no sections.",
+                        as_json=as_json,
+                    )
+                sections = summary["sections"]
+                if section_number > len(sections):
+                    return _command_error(
+                        "search",
+                        f"Section {section_number} is out of range "
+                        f"(book {args.book_id} has {len(sections)} sections).",
+                        as_json=as_json,
+                    )
+                div_path = sections[section_number - 1]["section"]
+            else:
+                div_path = section_arg
+
         try:
             results = db.search(
                 search_query,
@@ -1037,6 +1148,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
                 title=args.title,
                 book_id=args.book_id,
                 kind=kind,
+                div_path=div_path,
                 mode=args.mode,
                 limit=limit,
             )
@@ -1049,12 +1161,13 @@ def _cmd_search(args: argparse.Namespace) -> int:
                     "query": {
                         "raw": args.query,
                         "fts": search_query,
-                        "phrase": bool(args.phrase),
+                        "mode": query_mode,
                     },
                     "filters": {
                         "author": args.author,
                         "title": args.title,
                         "book_id": args.book_id,
+                        "section": section_arg,
                         "kind": kind,
                     },
                     "mode": args.mode,
@@ -1062,6 +1175,33 @@ def _cmd_search(args: argparse.Namespace) -> int:
                 },
                 warnings=warnings,
             )
+
+    # --count: just print the total.
+    if args.count:
+        if as_json:
+            _print_json_envelope(
+                "search",
+                ok=True,
+                data={
+                    "query": {
+                        "raw": args.query,
+                        "fts": search_query,
+                        "mode": query_mode,
+                    },
+                    "filters": {
+                        "author": args.author,
+                        "title": args.title,
+                        "book_id": args.book_id,
+                        "section": section_arg,
+                        "kind": kind,
+                    },
+                    "count": len(results),
+                },
+                warnings=warnings,
+            )
+        else:
+            print(len(results))
+        return 0
 
     if as_json:
         _print_json_envelope(
@@ -1071,12 +1211,13 @@ def _cmd_search(args: argparse.Namespace) -> int:
                 "query": {
                     "raw": args.query,
                     "fts": search_query,
-                    "phrase": bool(args.phrase),
+                    "mode": query_mode,
                 },
                 "filters": {
                     "author": args.author,
                     "title": args.title,
                     "book_id": args.book_id,
+                    "section": section_arg,
                     "kind": kind,
                 },
                 "mode": args.mode,

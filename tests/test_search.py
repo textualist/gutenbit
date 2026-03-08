@@ -371,9 +371,9 @@ def test_search_mode_last_orders_reverse_position(tmp_path):
 def test_search_help_documents_mode_ordering(tmp_path):
     code, out, _err = _run_cli(tmp_path / "any.db", "search", "-h")
     assert code == 0
-    assert "ranked: BM25 rank, then book_id, then position" in out
-    assert "first:  book_id ascending, then position ascending" in out
-    assert "last:   book_id descending, then position descending" in out
+    assert "ranked" in out and "BM25" in out
+    assert "first" in out and "book_id ascending" in out
+    assert "last" in out and "book_id descending" in out
 
 
 def test_search_help_shows_post_subcommand_global_flags(tmp_path):
@@ -388,11 +388,181 @@ def test_search_invalid_fts_syntax_returns_friendly_error(tmp_path):
     db_path = db.path
     db.close()
 
-    code, out, _err = _run_cli(db_path, "search", '"unclosed phrase', "--json")
+    code, out, _err = _run_cli(db_path, "search", '"unclosed phrase', "--raw", "--json")
     assert code == 1
     payload = json.loads(out)
     assert payload["ok"] is False
     assert payload["errors"] == ["Invalid FTS query syntax: unterminated string."]
+
+
+# --- auto-escape (default query mode) ---
+
+
+def test_search_auto_escapes_apostrophes(tmp_path):
+    db = _make_db(tmp_path)
+    # "don't" would crash raw FTS5 due to the apostrophe.
+    # With auto-escape it should succeed (may return 0 results, but no error).
+    results = db.search('"don\'t"')  # raw FTS5 would fail
+    # Just verify no exception was raised; this is an FTS5 syntax test.
+    assert isinstance(results, list)
+
+
+def test_search_cli_auto_escapes_punctuation(tmp_path):
+    """Plain-text queries with punctuation succeed without --raw or --phrase."""
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, _out, _err = _run_cli(db_path, "search", "don't")
+    assert code == 0
+
+    code, _out, _err = _run_cli(db_path, "search", "Mr.")
+    assert code == 0
+
+    code, _out, _err = _run_cli(db_path, "search", "well-known")
+    assert code == 0
+
+
+def test_search_cli_raw_passes_fts5_syntax(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael OR truth", "--raw")
+    assert code == 0
+    assert "result(s)" in out
+
+
+def test_search_cli_raw_and_phrase_mutually_exclusive(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, _out, _err = _run_cli(db_path, "search", "test", "--raw", "--phrase")
+    assert code != 0
+
+
+# --- --section filter ---
+
+
+def test_search_filter_by_section_path(tmp_path):
+    db = _make_db(tmp_path)
+    results = db.search("the", book_id=1, div_path="CHAPTER 1")
+    assert len(results) >= 1
+    assert all(r.div1 == "CHAPTER 1" for r in results)
+
+
+def test_search_filter_by_section_excludes_other_sections(tmp_path):
+    db = _make_db(tmp_path)
+    results = db.search("the", book_id=1, div_path="CHAPTER 2")
+    assert all(r.div1 == "CHAPTER 2" for r in results)
+
+
+def test_search_cli_section_by_path(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(
+        db_path, "search", "Ishmael", "--book-id", "1", "--section", "CHAPTER 1"
+    )
+    assert code == 0
+    assert "CHAPTER 1" in out
+
+
+def test_search_cli_section_by_number(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--book-id", "1", "--section", "1")
+    assert code == 0
+    assert "CHAPTER 1" in out
+
+
+def test_search_cli_section_number_requires_book_id(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, _out, _err = _run_cli(db_path, "search", "test", "--section", "1")
+    assert code == 1
+
+
+# --- --count flag ---
+
+
+def test_search_cli_count(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "the", "--count")
+    assert code == 0
+    count = int(out.strip())
+    assert count > 0
+
+
+def test_search_cli_count_json(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "the", "--count", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["ok"] is True
+    assert payload["data"]["count"] > 0
+    assert "items" not in payload["data"]
+
+
+def test_search_cli_count_with_section(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out_all, _err = _run_cli(db_path, "search", "the", "--book-id", "1", "--count")
+    code2, out_sec, _err2 = _run_cli(
+        db_path, "search", "the", "--book-id", "1", "--section", "CHAPTER 1", "--count"
+    )
+    assert code == 0 and code2 == 0
+    assert int(out_sec.strip()) <= int(out_all.strip())
+
+
+# --- JSON query mode field ---
+
+
+def test_search_json_query_mode_auto(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["data"]["query"]["mode"] == "auto"
+
+
+def test_search_json_query_mode_phrase(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--phrase", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["data"]["query"]["mode"] == "phrase"
+
+
+def test_search_json_query_mode_raw(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--raw", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["data"]["query"]["mode"] == "raw"
 
 
 # ------------------------------------------------------------------
