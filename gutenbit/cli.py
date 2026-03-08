@@ -33,8 +33,15 @@ OPENING_SECTION_SKIP_HEADINGS = frozenset(
         "illustrations",
         "transcriber's note",
         "transcribers note",
+        "author's note",
+        "authors note",
     }
 )
+
+
+def _normalize_apostrophes(s: str) -> str:
+    """Replace curly/typographic apostrophes with ASCII for matching."""
+    return s.replace("\u2019", "'").replace("\u2018", "'")
 
 
 class _SectionState(TypedDict):
@@ -392,19 +399,54 @@ def _normalize_search_kind(kind: str | None) -> str | None:
 
 
 def _opening_rows(db: Database, book_id: int, n: int) -> list[ChunkRecord]:
-    """Return a default reading window, skipping common front-matter headings."""
+    """Return a default reading window, skipping common front-matter headings.
+
+    Skips headings that match the book title, byline patterns ("by ..."),
+    and well-known front-matter labels (preface, introduction, etc.).
+    """
     rows = db.chunk_records(book_id)
     if not rows:
         return []
+
+    skip = set(OPENING_SECTION_SKIP_HEADINGS)
+    book = db.book(book_id)
+    title_lower = ""
+    if book:
+        title_lower = _normalize_apostrophes(book.title.casefold())
+        skip.add(title_lower)
+
     first_heading_index = 0
     for idx, row in enumerate(rows):
         if row.kind != "heading":
             continue
-        if row.content.casefold() in OPENING_SECTION_SKIP_HEADINGS:
+        heading = _normalize_apostrophes(row.content.casefold())
+        if heading in skip:
+            continue
+        if heading.startswith("by "):
+            continue
+        # Skip headings that match the book title or a prefix/expansion of it
+        # (e.g. "NOSTROMO" for "Nostromo: A Tale of the Seaboard", or
+        # "THE MIRROR OF THE SEA MEMORIES AND IMPRESSIONS" for "The Mirror of the Sea").
+        if (
+            title_lower
+            and len(heading) >= 3
+            and (title_lower.startswith(heading) or heading.startswith(title_lower))
+        ):
             continue
         first_heading_index = idx
         break
-    return rows[first_heading_index : first_heading_index + n]
+
+    window = rows[first_heading_index : first_heading_index + n]
+    # Ensure the window includes at least one text chunk when possible.
+    # Books with nested headings (PART → SUBTITLE → CHAPTER) can exhaust
+    # the default window with headings only, showing no prose.
+    if window and all(r.kind == "heading" for r in window):
+        end = first_heading_index + n
+        while end < len(rows) and rows[end].kind == "heading":
+            end += 1
+        if end < len(rows):
+            window = rows[first_heading_index : end + 1]
+    return window
 
 
 def _format_fts_error(exc: sqlite3.Error) -> str:
@@ -1133,10 +1175,15 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
     read_time = _estimate_read_time(est_words)
 
     search_cmd = f"gutenbit search <query> --book-id {book_id}"
-    first_path = str(sections[0]["path"]) if sections else ""
+    # Find the first section that has actual paragraph content.
+    first_content_section_num: int | None = None
+    for idx, sec in enumerate(sections, start=1):
+        if int(sec["paragraphs"]) > 0:
+            first_content_section_num = idx
+            break
     first_section_cmd = ""
-    if first_path:
-        first_section_cmd = f"gutenbit view {book_id} --section 1 -n 20"
+    if first_content_section_num is not None:
+        first_section_cmd = f"gutenbit view {book_id} --section {first_content_section_num} -n 20"
     first_position = chunk_records[0].position if chunk_records else None
     view_first_position_cmd = ""
     view_from_position_cmd = ""
