@@ -78,25 +78,40 @@ Full-text search across all stored books using SQLite FTS5 with BM25 ranking.
 
 ```bash
 gutenbit search "battle"
+gutenbit search "don't stop"                              # punctuation just works
 gutenbit search "truth universally acknowledged" --phrase
+gutenbit search "ghost OR spirit" --raw                   # FTS5 boolean query
 gutenbit search "Levin" --book-id 1399 --mode first
+gutenbit search "battle" --section "BOOK ONE" --book-id 2600
 gutenbit search "freedom" --kind text -n 5
 gutenbit search "ghost" --full -n 3
+gutenbit search "battle" --count
 ```
 
 | Flag | Description |
 |------|-------------|
-| `QUERY` | FTS5 search query (positional) |
-| `--phrase` | Treat query as an exact phrase |
+| `QUERY` | Search query (positional) |
+| `--phrase` | Treat query as an exact phrase (mutually exclusive with `--raw`) |
+| `--raw` | Pass query directly to FTS5 for advanced syntax (mutually exclusive with `--phrase`) |
 | `--mode MODE` | `ranked` (default), `first`, or `last` |
 | `--author TEXT` | Filter by author (substring match) |
 | `--title TEXT` | Filter by title (substring match) |
 | `--book-id ID` | Restrict to a single book |
-| `--kind KIND` | Filter by chunk kind: `heading` or `text` (`paragraph` is accepted as an alias for `text`) |
+| `--section SELECTOR` | Restrict to a section by path prefix or number from `toc` (number requires `--book-id`) |
+| `--kind KIND` | Filter by chunk kind: `heading` or `text` |
 | `-n`, `--limit N` | Maximum results (default: 20 for ranked, 1 for first/last) |
+| `--count` | Just print the number of matching chunks |
 | `--full` | Print full chunk text instead of previews |
 | `--preview-chars N` | Preview length per result (default: 140) |
 | `--json` | Output as JSON |
+
+### Query modes
+
+By default, punctuation in the query is auto-escaped so apostrophes, hyphens, and other punctuation just work. Tokens are implicitly AND'd.
+
+- **(default)**: Plain text — punctuation is auto-escaped, words are AND'd.
+- **--phrase**: Exact phrase — word order and adjacency must match exactly.
+- **--raw**: FTS5 syntax — AND, OR, NOT, NEAR(), prefix\*, "phrases", (groups).
 
 ### Search modes
 
@@ -106,7 +121,7 @@ gutenbit search "ghost" --full -n 3
 
 ### FTS5 query syntax
 
-The query is passed directly to SQLite FTS5. Supported syntax:
+When using `--raw`, the query is passed directly to SQLite FTS5. Supported syntax:
 
 | Syntax | Meaning |
 |--------|---------|
@@ -115,6 +130,8 @@ The query is passed directly to SQLite FTS5. Supported syntax:
 | `war NOT peace` | First term, excluding second |
 | `"to be or not"` | Exact phrase |
 | `philos*` | Prefix match |
+| `NEAR(war peace, 5)` | Terms within 5 tokens of each other |
+| `(war OR battle) AND peace` | Grouped boolean logic |
 
 Use `--phrase` to auto-wrap the entire query as an exact phrase without manual quoting.
 
@@ -132,7 +149,7 @@ gutenbit toc 2600 --json
 | `BOOK_ID` | Project Gutenberg book ID (positional) |
 | `--json` | Output as JSON |
 
-Section numbers in the output can be passed to `view --section`.
+Section numbers in the output can be passed to `view --section` or `search --section`.
 
 ## view
 
