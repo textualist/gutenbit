@@ -68,6 +68,32 @@ def test_toc_rows_use_dash_for_empty_section_metrics():
     assert rows[0].opening == "-"
 
 
+def test_toc_rows_indent_nested_section_paths():
+    rows = _toc_rows(
+        [
+            {
+                "section_number": 1,
+                "section": "BOOK ONE: 1805 / CHAPTER XII",
+                "position": 0,
+                "est_words": 42,
+                "est_read": "1m",
+                "opening_line": "Opening line.",
+            },
+            {
+                "section_number": 2,
+                "section": "PLAY TITLE / ACT I / SCENE II",
+                "position": 1,
+                "est_words": 84,
+                "est_read": "1m",
+                "opening_line": "Second opening.",
+            },
+        ]
+    )
+
+    assert rows[0].section == "  CHAPTER XII"
+    assert rows[1].section == "    SCENE II"
+
+
 def test_rich_search_results_use_visual_header(tmp_path):
     _make_db(tmp_path)
     item = _passage_payload(
@@ -181,7 +207,7 @@ def test_rich_section_summary_uses_simple_section_layout(tmp_path):
     assert "gutenbit view 1 --all" in rendered
 
 
-def test_rich_section_summary_compacts_long_section_paths(tmp_path):
+def test_rich_section_summary_indents_long_nested_section_paths(tmp_path):
     db = _make_db(tmp_path)
     summary = _build_section_summary(db, 1)
     assert summary is not None
@@ -196,11 +222,12 @@ def test_rich_section_summary_compacts_long_section_paths(tmp_path):
 
     rendered = out.getvalue()
     assert "12" in rendered
-    assert ".../ CHAPTER I. The Unexpected" in rendered
+    assert "CHAPTER I. The Unexpected" in rendered
+    assert ".../" not in rendered
     assert "BOOK ONE: 1805 / CHAPTER I." not in rendered
 
 
-def test_plain_section_summary_compacts_nested_section_paths(tmp_path):
+def test_plain_section_summary_indents_nested_section_paths(tmp_path):
     db = _make_db(tmp_path)
     summary = _build_section_summary(db, 1)
     assert summary is not None
@@ -212,7 +239,8 @@ def test_plain_section_summary_compacts_nested_section_paths(tmp_path):
     CliDisplay(stdout=out, interactive=False).section_summary(summary)
 
     rendered = out.getvalue()
-    assert ".../ CHAPTER XII" in rendered
+    assert "CHAPTER XII" in rendered
+    assert ".../" not in rendered
     assert "BOOK ONE: 1805 / CHAPTER XII" not in rendered
     assert "#  Section" in rendered
-    assert "\n 12  .../ CHAPTER XII" in rendered
+    assert "\n 12" in rendered

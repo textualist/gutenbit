@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_left, bisect_right
+from collections import defaultdict
 from dataclasses import dataclass
 
 from bs4 import BeautifulSoup, NavigableString, Tag
@@ -50,7 +51,7 @@ class Chunk:
 # ---------------------------------------------------------------------------
 
 _BROAD_KEYWORDS = frozenset({"book", "part", "act", "epilogue", "volume"})
-CHUNKER_VERSION = 12
+CHUNKER_VERSION = 13
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
@@ -153,12 +154,18 @@ def chunk_html(html: str) -> list[Chunk]:
             tag_positions=tag_positions,
             bounds=bounds,
         )
-        sections = _refine_toc_sections(toc_sections, heading_sections)
+        sections = _refine_toc_sections(
+            toc_sections,
+            heading_sections,
+            tag_positions=tag_positions,
+        )
     else:
         # Some Gutenberg editions expose page-number TOC links only.
         sections = _parse_heading_sections(soup, tag_positions=tag_positions, bounds=bounds)
     if not sections:
         return []
+
+    sections = _normalize_collection_titles(sections)
 
     # Compact levels so the shallowest level maps to div1.
     # e.g. chapter-only books (min_level=2) shift chapters to div1.
@@ -289,6 +296,7 @@ def _parse_toc_sections(
             continue
         used_headings.add(id(heading_el))
 
+        link_text = _clean_heading_text(" ".join(link.get_text().split()))
         heading_text = _clean_heading_text(_extract_heading_text(heading_el))
         if not heading_text:
             continue
@@ -296,8 +304,20 @@ def _parse_toc_sections(
             continue
 
         is_emphasized = _is_emphasized_toc_link(link)
-        level = _classify_level(heading_text, is_emphasized)
-        sections.append(_Section(anchor_id, heading_text, level, body_anchor))
+        heading_level = _classify_level(heading_text, is_emphasized)
+        if _toc_link_refines_body_heading(link_text, heading_text):
+            sections.append(_Section(anchor_id, heading_text, heading_level, body_anchor))
+            sections.append(
+                _Section(
+                    anchor_id,
+                    link_text,
+                    _classify_level(link_text, False),
+                    body_anchor,
+                )
+            )
+            continue
+
+        sections.append(_Section(anchor_id, heading_text, heading_level, body_anchor))
 
     sections.sort(key=lambda section: tag_positions.get(id(section.body_anchor), float("inf")))
     # Remove a leading title section whose heading is a prefix of the next section's
@@ -468,6 +488,8 @@ def _parse_heading_sections(
 def _refine_toc_sections(
     toc_sections: list[_Section],
     heading_sections: list[_Section],
+    *,
+    tag_positions: dict[int, int],
 ) -> list[_Section]:
     """Supplement a valid TOC with deeper body headings.
 
@@ -478,42 +500,48 @@ def _refine_toc_sections(
     if not toc_sections or not heading_sections:
         return toc_sections
 
-    matches: list[tuple[int, int]] = []
-    heading_idx = 0
-    for toc_idx, toc_section in enumerate(toc_sections):
-        while heading_idx < len(heading_sections):
-            if heading_sections[heading_idx].heading_text == toc_section.heading_text:
-                matches.append((toc_idx, heading_idx))
-                heading_idx += 1
-                break
-            heading_idx += 1
-        else:
-            return toc_sections
-
-    matched_toc_by_heading_idx = {
-        heading_idx: toc_sections[toc_idx] for toc_idx, heading_idx in matches
-    }
     refined: list[_Section] = []
     added = 0
-    current_toc: _Section | None = None
+    heading_idx = 0
 
-    for heading_idx in range(matches[0][1], len(heading_sections)):
-        matched_toc = matched_toc_by_heading_idx.get(heading_idx)
-        if matched_toc is not None:
-            refined.append(matched_toc)
-            current_toc = matched_toc
-            continue
-
-        if current_toc is None:
+    for toc_idx, toc_section in enumerate(toc_sections):
+        refined.append(toc_section)
+        start_pos = _tag_position(toc_section.body_anchor, tag_positions)
+        if start_pos is None:
             continue
 
-        candidate = heading_sections[heading_idx]
-        if candidate.level <= current_toc.level:
-            continue
-        if not _is_refinement_heading(candidate.heading_text):
-            continue
-        refined.append(candidate)
-        added += 1
+        next_pos: int | None = None
+        if toc_idx + 1 < len(toc_sections):
+            next_pos = _tag_position(toc_sections[toc_idx + 1].body_anchor, tag_positions)
+
+        while heading_idx < len(heading_sections):
+            candidate_pos = _tag_position(heading_sections[heading_idx].body_anchor, tag_positions)
+            if candidate_pos is None or candidate_pos < start_pos:
+                heading_idx += 1
+                continue
+            break
+
+        scan_idx = heading_idx
+        while scan_idx < len(heading_sections):
+            candidate = heading_sections[scan_idx]
+            candidate_pos = _tag_position(candidate.body_anchor, tag_positions)
+            if candidate_pos is None:
+                scan_idx += 1
+                continue
+            if next_pos is not None and candidate_pos >= next_pos:
+                break
+            if _same_heading_text(candidate.heading_text, toc_section.heading_text):
+                scan_idx += 1
+                continue
+            if not _is_refinement_heading(candidate.heading_text):
+                scan_idx += 1
+                continue
+            if _candidate_refines_toc(candidate, toc_section):
+                refined.append(candidate)
+                added += 1
+            scan_idx += 1
+
+        heading_idx = scan_idx
 
     return refined if added else toc_sections
 
@@ -635,6 +663,39 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
     return _NON_STRUCTURAL_HEADING_RE.match(text) is not None
 
 
+def _heading_keyword(heading_text: str) -> str:
+    match = _HEADING_KEYWORD_RE.match(heading_text)
+    if not match:
+        return ""
+    return heading_text.split()[0].rstrip(".,:]").lower()
+
+
+def _heading_key(heading_text: str) -> str:
+    return _NON_ALNUM_RE.sub("", heading_text.lower())
+
+
+def _same_heading_text(left: str, right: str) -> bool:
+    return _heading_key(left) == _heading_key(right)
+
+
+def _is_title_like_heading(heading_text: str) -> bool:
+    if _heading_keyword(heading_text):
+        return False
+    if _STANDALONE_STRUCTURAL_RE.search(heading_text):
+        return False
+    return not _is_non_structural_heading_text(heading_text)
+
+
+def _toc_link_refines_body_heading(link_text: str, heading_text: str) -> bool:
+    if not link_text or _same_heading_text(link_text, heading_text):
+        return False
+    if not _is_refinement_heading(link_text):
+        return False
+    if not _is_refinement_heading(heading_text):
+        return False
+    return _classify_level(link_text, False) > _classify_level(heading_text, False)
+
+
 def _classify_level(heading_text: str, is_emphasized_in_toc: bool) -> int:
     """Determine structural level: 1=broad (BOOK/PART), 2=chapter, 3=sub-chapter."""
     if is_emphasized_in_toc:
@@ -648,6 +709,62 @@ def _classify_level(heading_text: str, is_emphasized_in_toc: bool) -> int:
             return 3
         return 2
     return 2
+
+
+def _candidate_refines_toc(candidate: _Section, toc_section: _Section) -> bool:
+    if _is_title_like_heading(toc_section.heading_text):
+        return True
+    return candidate.level > toc_section.level
+
+
+def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
+    """Promote repeated title rows that act as anthology/work containers."""
+    if len(sections) < 3:
+        return sections
+
+    title_indices_by_level: dict[int, list[int]] = defaultdict(list)
+    container_title_indices_by_level: dict[int, list[int]] = defaultdict(list)
+
+    for idx, section in enumerate(sections):
+        if not _is_title_like_heading(section.heading_text):
+            continue
+        title_indices_by_level[section.level].append(idx)
+
+        for next_idx in range(idx + 1, len(sections)):
+            next_section = sections[next_idx]
+            if (
+                _is_title_like_heading(next_section.heading_text)
+                and next_section.level == section.level
+            ):
+                break
+            if _heading_keyword(next_section.heading_text) in _BROAD_KEYWORDS:
+                container_title_indices_by_level[section.level].append(idx)
+                break
+
+    promoted_levels = {
+        level
+        for level, container_indices in container_title_indices_by_level.items()
+        if len(container_indices) >= 2 and len(title_indices_by_level[level]) >= 3
+    }
+    if not promoted_levels:
+        return sections
+
+    new_levels = [section.level for section in sections]
+    for level in sorted(promoted_levels):
+        title_indices = title_indices_by_level[level]
+        for idx in title_indices:
+            new_levels[idx] = max(1, sections[idx].level - 1)
+        for index_pos, idx in enumerate(title_indices):
+            next_idx = title_indices[index_pos + 1] if index_pos + 1 < len(title_indices) else len(
+                sections
+            )
+            for section_idx in range(idx + 1, next_idx):
+                new_levels[section_idx] += 1
+
+    return [
+        _Section(section.anchor_id, section.heading_text, new_levels[idx], section.body_anchor)
+        for idx, section in enumerate(sections)
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -809,12 +926,11 @@ def _heading_tag_rank(tag: Tag) -> int | None:
 def _fallback_start_index(heading_rows: list[_HeadingRow]) -> int | None:
     """Return the first body-structure heading to use for heading-scan fallback."""
     structural_rows = [
-        (idx, row) for idx, row in enumerate(heading_rows) if _HEADING_KEYWORD_RE.match(row.heading_text)
+        (idx, row)
+        for idx, row in enumerate(heading_rows)
+        if _HEADING_KEYWORD_RE.match(row.heading_text)
     ]
-    if structural_rows:
-        start_rows = structural_rows
-    else:
-        start_rows = list(enumerate(heading_rows))
+    start_rows = structural_rows or list(enumerate(heading_rows))
     start_rank = min(row.rank for _, row in start_rows)
     for idx, row in start_rows:
         if row.rank == start_rank:
