@@ -85,10 +85,16 @@ Use `--forward` for forward reading, `--radius` for a surrounding passage window
 
 ### Search
 
-Full-text search across all stored books:
+Full-text search across all stored books. Search targets text chunks by default:
 
 ```bash
 gutenbit search "pride"
+```
+
+Search headings explicitly when needed:
+
+```bash
+gutenbit search "chapter" --book 1342 --kind heading
 ```
 
 Narrow results to a single book:

@@ -74,7 +74,8 @@ Exits with code 1 if any requested ID was not found.
 
 ## search
 
-Full-text search across all stored books using SQLite FTS5 with BM25 ranking.
+Full-text search across stored books using SQLite FTS5 with BM25 ranking. Search
+targets text chunks by default.
 
 ```bash
 gutenbit search "battle"
@@ -83,6 +84,7 @@ gutenbit search "truth universally acknowledged" --phrase
 gutenbit search "ghost OR spirit" --raw                   # FTS5 boolean query
 gutenbit search "Levin" --book 1399 --mode first
 gutenbit search "battle" --section "BOOK ONE" --book 2600
+gutenbit search "STAVE" --book 46 --kind heading
 gutenbit search "ghost" --radius 2                        # include surrounding passage
 gutenbit search "ghost" --limit 3
 gutenbit search "battle" --count
@@ -97,6 +99,7 @@ gutenbit search "battle" --count
 | `--author TEXT` | Filter by author (substring match) |
 | `--title TEXT` | Filter by title (substring match) |
 | `--book ID` | Restrict to a single book |
+| `--kind KIND` | Chunk kind to search: `text` (default), `heading`, or `all` |
 | `--section SELECTOR` | Restrict to a section by path prefix or number from `toc` (number requires `--book`) |
 | `--limit N` | Maximum results (default: 10) |
 | `--radius N` | Surrounding passage to include on each side of each hit |
@@ -122,6 +125,7 @@ By default, punctuation in the query is auto-escaped so apostrophes, hyphens, an
 - Use `--limit` to control how many hits are returned. The default is 10.
 - Use `--radius` to read surrounding passage around each hit in normal reading order.
 - `--count` cannot be combined with `--radius`.
+- Use `--kind heading` to search structural headings, or `--kind all` to include both headings and text.
 
 ### FTS5 query syntax
 
@@ -200,7 +204,7 @@ When `ok` is `false`, the `errors` list contains error messages. The `data` fiel
 
 For `view`, the response body is content-first. Successful responses include a shared passage shape: `book`, `title`, `author`, `section`, `section_number`, `position`, `forward`, `radius`, `all`, and `content`.
 
-For `search`, `data["items"]` remains the hit list. Each hit uses that same passage shape, with search-specific fields such as `rank` and `score` appended after the shared fields. When `--radius` is used, `content` is the joined surrounding passage in reading order.
+For `search`, `data["filters"]` includes the resolved `kind`, and `data["items"]` remains the hit list. Each hit uses that same passage shape, with search-specific fields such as `kind`, `rank`, and `score` appended after the shared fields. When `--radius` is used, `content` is the joined surrounding passage in reading order.
 
 ## Global flags
 

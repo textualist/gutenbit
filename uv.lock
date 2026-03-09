@@ -383,6 +383,7 @@ source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "httpx" },
+    { name = "rich" },
 ]
 
 [package.optional-dependencies]
@@ -413,6 +414,7 @@ requires-dist = [
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.6" },
     { name = "mkdocs-section-index", marker = "extra == 'docs'", specifier = ">=0.3" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.30" },
+    { name = "rich", specifier = ">=14.3" },
 ]
 provides-extras = ["docs"]
 
