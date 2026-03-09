@@ -13,6 +13,7 @@ from typing import Any, TypedDict
 
 from gutenbit.catalog import Catalog
 from gutenbit.db import ChunkRecord, Database, _div_parts_match, _normalize_div_segment
+from gutenbit.display import CliDisplay, format_summary_stats
 
 DEFAULT_DB = "gutenbit.db"
 JSON_OPENING_LINE_PREVIEW_CHARS = 140
@@ -34,6 +35,18 @@ OPENING_SECTION_SKIP_HEADINGS = frozenset(
         "authors note",
     }
 )
+
+_DISPLAY_CACHE: tuple[int, int, CliDisplay] | None = None
+
+
+def _display() -> CliDisplay:
+    global _DISPLAY_CACHE
+    stdout = sys.stdout
+    stderr = sys.stderr
+    cache_key = (id(stdout), id(stderr))
+    if _DISPLAY_CACHE is None or _DISPLAY_CACHE[:2] != cache_key:
+        _DISPLAY_CACHE = (*cache_key, CliDisplay(stdout=stdout, stderr=stderr))
+    return _DISPLAY_CACHE[2]
 
 
 def _normalize_apostrophes(s: str) -> str:
@@ -92,6 +105,7 @@ class _SectionRow(TypedDict):
 class _QuickActions(TypedDict):
     search: str
     view_first_section: str
+    view_by_position: str
     view_all: str
 
 
@@ -147,7 +161,7 @@ def _command_error(
     if as_json:
         _print_json_envelope(command, ok=False, data=data, warnings=warnings, errors=[message])
     else:
-        print(message)
+        _display().error(message)
     return code
 
 
@@ -845,11 +859,12 @@ selectors (choose at most one):
 
 def _cmd_catalog(args: argparse.Namespace) -> int:
     as_json = getattr(args, "json", False)
+    display = _display()
     if args.limit <= 0:
         return _command_error("catalog", "--limit must be > 0.", as_json=as_json)
 
     if not as_json:
-        print("Fetching catalog from Project Gutenberg (English text corpus)…")
+        display.status("Fetching catalog from Project Gutenberg (English text corpus)...")
     catalog = Catalog.fetch()
     results = catalog.search(
         author=args.author,
@@ -876,22 +891,16 @@ def _cmd_catalog(args: argparse.Namespace) -> int:
         return 0
 
     if not shown:
-        print("No books found.")
+        display.status("No books found.")
         return 0
 
-    print(f"  {'ID':>6}  {'AUTHORS':<40s}  TITLE")
-    print(f"  {'------':>6}  {'----------------------------------------':<40s}  -----")
-    for b in shown:
-        authors = _summarize_semicolon_list(b.authors, max_items=2)[:40]
-        title = _single_line(b.title)
-        print(f"  {b.id:>6}  {authors:<40s}  {title}")
-    if len(results) > args.limit:
-        print(f"  … and {len(results) - args.limit} more (use --limit to show more)")
+    display.catalog(shown, remaining_count=len(results) - len(shown))
     return 0
 
 
 def _cmd_add(args: argparse.Namespace) -> int:
     as_json = getattr(args, "json", False)
+    display = _display()
     if args.delay < 0:
         return _command_error("add", "--delay must be >= 0.", as_json=as_json)
 
@@ -905,7 +914,7 @@ def _cmd_add(args: argparse.Namespace) -> int:
         )
 
     if not as_json:
-        print("Fetching catalog…")
+        display.status("Fetching catalog...")
     catalog = Catalog.fetch()
     selected_by_id: dict[int, Any] = {}
     request_results: list[dict[str, Any]] = []
@@ -919,11 +928,11 @@ def _cmd_add(args: argparse.Namespace) -> int:
             warnings.append(warning)
             request_results.append({"requested_id": requested_id, "status": "out_of_policy"})
             if not as_json:
-                print(f"  warning: {warning}")
+                display.warning(f"  warning: {warning}")
             continue
         title = _single_line(rec.title)
         if rec.id != requested_id and not as_json:
-            print(f"  remapped {requested_id} -> {rec.id}: {title} (canonical edition)")
+            display.status(f"  remapped {requested_id} -> {rec.id}: {title} (canonical edition)")
         if rec.id in selected_by_id:
             request_results.append(
                 {
@@ -971,16 +980,16 @@ def _cmd_add(args: argparse.Namespace) -> int:
             if was_current:
                 canonical_statuses[book.id] = "skipped_current"
                 if not as_json:
-                    print(f"  skipping {book.id}: {title} (already downloaded)")
+                    display.status(f"  skipping {book.id}: {title} (already downloaded)")
                 continue
             was_present = db.has_text(book.id)
             target_status = "reprocessed" if was_present else "added"
             if was_present:
                 if not as_json:
-                    print(f"  reprocessing {book.id}: {title} (chunker updated)…")
+                    display.status(f"  reprocessing {book.id}: {title} (chunker updated)...")
             else:
                 if not as_json:
-                    print(f"  adding {book.id}: {title}…")
+                    display.status(f"  adding {book.id}: {title}...")
             if as_json:
                 previous_disable = logging.root.manager.disable
                 logging.disable(logging.CRITICAL)
@@ -998,7 +1007,7 @@ def _cmd_add(args: argparse.Namespace) -> int:
                 failure = f"Failed to add {book.id}: {title}"
                 errors.append(failure)
                 if not as_json:
-                    print(f"  failed {book.id}: {title}")
+                    display.error(f"  failed {book.id}: {title}")
 
     if as_json:
         result_rows: list[dict[str, Any]] = []
@@ -1040,14 +1049,17 @@ def _cmd_add(args: argparse.Namespace) -> int:
         return 0 if ok else 1
 
     if errors:
-        print(f"Completed with {len(errors)} failure(s). Database: {Path(args.db).resolve()}")
+        display.error(
+            f"Completed with {len(errors)} failure(s). Database: {Path(args.db).resolve()}"
+        )
         return 1
-    print(f"Done. Database: {Path(args.db).resolve()}")
+    display.success(f"Done. Database: {Path(args.db).resolve()}")
     return 0
 
 
 def _cmd_books(args: argparse.Namespace) -> int:
     as_json = getattr(args, "json", False)
+    display = _display()
     with Database(args.db) as db:
         books = db.books()
     if not books:
@@ -1058,7 +1070,7 @@ def _cmd_books(args: argparse.Namespace) -> int:
                 data={"count": 0, "items": []},
             )
         else:
-            print("No books stored yet. Use 'gutenbit add <id> ...' to add some.")
+            display.status("No books stored yet. Use 'gutenbit add <id> ...' to add some.")
         return 0
     if as_json:
         _print_json_envelope(
@@ -1070,18 +1082,13 @@ def _cmd_books(args: argparse.Namespace) -> int:
             },
         )
         return 0
-    print(f"  {'ID':>6}  {'AUTHORS':<40s}  TITLE")
-    print(f"  {'------':>6}  {'----------------------------------------':<40s}  -----")
-    for b in books:
-        authors = _summarize_semicolon_list(b.authors, max_items=2)[:40]
-        title = _single_line(b.title)
-        print(f"  {b.id:>6}  {authors:<40s}  {title}")
-    print(f"\n{len(books)} book(s) stored in {args.db}")
+    display.books(books, db_path=args.db)
     return 0
 
 
 def _cmd_delete(args: argparse.Namespace) -> int:
     as_json = getattr(args, "json", False)
+    display = _display()
     any_missing = False
     deleted_count = 0
     results: list[dict[str, Any]] = []
@@ -1094,13 +1101,13 @@ def _cmd_delete(args: argparse.Namespace) -> int:
                 errors.append(message)
                 results.append({"book_id": book_id, "status": "missing"})
                 if not as_json:
-                    print(message)
+                    display.error(message)
                 any_missing = True
             else:
                 deleted_count += 1
                 results.append({"book_id": book_id, "status": "deleted"})
                 if not as_json:
-                    print(f"Deleted book {book_id} from {args.db}.")
+                    display.success(f"Deleted book {book_id} from {args.db}.")
     if as_json:
         _print_json_envelope(
             "delete",
@@ -1118,6 +1125,7 @@ def _cmd_delete(args: argparse.Namespace) -> int:
 
 def _cmd_search(args: argparse.Namespace) -> int:
     as_json = getattr(args, "json", False)
+    display = _display()
     if args.limit <= 0:
         return _command_error("search", "--limit must be > 0.", as_json=as_json)
     if args.radius is not None and args.radius < 0:
@@ -1151,8 +1159,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
     div_path: str | None = None
     section_arg: str | None = args.section
 
-    # --count uses a large limit to get the full count.
-    limit = 10_000_000 if args.count else args.limit
+    limit = args.limit
 
     warnings: list[str] = []
     with Database(args.db) as db:
@@ -1162,7 +1169,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
             warning = f"Book {args.book} is not in the database."
             warnings.append(warning)
             if not as_json:
-                print(f"warning: {warning}")
+                display.warning(f"warning: {warning}")
 
         # Resolve section number → div path (requires book_id).
         if section_arg is not None:
@@ -1211,16 +1218,29 @@ def _cmd_search(args: argparse.Namespace) -> int:
                 else:
                     div_path = section_arg
 
+        search_filters = {
+            "author": args.author,
+            "title": args.title,
+            "book_id": args.book,
+            "div_path": div_path,
+        }
+
         try:
-            results = db.search(
-                search_query,
-                author=args.author,
-                title=args.title,
-                book_id=args.book,
-                div_path=div_path,
-                mode=args.mode,
-                limit=limit,
-            )
+            if args.count:
+                total_results = db.search_count(
+                    search_query,
+                    **search_filters,
+                )
+                results = []
+            else:
+                search_page = db.search_page(
+                    search_query,
+                    **search_filters,
+                    mode=args.mode,
+                    limit=limit,
+                )
+                total_results = search_page.total_results
+                results = search_page.items
         except sqlite3.Error as exc:
             return _command_error(
                 "search",
@@ -1289,12 +1309,12 @@ def _cmd_search(args: argparse.Namespace) -> int:
                         "book": args.book,
                         "section": section_arg,
                     },
-                    "count": len(results),
+                    "count": total_results,
                 },
                 warnings=warnings,
             )
         else:
-            print(len(results))
+            print(total_results)
         return 0
 
     if as_json:
@@ -1312,6 +1332,8 @@ def _cmd_search(args: argparse.Namespace) -> int:
             },
             "order": args.mode,
             "limit": limit,
+            "total_results": total_results,
+            "shown_results": len(result_items),
             "items": result_items,
         }
         _print_json_envelope(
@@ -1323,16 +1345,15 @@ def _cmd_search(args: argparse.Namespace) -> int:
         return 0
 
     if not result_items:
-        print("No results.")
+        display.status("No results.")
         return 0
 
-    print(f"query={args.query!r}  order={args.mode}  results={len(result_items)}")
-    for idx, item in enumerate(result_items, start=1):
-        print(f"\n{idx:>2}. {_passage_header(item)}")
-        print(f"    score={item['score']:.2f}")
-        print(_indent_block(item["content"]))
-        print()
-    print(f"{len(result_items)} result(s)")
+    display.search_results(
+        query=args.query,
+        order=args.mode,
+        items=result_items,
+        total_results=total_results,
+    )
     return 0
 
 
@@ -1411,8 +1432,10 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
         )
 
     opening_section_num: int | None = None
+    opening_position: int | None = None
     opening_rows = _opening_rows(db, book_id, 1)
     if opening_rows:
+        opening_position = opening_rows[0].position
         opening_section = _section_path(
             opening_rows[0].div1,
             opening_rows[0].div2,
@@ -1427,6 +1450,10 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
     first_section_cmd = ""
     if opening_section_num is not None:
         first_section_cmd = f"gutenbit view {book_id} --section {opening_section_num} --forward 20"
+
+    view_position_cmd = ""
+    if opening_position is not None:
+        view_position_cmd = f"gutenbit view {book_id} --position {opening_position} --forward 20"
 
     view_all_cmd = f"gutenbit view {book_id} --all"
 
@@ -1455,6 +1482,7 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
         "quick_actions": {
             "search": search_cmd,
             "view_first_section": first_section_cmd,
+            "view_by_position": view_position_cmd,
             "view_all": view_all_cmd,
         },
     }
@@ -1482,126 +1510,19 @@ def _section_summary_json_payload(summary: _SectionSummary) -> dict[str, Any]:
 def _render_section_summary(db: Database, book_id: int) -> int:
     summary = _build_section_summary(db, book_id)
     if summary is None:
-        print(_no_chunks_message(db, book_id))
+        _display().error(_no_chunks_message(db, book_id))
         return 1
-
-    book = summary["book"]
-    overview = summary["overview"]
-    sections = summary["sections"]
-    quick_actions = summary["quick_actions"]
-
-    authors = book["authors"]
-    subjects = _summarize_semicolon_list(";".join(book["subjects"]), max_items=5)
-    shelves = _summarize_semicolon_list(";".join(book["bookshelves"]), max_items=7)
-
-    book_rows: list[tuple[str, str]] = []
-    book_rows.append(("Title", str(book["title"])))
-    book_rows.append(("Gutenberg ID", str(book_id)))
-    if authors:
-        book_rows.append(("Authors", authors))
-    if book["language"]:
-        book_rows.append(("Language", book["language"]))
-    if book["issued"]:
-        book_rows.append(("Issued", book["issued"]))
-    if book["type"]:
-        book_rows.append(("Type", book["type"]))
-    if book["locc"]:
-        book_rows.append(("LoCC", book["locc"]))
-    if subjects:
-        book_rows.append(("Subjects", subjects))
-    if shelves:
-        book_rows.append(("Shelves", shelves))
-
-    _print_block_header("Book")
-    _print_key_value_table(book_rows, show_header=False)
-
-    _print_block_header("Overview")
-    _print_table(
-        [
-            "Sections",
-            "Paras",
-            "Chars",
-            "Est words",
-            "Est read",
-        ],
-        [
-            [
-                _format_int(overview["chunk_counts"]["heading"]),
-                _format_int(overview["chunk_counts"]["text"]),
-                _format_int(overview["chars_total"]),
-                _format_int(overview["est_words"]),
-                overview["est_read_time"],
-            ]
-        ],
-        right_align=set(range(5)),
-    )
-
-    _print_block_header("Contents")
-    if not sections:
-        print("  (no headings found)")
-    else:
-        number_values = [str(sec["section_number"]) for sec in sections]
-        section_values = [str(sec["section"]) for sec in sections]
-        paras_values = [_format_int(sec["paras"]) for sec in sections]
-        char_values = [_format_int(sec["chars"]) for sec in sections]
-        est_word_values = [_format_int(sec["est_words"]) for sec in sections]
-        est_read_values = [str(sec["est_read"]) for sec in sections]
-        opening_values = [str(sec["opening_line"]) or "-" for sec in sections]
-
-        number_label = "Section #"
-        number_width = max(len(number_label), max(len(v) for v in number_values))
-        section_width = min(40, max(len("Section"), max(len(v) for v in section_values)))
-        paras_width = max(len("Paras"), max(len(v) for v in paras_values))
-        chars_width = max(len("Chars"), max(len(v) for v in char_values))
-        est_words_width = max(len("Est words"), max(len(v) for v in est_word_values))
-        est_read_width = max(len("Est read"), max(len(v) for v in est_read_values))
-        opening_width = min(56, max(len("Opening"), max(len(v) for v in opening_values)))
-
-        print(
-            f" {number_label:>{number_width}}  {'Section':<{section_width}}  "
-            f"{'Paras':>{paras_width}}  {'Chars':>{chars_width}}  "
-            f"{'Est words':>{est_words_width}}  {'Est read':>{est_read_width}}  "
-            f"{'Opening':<{opening_width}}"
-        )
-        print(
-            f" {'-' * number_width}  {'-' * section_width}  "
-            f"{'-' * paras_width}  {'-' * chars_width}  "
-            f"{'-' * est_words_width}  {'-' * est_read_width}  {'-' * opening_width}"
-        )
-
-        for sec in sections:
-            number = str(sec["section_number"])
-            section_label = sec["section"]
-            if len(section_label) > section_width:
-                section_label = _truncate_section_label(section_label, section_width)
-            paragraphs = _format_int(sec["paras"])
-            chars = _format_int(sec["chars"])
-            est_words = _format_int(sec["est_words"])
-            est_read = sec["est_read"]
-            opening = sec["opening_line"] or "-"
-            if len(opening) > opening_width:
-                keep = max(1, opening_width - 3)
-                opening = opening[:keep] + "..."
-            print(
-                f" {number:>{number_width}}  {section_label:<{section_width}}  "
-                f"{paragraphs:>{paras_width}}  {chars:>{chars_width}}  "
-                f"{est_words:>{est_words_width}}  {est_read:>{est_read_width}}  "
-                f"{opening:<{opening_width}}"
-            )
-
-    print("\nQuick actions")
-    print(f"  {quick_actions['search']}")
-    if quick_actions["view_first_section"]:
-        print(f"  {quick_actions['view_first_section']}")
-    if quick_actions["view_all"]:
-        print(f"  {quick_actions['view_all']}")
+    _display().section_summary(summary)
     return 0
 
 
-def _print_passage(payload: dict[str, Any]) -> None:
-    print(_passage_header(payload))
-    print()
-    print(payload["content"])
+def _print_passage(
+    payload: dict[str, Any],
+    *,
+    action_hints: dict[str, str] | None = None,
+    footer_stats: list[str] | None = None,
+) -> None:
+    _display().passage(payload, action_hints=action_hints, footer_stats=footer_stats)
 
 def _view_action_hints(book_id: int, summary: _SectionSummary | None) -> dict[str, str]:
     quick_actions: _QuickActions = (
@@ -1610,6 +1531,7 @@ def _view_action_hints(book_id: int, summary: _SectionSummary | None) -> dict[st
         else {
             "search": "",
             "view_first_section": "",
+            "view_by_position": "",
             "view_all": "",
         }
     )
@@ -1619,19 +1541,6 @@ def _view_action_hints(book_id: int, summary: _SectionSummary | None) -> dict[st
         "view_all": quick_actions["view_all"],
         "search": quick_actions["search"],
     }
-
-
-def _print_action_hints(action_hints: dict[str, str]) -> None:
-    print("\nQuick actions")
-    for key in [
-        "toc",
-        "view_first_section",
-        "view_all",
-        "search",
-    ]:
-        cmd = action_hints.get(key, "")
-        if cmd:
-            print(f"  {cmd}")
 
 
 def _cmd_toc(args: argparse.Namespace) -> int:
@@ -1660,6 +1569,7 @@ def _cmd_toc(args: argparse.Namespace) -> int:
 
 def _cmd_view(args: argparse.Namespace) -> int:
     as_json = getattr(args, "json", False)
+    display = _display()
     selected = int(args.position is not None) + int(args.section is not None)
     if selected > 1:
         return _command_error(
@@ -1742,6 +1652,16 @@ def _cmd_view(args: argparse.Namespace) -> int:
                 extras=extras,
             )
 
+        def _view_footer_stats(rows: list[ChunkRecord]) -> list[str]:
+            text_rows = [row for row in rows if row.kind == "text"]
+            chars = sum(row.char_count for row in text_rows)
+            words = round(chars / 5) if chars else 0
+            return format_summary_stats(
+                paragraphs=len(text_rows),
+                words=words,
+                read=_estimate_read_time(words),
+            )
+
         if args.position is not None:
             anchor = db.chunk_by_position(args.book, args.position)
             if anchor is None:
@@ -1785,7 +1705,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
             if as_json:
                 _print_json_envelope("view", ok=True, data=record)
                 return 0
-            _print_passage(record)
+            _print_passage(record, footer_stats=_view_footer_stats(rows))
             return 0
 
         if args.section is not None:
@@ -1864,12 +1784,11 @@ def _cmd_view(args: argparse.Namespace) -> int:
                                 },
                             ),
                         )
-                    print(message)
-                    if examples:
-                        print("Available sections include:")
-                        for section in examples:
-                            print(f"  {section}")
-                    print(f"Tip: run `gutenbit toc {args.book}` to list all sections.")
+                    display.examples(
+                        message,
+                        examples=examples,
+                        tip=f"gutenbit toc {args.book}",
+                    )
                     return 1
                 selected_section = raw_sections[section_number - 1]
                 if not isinstance(selected_section, dict):
@@ -1956,12 +1875,11 @@ def _cmd_view(args: argparse.Namespace) -> int:
                             },
                         ),
                     )
-                print(message)
-                if examples:
-                    print("Available sections include:")
-                    for section in examples:
-                        print(f"  {section}")
-                print(f"Tip: run `gutenbit toc {args.book}` to list all sections.")
+                display.examples(
+                    message,
+                    examples=examples,
+                    tip=f"gutenbit toc {args.book}",
+                )
                 return 1
             anchor = rows[0]
             if radius is not None:
@@ -1987,7 +1905,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
             if as_json:
                 _print_json_envelope("view", ok=True, data=record)
                 return 0
-            _print_passage(record)
+            _print_passage(record, footer_stats=_view_footer_stats(rows))
             return 0
 
         forward = _effective_forward(DEFAULT_OPENING_CHUNK_COUNT)
@@ -2030,7 +1948,11 @@ def _cmd_view(args: argparse.Namespace) -> int:
                     data={**record, "action_hints": action_hints},
                 )
                 return 0
-            _print_passage(record)
+            display.passage(
+                record,
+                action_hints=action_hints,
+                footer_stats=_view_footer_stats(rows),
+            )
             return 0
 
         rows = _opening_rows(db, args.book, forward)
@@ -2068,8 +1990,11 @@ def _cmd_view(args: argparse.Namespace) -> int:
                 data={**record, "action_hints": action_hints},
             )
             return 0
-        _print_passage(record)
-        _print_action_hints(action_hints)
+        display.passage(
+            record,
+            action_hints=action_hints,
+            footer_stats=_view_footer_stats(rows),
+        )
         return 0
 
 
@@ -2115,7 +2040,7 @@ def main(argv: list[str] | None = None) -> int:
         if getattr(args, "json", False):
             _print_json_envelope(args.command, ok=False, errors=["Interrupted."])
         else:
-            print("\nInterrupted.")
+            _display().error("\nInterrupted.")
         return 130
     except Exception as exc:
         if getattr(args, "json", False):
@@ -2125,7 +2050,7 @@ def main(argv: list[str] | None = None) -> int:
 
                 traceback.print_exc()
         else:
-            print(f"Error: {exc}", file=sys.stderr)
+            _display().error(f"Error: {exc}", err=True)
             if args.verbose:
                 import traceback
 
