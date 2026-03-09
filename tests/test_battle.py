@@ -440,6 +440,49 @@ class TestLockeSecondTreatise:
             assert h.div1.startswith("CHAPTER"), f"Expected div1 to be CHAPTER, got {h.div1!r}"
 
 
+class TestLockeEssayVolume2:
+    """PG 10616 — heading-scan fallback should skip contents scaffolding."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(10616)
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert len(headings) == 33
+
+    def test_contents_block_is_not_emitted_as_sections(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert [h.content for h in headings[:3]] == [
+            "BOOK III OF WORDS",
+            "CHAPTER I OF WORDS OR LANGUAGE IN GENERAL",
+            "CHAPTER II OF THE SIGNIFICATION OF WORDS",
+        ]
+        heading_texts = {h.content for h in headings}
+        assert "BOOK III. OF WORDS" not in heading_texts
+        assert "BOOK IV. OF KNOWLEDGE AND PROBABILITY" not in heading_texts
+        assert "CHAP" not in heading_texts
+
+    def test_book_four_heading_drops_editorial_synopsis(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        heading_texts = {h.content for h in headings}
+        assert "BOOK IV OF KNOWLEDGE AND PROBABILITY" in heading_texts
+        assert "BOOK IV OF KNOWLEDGE AND PROBABILITY SYNOPSIS OF THE FOURTH BOOK" not in (
+            heading_texts
+        )
+
+    def test_wrong_assent_subheads_are_not_sections(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        heading_texts = {h.content for h in headings}
+        assert "CHAPTER XX OF WRONG ASSENT, OR ERROR" in heading_texts
+        assert "CHAPTER XXI OF THE DIVISION OF THE SCIENCES" in heading_texts
+        assert "CHAPTER XIX. [not in early editions" not in heading_texts
+        assert "I. WANT OF PROOFS" not in heading_texts
+        assert "II. WANT OF ABILITY TO USE THEM" not in heading_texts
+        assert "III. WANT OF WILL TO SEE THEM" not in heading_texts
+        assert "IV. WRONG MEASURES OF PROBABILITY" not in heading_texts
+
+
 class TestSherlockHolmes:
     """PG 48320 — Adventures of Sherlock Holmes, story collection."""
 
