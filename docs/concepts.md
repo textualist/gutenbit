@@ -75,4 +75,4 @@ Search uses SQLite FTS5 with BM25 ranking. The index is configured with Porter s
 - Unicode normalization handles accented characters and non-ASCII text.
 - Ranking considers term frequency, document length, and inverse document frequency across the corpus.
 
-Search results include the full text of each matching chunk along with its structural metadata, so you can identify where in a book a match occurs without a separate lookup. The CLI can also attach surrounding passage with `-r/--radius` when you want local reading context around each hit.
+Search results include the full text of each matching chunk along with its structural metadata, so you can identify where in a book a match occurs without a separate lookup. The CLI can also attach surrounding passage with `--radius` when you want local reading context around each hit.

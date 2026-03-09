@@ -28,8 +28,9 @@ with Database("gutenbit.db") as db:
 gutenbit catalog --author "Austen, Jane"
 gutenbit add 1342
 gutenbit search "pride"
-gutenbit view 1342 --section 1 -n 5
-gutenbit search "truth universally acknowledged" -n 3 -r 1   # include surrounding passage
+gutenbit view 1342 --section 1 --forward 5
+gutenbit search "truth universally acknowledged" --limit 3 --radius 1   # include surrounding passage
+gutenbit view 1342 --section 1 --all                          # read the full section
 ```
 
 All commands support `--json` for machine-readable output.

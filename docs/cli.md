@@ -11,7 +11,7 @@ Search the Project Gutenberg catalog for books by metadata.
 ```bash
 gutenbit catalog --author "Dickens"
 gutenbit catalog --title "Christmas" --author "Dickens"
-gutenbit catalog --subject "Philosophy" -n 50
+gutenbit catalog --subject "Philosophy" --limit 50
 ```
 
 | Flag | Description |
@@ -20,7 +20,7 @@ gutenbit catalog --subject "Philosophy" -n 50
 | `--title TEXT` | Filter by title (substring match) |
 | `--subject TEXT` | Filter by subject (substring match) |
 | `--language CODE` | Filter by language code (e.g. `en`) |
-| `-n`, `--limit N` | Maximum results (default: 20) |
+| `--limit N` | Maximum results (default: 20) |
 | `--json` | Output as JSON |
 
 Filters combine with AND logic. All matching is case-insensitive. The catalog is fetched from Project Gutenberg on each call and filtered to English text records.
@@ -81,11 +81,10 @@ gutenbit search "battle"
 gutenbit search "don't stop"                              # punctuation just works
 gutenbit search "truth universally acknowledged" --phrase
 gutenbit search "ghost OR spirit" --raw                   # FTS5 boolean query
-gutenbit search "Levin" --book-id 1399 --mode first
-gutenbit search "battle" --section "BOOK ONE" --book-id 2600
-gutenbit search "freedom" --kind text -n 5
-gutenbit search "ghost" -n 5 -r 2                        # include surrounding passage
-gutenbit search "ghost" --full -n 3
+gutenbit search "Levin" --book 1399 --mode first
+gutenbit search "battle" --section "BOOK ONE" --book 2600
+gutenbit search "ghost" --radius 2                        # include surrounding passage
+gutenbit search "ghost" --limit 3
 gutenbit search "battle" --count
 ```
 
@@ -97,14 +96,11 @@ gutenbit search "battle" --count
 | `--mode MODE` | `ranked` (default), `first`, or `last` |
 | `--author TEXT` | Filter by author (substring match) |
 | `--title TEXT` | Filter by title (substring match) |
-| `--book-id ID` | Restrict to a single book |
-| `--section SELECTOR` | Restrict to a section by path prefix or number from `toc` (number requires `--book-id`) |
-| `--kind KIND` | Filter by chunk kind: `heading` or `text` |
-| `-n`, `--limit N` | Maximum results (default: 20 for ranked, 1 for first/last) |
-| `-r`, `--radius N` | Surrounding passage chunks to include on each side of each hit |
-| `--count` | Just print the number of matching chunks |
-| `--full` | Print full chunk text instead of previews |
-| `--preview-chars N` | Preview length per result (default: 140) |
+| `--book ID` | Restrict to a single book |
+| `--section SELECTOR` | Restrict to a section by path prefix or number from `toc` (number requires `--book`) |
+| `--limit N` | Maximum results (default: 10) |
+| `--radius N` | Surrounding passage to include on each side of each hit |
+| `--count` | Just print the number of matches |
 | `--json` | Output as JSON |
 
 ### Query modes
@@ -117,15 +113,15 @@ By default, punctuation in the query is auto-escaped so apostrophes, hyphens, an
 
 ### Search modes
 
-- **ranked**: Results ordered by BM25 relevance score, then book ID, then position.
-- **first**: Earliest matches. Ordered by book ID ascending, then position ascending.
-- **last**: Latest matches. Ordered by book ID descending, then position descending.
+- **ranked**: Results ordered by BM25 relevance score, then book, then position.
+- **first**: Earliest matches. Ordered by book ascending, then position ascending.
+- **last**: Latest matches. Ordered by book descending, then position descending.
 
 ### Result shaping
 
-- Use `-n` to control how many hits are returned.
-- Use `-r` to read surrounding passage around each hit in normal reading order.
-- `--count` cannot be combined with `-r`.
+- Use `--limit` to control how many hits are returned. The default is 10.
+- Use `--radius` to read surrounding passage around each hit in normal reading order.
+- `--count` cannot be combined with `--radius`.
 
 ### FTS5 query syntax
 
@@ -165,14 +161,13 @@ Read stored book text. Starts at the first structural section by default. Use se
 
 ```bash
 gutenbit view 1342                              # first structural section
-gutenbit view 1342 -n 0                         # full text
+gutenbit view 1342 --all                        # full book
 gutenbit view 1342 --section 3                  # section by number
-gutenbit view 1342 --section "Chapter 1" -n 10  # section by path
-gutenbit view 1342 --position 50 -n 5           # from exact position
-gutenbit view 1342 --position 50 -r 2           # surrounding passage around position
-gutenbit view 1342 --section 3 -r 2             # surrounding passage around section start
-gutenbit view 1342 --section 3 --meta           # with metadata headers
-gutenbit view 1342 --position 50 --preview --chars 120
+gutenbit view 1342 --section 3 --all            # full section
+gutenbit view 1342 --section "Chapter 1" --forward 10  # section by path
+gutenbit view 1342 --position 50 --forward 5           # from exact position
+gutenbit view 1342 --position 50 --radius 2     # surrounding passage around position
+gutenbit view 1342 --section 3 --radius 2       # surrounding passage around section start
 ```
 
 | Flag | Description |
@@ -180,14 +175,12 @@ gutenbit view 1342 --position 50 --preview --chars 120
 | `BOOK_ID` | Project Gutenberg book ID (positional) |
 | `--section SELECTOR` | Section number (from `toc`) or path prefix (e.g. `"BOOK I/CHAPTER I"`) |
 | `--position N` | Exact chunk position |
-| `-n N` | Chunks to return (default: 3 for opening, 1 for section/position; 0 = all) |
-| `-r`, `--radius N` | Surrounding passage chunks to include on each side of the selected center chunk |
-| `--preview` | Show truncated previews instead of full text |
-| `--chars N` | Preview length when using `--preview` (default: 140) |
-| `--meta` | Include chunk metadata headers in text output |
+| `--all` | Read the full selected scope (whole book or whole section) |
+| `--forward N` | Passages to read forward (default: 3 for opening, 1 for section/position) |
+| `--radius N` | Surrounding passage to include on each side of the selected center passage |
 | `--json` | Output as JSON |
 
-Use `--section` or `--position`, not both. `--preview` requires `--section` or `--position`. `-n` and `-r` are mutually exclusive in `view`: `-n` is a forward slice, `-r` is a surrounding passage window. Run `toc` first to see available section numbers.
+Use `--section` or `--position`, not both. `--forward`, `--radius`, and `--all` are mutually exclusive in `view`. Use `--all` for a whole book or whole section; it does not apply to `--position`. Run `toc` first to see available section numbers.
 
 ## JSON output
 
@@ -205,14 +198,9 @@ Every command accepts `--json` and returns a unified envelope:
 
 When `ok` is `false`, the `errors` list contains error messages. The `data` field holds command-specific results. The `warnings` list captures non-fatal issues (e.g. a requested ID not found during bulk delete).
 
-For `view`, chunk-returning modes use an ordered `chunks` array plus mode metadata such as `n`. Successful radius-window responses use `radius` for the ordered list of chunk positions in the returned passage. Validation errors echo `radius_request` instead of a computed `radius` list.
+For `view`, the response body is content-first. Successful responses include a shared passage shape: `book`, `title`, `author`, `section`, `section_number`, `position`, `forward`, `radius`, `all`, and `content`.
 
-For `search`, `data["items"]` remains the hit list. When `-r` is used, each item gains:
-
-- `chunks`: the ordered contextual window for that hit
-- `radius`: the ordered list of chunk positions in that window
-
-The center chunk is the middle entry in that ordered `radius` list when the full window is available.
+For `search`, `data["items"]` remains the hit list. Each hit uses that same passage shape, with search-specific fields such as `rank` and `score` appended after the shared fields. When `--radius` is used, `content` is the joined surrounding passage in reading order.
 
 ## Global flags
 

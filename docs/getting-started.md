@@ -59,23 +59,29 @@ gutenbit view 1342
 Read a specific section:
 
 ```bash
-gutenbit view 1342 --section 1 -n 10
+gutenbit view 1342 --section 1 --forward 10
+```
+
+Read a full section:
+
+```bash
+gutenbit view 1342 --section 1 --all
 ```
 
 Read from an exact chunk position:
 
 ```bash
-gutenbit view 1342 --position 50 -n 5
+gutenbit view 1342 --position 50 --forward 5
 ```
 
 Read surrounding passage around a position or section start:
 
 ```bash
-gutenbit view 1342 --position 50 -r 2
-gutenbit view 1342 --section 1 -r 2
+gutenbit view 1342 --position 50 --radius 2
+gutenbit view 1342 --section 1 --radius 2
 ```
 
-Use `-n` for forward slices and `-r` for surrounding passage windows. `-n 0` returns all chunks in scope.
+Use `--forward` for forward reading, `--radius` for a surrounding passage window, and `--all` for a full book or section. `--all` does not apply to `--position`.
 
 ### Search
 
@@ -88,7 +94,7 @@ gutenbit search "pride"
 Narrow results to a single book:
 
 ```bash
-gutenbit search "pride" --book-id 1342
+gutenbit search "pride" --book 1342
 ```
 
 Search for an exact phrase:
@@ -100,7 +106,7 @@ gutenbit search "truth universally acknowledged" --phrase
 Search with nearby chunk context:
 
 ```bash
-gutenbit search "truth universally acknowledged" --book-id 1342 -n 3 -r 1
+gutenbit search "truth universally acknowledged" --book 1342 --limit 3 --radius 1
 ```
 
 All commands accept `--json` for machine-readable output.
