@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from gutenbit.catalog import Catalog
-from gutenbit.db import ChunkRecord, Database
+from gutenbit.db import ChunkRecord, Database, _div_parts_match, _normalize_div_segment
 
 DEFAULT_DB = "gutenbit.db"
 JSON_OPENING_LINE_PREVIEW_CHARS = 140
@@ -214,6 +214,30 @@ def _format_int(value: int) -> str:
 
 def _section_path(*levels: str) -> str:
     return " / ".join(level for level in levels if level) or "(unsectioned opening)"
+
+
+def _section_selector_parts(raw: str) -> list[str]:
+    parts = [_normalize_div_segment(part) for part in raw.split("/") if part.strip()]
+    if len(parts) > 4:
+        raise ValueError("div path has too many segments (max 4: div1/div2/div3/div4)")
+    return parts
+
+
+def _canonical_section_match(
+    summary: _SectionSummary | None, selector: str
+) -> tuple[str, int] | None:
+    if summary is None:
+        return None
+    query_parts = _section_selector_parts(selector)
+    if not query_parts:
+        return None
+    for section in summary["sections"]:
+        section_path = str(section["section"]).strip()
+        if not section_path:
+            continue
+        if _div_parts_match(query_parts, _section_selector_parts(section_path)):
+            return section_path, int(section["section_number"])
+    return None
 
 
 def _truncate_section_label(label: str, width: int) -> str:
@@ -496,6 +520,27 @@ def _opening_rows(db: Database, book_id: int, n: int) -> list[ChunkRecord]:
             end += 1
         if end < len(rows):
             window = rows[first_heading_index : end + 1]
+    return window
+
+
+def _section_reading_window(rows: list[ChunkRecord], *, text_passages: int) -> list[ChunkRecord]:
+    """Return a readable section window with heading context plus prose.
+
+    Includes any leading heading rows, then keeps reading until *text_passages*
+    text chunks have been collected. This makes ``view --section`` land on prose
+    by default instead of stopping at a bare heading.
+    """
+    if not rows or text_passages <= 0:
+        return []
+
+    window: list[ChunkRecord] = []
+    seen_text = 0
+    for row in rows:
+        window.append(row)
+        if row.kind == "text":
+            seen_text += 1
+            if seen_text >= text_passages:
+                break
     return window
 
 
@@ -945,14 +990,17 @@ def _cmd_add(args: argparse.Namespace) -> int:
                     db.ingest([book], delay=args.delay)
                 finally:
                     logging.disable(previous_disable)
-                if db.has_current_text(book.id):
-                    canonical_statuses[book.id] = target_status
-                else:
-                    canonical_statuses[book.id] = "failed"
-                    errors.append(f"Failed to add {book.id}: {title}")
             else:
-                canonical_statuses[book.id] = target_status
                 db.ingest([book], delay=args.delay)
+
+            if db.has_current_text(book.id):
+                canonical_statuses[book.id] = target_status
+            else:
+                canonical_statuses[book.id] = "failed"
+                failure = f"Failed to add {book.id}: {title}"
+                errors.append(failure)
+                if not as_json:
+                    print(f"  failed {book.id}: {title}")
 
     if as_json:
         result_rows: list[dict[str, Any]] = []
@@ -993,6 +1041,9 @@ def _cmd_add(args: argparse.Namespace) -> int:
         _print_json_envelope("add", ok=ok, data=data, warnings=warnings, errors=errors)
         return 0 if ok else 1
 
+    if errors:
+        print(f"Completed with {len(errors)} failure(s). Database: {Path(args.db).resolve()}")
+        return 1
     print(f"Done. Database: {Path(args.db).resolve()}")
     return 0
 
@@ -1146,7 +1197,21 @@ def _cmd_search(args: argparse.Namespace) -> int:
                     )
                 div_path = sections[section_number - 1]["section"]
             else:
-                div_path = section_arg
+                try:
+                    _section_selector_parts(section_arg)
+                except ValueError as exc:
+                    return _command_error(
+                        "search",
+                        f"Invalid section selector: {exc}.",
+                        as_json=as_json,
+                    )
+                if args.book is not None:
+                    matched_section = _canonical_section_match(
+                        _build_section_summary(db, args.book), section_arg
+                    )
+                    div_path = matched_section[0] if matched_section is not None else section_arg
+                else:
+                    div_path = section_arg
 
         try:
             results = db.search(
@@ -1326,27 +1391,6 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
     read_time = _estimate_read_time(est_words)
 
     search_cmd = f"gutenbit search <query> --book {book_id}"
-    # Find the first section that has actual paragraph content.
-    first_content_section_num: int | None = None
-    for idx, sec in enumerate(sections, start=1):
-        if int(sec["paragraphs"]) > 0:
-            first_content_section_num = idx
-            break
-    first_section_cmd = ""
-    if first_content_section_num is not None:
-        first_section_cmd = (
-            f"gutenbit view {book_id} --section {first_content_section_num} --forward 20"
-        )
-    first_position = chunk_records[0].position if chunk_records else None
-    view_first_position_cmd = ""
-    view_from_position_cmd = ""
-    if first_position is not None:
-        view_first_position_cmd = f"gutenbit view {book_id} --position {first_position}"
-        view_from_position_cmd = (
-            f"gutenbit view {book_id} --position {first_position} --forward 20"
-        )
-    view_all_cmd = f"gutenbit view {book_id} --all"
-
     section_rows: list[_SectionRow] = []
     for idx, sec in enumerate(sections, start=1):
         chars = int(sec["chars"])
@@ -1367,6 +1411,35 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
                 "opening_line": str(sec["opening_line"]),
             }
         )
+
+    opening_section_num: int | None = None
+    opening_rows = _opening_rows(db, book_id, 1)
+    if opening_rows:
+        opening_section = _section_path(
+            opening_rows[0].div1,
+            opening_rows[0].div2,
+            opening_rows[0].div3,
+            opening_rows[0].div4,
+        )
+        for section in section_rows:
+            if section["section"] == opening_section:
+                opening_section_num = section["section_number"]
+                break
+
+    first_section_cmd = ""
+    if opening_section_num is not None:
+        first_section_cmd = f"gutenbit view {book_id} --section {opening_section_num} --forward 20"
+
+    first_position = chunk_records[0].position if chunk_records else None
+    view_first_position_cmd = ""
+    view_from_position_cmd = ""
+    if first_position is not None:
+        view_first_position_cmd = f"gutenbit view {book_id} --position {first_position}"
+        view_from_position_cmd = (
+            f"gutenbit view {book_id} --position {first_position} --forward 20"
+        )
+
+    view_all_cmd = f"gutenbit view {book_id} --all"
 
     return {
         "book": {
@@ -1866,6 +1939,26 @@ def _cmd_view(args: argparse.Namespace) -> int:
                     )
             else:
                 section_number = section_number_for(args.book, resolved_section)
+                try:
+                    matched_section = _canonical_section_match(
+                        _build_section_summary(db, args.book), resolved_section
+                    )
+                except ValueError as exc:
+                    return _command_error(
+                        "view",
+                        f"Invalid section selector: {exc}.",
+                        as_json=as_json,
+                        data=_view_payload(
+                            section=section_query,
+                            section_number=None,
+                            position=None,
+                            forward=requested_forward,
+                            radius=radius,
+                            all_scope=requested_all,
+                        ),
+                    )
+                if matched_section is not None:
+                    resolved_section, section_number = matched_section
 
             rows = db.chunks_by_div(args.book, resolved_section, limit=0)
             if not rows:
@@ -1909,7 +2002,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
             else:
                 forward = _effective_forward(DEFAULT_VIEW_FORWARD)
                 all_scope = None
-                rows = rows[:forward]
+                rows = _section_reading_window(rows, text_passages=forward)
             record = _view_payload(
                 section=resolved_section,
                 section_number=section_number,
