@@ -905,10 +905,11 @@ class TestCLICommands:
     def test_cli_view_default(self, db_path: str):
         result = _run_cli("view", "46", db=db_path)
         assert result.returncode == 0
+        assert "book=46" in result.stdout
         assert "Quick actions" in result.stdout
         assert "gutenbit toc 46" in result.stdout
-        assert "gutenbit view 46 -n 0" in result.stdout
-        assert "section=" not in result.stdout
+        assert "gutenbit view 46 --all" in result.stdout
+        assert "section=" in result.stdout
 
     def test_cli_toc_default(self, db_path: str):
         result = _run_cli("toc", "46", db=db_path)
@@ -919,14 +920,14 @@ class TestCLICommands:
         assert "Section" in result.stdout
         assert "Position" in result.stdout
 
-    def test_cli_view_section_meta(self, db_path: str):
-        result = _run_cli("view", "46", "--section", "STAVE ONE", "-n", "1", "--meta", db=db_path)
+    def test_cli_view_section_header(self, db_path: str):
+        result = _run_cli("view", "46", "--section", "STAVE ONE", "--forward", "1", db=db_path)
         assert result.returncode == 0
-        assert "kind=heading" in result.stdout
+        assert "author=Dickens, Charles" in result.stdout
         assert "section=STAVE ONE" in result.stdout
 
     def test_cli_view_section_limit(self, db_path: str):
-        result = _run_cli("view", "46", "--section", "STAVE ONE", "-n", "3", db=db_path)
+        result = _run_cli("view", "46", "--section", "STAVE ONE", "--forward", "3", db=db_path)
         assert result.returncode == 0
         assert "Marley was dead" in result.stdout
 
@@ -941,21 +942,21 @@ class TestCLICommands:
         assert row is not None
         position = row["position"]
 
-        result = _run_cli("view", "46", "--position", str(position), "--meta", db=db_path)
+        result = _run_cli("view", "46", "--position", str(position), db=db_path)
         assert result.returncode == 0
         assert f"position={position}" in result.stdout
         assert "section=STAVE ONE" in result.stdout
 
     def test_cli_search(self, db_path: str):
-        result = _run_cli("search", "Scrooge", "--book-id", "46", db=db_path)
+        result = _run_cli("search", "Scrooge", "--book", "46", db=db_path)
         assert result.returncode == 0
         assert "Scrooge" in result.stdout
         assert "result(s)" in result.stdout
 
-    def test_cli_search_kind(self, db_path: str):
-        result = _run_cli("search", "STAVE", "--kind", "heading", "--book-id", "46", db=db_path)
+    def test_cli_search_section(self, db_path: str):
+        result = _run_cli("search", "Marley", "--section", "STAVE ONE", "--book", "46", db=db_path)
         assert result.returncode == 0
-        assert "kind=heading" in result.stdout
+        assert "STAVE ONE" in result.stdout
 
     def test_cli_search_no_results(self, db_path: str):
         result = _run_cli("search", "xyzzyplugh", db=db_path)
@@ -968,16 +969,16 @@ class TestCLICommands:
         assert "Quick actions" in result.stdout
         assert "gutenbit toc 7370" in result.stdout
 
-    def test_cli_view_full_with_n_zero(self, db_path: str):
-        result = _run_cli("view", "46", "-n", "0", db=db_path)
+    def test_cli_view_all(self, db_path: str):
+        result = _run_cli("view", "46", "--all", db=db_path)
         assert result.returncode == 0
         assert "Marley was dead" in result.stdout
         assert "Scrooge" in result.stdout
 
-    def test_cli_view_full_with_n_zero_missing_book(self, db_path: str):
-        result = _run_cli("view", "99999", "-n", "0", db=db_path)
+    def test_cli_view_all_missing_book(self, db_path: str):
+        result = _run_cli("view", "99999", "--all", db=db_path)
         assert result.returncode == 1
-        assert "No text found" in result.stdout
+        assert "Book 99999 is not in the database." in result.stdout
 
     def test_cli_view_missing_book(self, db_path: str):
         result = _run_cli("view", "99999", db=db_path)
@@ -1013,11 +1014,11 @@ class TestCLIDeleteCommand:
         assert summary.returncode == 1
         assert "not in the database" in summary.stdout
 
-        all_text = _run_cli("view", "46", "-n", "0", db=db_path)
+        all_text = _run_cli("view", "46", "--all", db=db_path)
         assert all_text.returncode == 1
-        assert "No text found" in all_text.stdout
+        assert "not in the database" in all_text.stdout
 
-        search = _run_cli("search", "Scrooge", "--book-id", "46", db=db_path)
+        search = _run_cli("search", "Scrooge", "--book", "46", db=db_path)
         assert search.returncode == 0
         assert "No results" in search.stdout
 
