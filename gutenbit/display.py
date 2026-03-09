@@ -29,6 +29,9 @@ _THEME = Theme(
 TOC_OPENING_PREVIEW_CHARS = 56
 TOC_SECTION_MAX_CHARS = 72
 TOC_OVERVIEW_LIST_MAX_ITEMS = 7
+EMPTY_DISPLAY = "-"
+BOOK_ID_LABEL = "Book ID"
+BOOK_ID_KEY = "book_id"
 
 
 def _format_int(value: int) -> str:
@@ -44,6 +47,32 @@ def _preview(text: str, limit: int) -> str:
 
 def _single_line(text: str) -> str:
     return " ".join(text.split())
+
+
+def _display_text(value: Any) -> str:
+    text = _single_line(str(value)) if value is not None else ""
+    return text or EMPTY_DISPLAY
+
+
+def _display_words(words: int | None, *, with_label: bool = False) -> str | None:
+    if words is None:
+        return None
+    if int(words) <= 0:
+        return f"{EMPTY_DISPLAY} words" if with_label else EMPTY_DISPLAY
+    shown = _format_int(int(words))
+    return f"{shown} words" if with_label else shown
+
+
+def _display_read(
+    read: str | None,
+    *,
+    words: int | None = None,
+    with_label: bool = False,
+) -> str | None:
+    normalized = _single_line(str(read)) if read is not None else ""
+    if (words is not None and int(words) <= 0) or not normalized or normalized.lower() == "n/a":
+        return f"{EMPTY_DISPLAY} read" if with_label else EMPTY_DISPLAY
+    return f"{normalized} read" if with_label else normalized
 
 
 def _split_semicolon_list(raw: str) -> list[str]:
@@ -106,11 +135,15 @@ def format_summary_stats(
     if paragraphs is not None:
         stats.append(_plural(int(paragraphs), "paragraph"))
     if words is not None:
-        stats.append(f"{_format_int(int(words))} words")
+        shown_words = _display_words(int(words), with_label=True)
+        if shown_words:
+            stats.append(shown_words)
     if chars is not None:
         stats.append(f"{_format_int(int(chars))} chars")
     if read:
-        stats.append(f"{read} read")
+        shown_read = _display_read(read, words=words, with_label=True)
+        if shown_read:
+            stats.append(shown_read)
     return stats
 
 
@@ -144,7 +177,7 @@ def _section_summary_stats(overview: dict[str, Any]) -> list[str]:
 
 
 def _section_meta_bits(payload: dict[str, Any]) -> list[tuple[str, Any]]:
-    bits: list[tuple[str, Any]] = [("Book", payload["book"])]
+    bits: list[tuple[str, Any]] = [(BOOK_ID_LABEL, payload[BOOK_ID_KEY])]
     if payload.get("section"):
         bits.append(("Section", payload["section"]))
     if payload.get("section_number") is not None:
@@ -162,7 +195,7 @@ def _section_meta_bits(payload: dict[str, Any]) -> list[tuple[str, Any]]:
 
 def _passage_header(payload: dict[str, Any]) -> str:
     parts = [
-        f"book={payload['book']}",
+        f"{BOOK_ID_KEY}={payload[BOOK_ID_KEY]}",
         f"title={payload['title']}",
     ]
     if payload.get("author"):
@@ -202,15 +235,15 @@ class _TocRow:
 def _toc_rows(sections: list[dict[str, Any]]) -> list[_TocRow]:
     rows: list[_TocRow] = []
     for section in sections:
-        opening = _single_line(str(section["opening_line"]) or "-")
+        est_words = int(section["est_words"])
         rows.append(
             _TocRow(
                 number=str(section["section_number"]),
                 section=_compact_section_path(_section_label(section["section"])),
                 position=_format_int(int(section["position"])),
-                words=_format_int(int(section["est_words"])),
-                read=str(section["est_read"]),
-                opening=opening or "-",
+                words=_display_words(est_words) or EMPTY_DISPLAY,
+                read=_display_read(str(section["est_read"]), words=est_words) or EMPTY_DISPLAY,
+                opening=_display_text(section["opening_line"]),
             )
         )
     return rows
@@ -280,7 +313,7 @@ def _print_key_value_table(
         print(f"  {key_header:<{key_width}}  {value_header}", file=stream)
         print(f"  {'-' * key_width}  {'-' * len(value_header)}", file=stream)
     for key, value in rows:
-        shown = _single_line(value) if value else "-"
+        shown = _display_text(value)
         print(f"  {key:<{key_width}}  {shown}", file=stream)
 
 
@@ -797,7 +830,7 @@ class CliDisplay:
         footer_stats: list[str] | None = None,
     ) -> None:
         if not self.interactive:
-            self._passage_plain(payload, action_hints=action_hints)
+            self._passage_plain(payload, action_hints=action_hints, footer_stats=footer_stats)
             return
 
         self._begin_output()
@@ -823,13 +856,19 @@ class CliDisplay:
             )
 
     def _passage_plain(
-        self, payload: dict[str, Any], *, action_hints: dict[str, str] | None = None
+        self,
+        payload: dict[str, Any],
+        *,
+        action_hints: dict[str, str] | None = None,
+        footer_stats: list[str] | None = None,
     ) -> None:
         self._begin_output()
         self._print_heading("View")
         print(_passage_header(payload), file=self.stdout)
         print(file=self.stdout)
         print(str(payload["content"]), file=self.stdout)
+        if footer_stats:
+            print("\n" + " · ".join(item for item in footer_stats if item), file=self.stdout)
         if action_hints:
             print("\nQuick actions", file=self.stdout)
             for key in [

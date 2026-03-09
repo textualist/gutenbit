@@ -6,6 +6,7 @@ import io
 import json
 
 from gutenbit.catalog import BookRecord, Catalog, apply_catalog_policy
+from gutenbit.cli import _select_section_opening_line
 from gutenbit.cli import main as cli_main
 from gutenbit.db import Database, SearchResult
 from gutenbit.html_chunker import CHUNKER_VERSION, chunk_html
@@ -827,7 +828,8 @@ def test_view_default_json(tmp_path):
     assert payload["errors"] == []
 
     data = payload["data"]
-    assert data["book"] == 1
+    assert data["book_id"] == 1
+    assert "book" not in data
     assert data["title"] == "Moby Dick"
     assert data["author"] == "Melville, Herman"
     assert data["section"] == "CHAPTER 1"
@@ -857,7 +859,8 @@ def test_toc_default_json(tmp_path):
     assert payload["errors"] == []
 
     data = payload["data"]
-    assert data["book"] == 1
+    assert data["book_id"] == 1
+    assert "book" not in data
     summary = data["toc"]
     assert summary["book"]["id"] == 1
     assert summary["book"]["title"] == "Moby Dick"
@@ -889,6 +892,74 @@ def test_toc_default_json(tmp_path):
     assert summary["quick_actions"]["view_all"] == "gutenbit view 1 --all"
 
 
+def test_select_section_opening_line_skips_opening_title_block():
+    opening = _select_section_opening_line(
+        [
+            "Otherwise Called:",
+            "The First Book of the Kings",
+            "1:1 Now there was a certain man of Ramathaimzophim.",
+        ]
+    )
+
+    assert opening == "1:1 Now there was a certain man of Ramathaimzophim."
+
+
+def test_select_section_opening_line_keeps_single_short_opening():
+    opening = _select_section_opening_line(
+        [
+            "The Sea",
+            "It was calm when the boats pushed off from shore.",
+        ]
+    )
+
+    assert opening == "The Sea"
+
+
+def test_toc_json_skips_title_like_opening_block(tmp_path):
+    book = BookRecord(
+        id=4,
+        title="Sample Testament Book",
+        authors="Anon.",
+        language="en",
+        subjects="Test fixtures",
+        locc="BS",
+        bookshelves="",
+        issued="2001-06-01",
+        type="Text",
+    )
+    html = _make_html(
+        "Sample Testament Book",
+        """
+<p class="toc"><a href="#sam" class="pginternal">The First Book of Samuel</a></p>
+<p class="toc"><a href="#eccl" class="pginternal">Ecclesiastes</a></p>
+<h2><a id="sam"></a>The First Book of Samuel</h2>
+<p>Otherwise Called:</p>
+<p>The First Book of the Kings</p>
+<p>1:1 Now there was a certain man of Ramathaimzophim.</p>
+<h2><a id="eccl"></a>Ecclesiastes</h2>
+<p>or</p>
+<p>The Preacher</p>
+<p>1:1 The words of the Preacher, the son of David, king in Jerusalem.</p>
+""",
+    )
+
+    db = Database(tmp_path / "opening-preview.db")
+    db._store(book, chunk_html(html))
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "toc", "4", "--json")
+    assert code == 0
+
+    payload = json.loads(out)
+    sections = payload["data"]["toc"]["sections"]
+    assert sections[0]["opening_line"] == "1:1 Now there was a certain man of Ramathaimzophim."
+    assert (
+        sections[1]["opening_line"]
+        == "1:1 The words of the Preacher, the son of David, king in Jerusalem."
+    )
+
+
 def test_view_json_all_for_book(tmp_path):
     db = _make_db(tmp_path)
     db_path = db.path
@@ -902,7 +973,7 @@ def test_view_json_all_for_book(tmp_path):
     assert payload["data"]["forward"] is None
     assert payload["data"]["radius"] is None
     assert payload["data"]["all"] is True
-    assert payload["data"]["book"] == 1
+    assert payload["data"]["book_id"] == 1
     assert "Call me Ishmael" in payload["data"]["content"]
 
 
@@ -917,7 +988,7 @@ def test_view_all_with_missing_book(tmp_path):
 
     miss_code, miss_out, _miss_err = _run_cli(db_path, "view", "999", "--all")
     assert miss_code == 1
-    assert "Book 999 is not in the database." in miss_out
+    assert "Book ID 999 is not in the database." in miss_out
 
 
 def test_view_position_with_forward(tmp_path):
@@ -941,6 +1012,17 @@ def test_view_position_with_forward(tmp_path):
     assert "forward=2" in out
     assert "Call me Ishmael" in out
     assert "It is a way I have of driving off the spleen" in out
+
+
+def test_view_position_heading_only_shows_dash_footer_stats(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--position", "0", "--forward", "1")
+    assert code == 0
+    assert "CHAPTER 1" in out
+    assert "0 paragraphs · - words · - read" in out
 
 
 def test_view_position_with_radius_header(tmp_path):
@@ -1022,7 +1104,10 @@ def test_view_section_miss_shows_examples(tmp_path):
         "BOOK THIRTEEN: 1812 / CHAPTER XII",
     )
     assert code == 1
-    assert "No chunks found for book 1 under section 'BOOK THIRTEEN: 1812 / CHAPTER XII'." in out
+    assert (
+        "No chunks found for book ID 1 under section 'BOOK THIRTEEN: 1812 / CHAPTER XII'."
+        in out
+    )
     assert "Available sections include:" in out
     assert "1. CHAPTER 1" in out
     assert "2. CHAPTER 2" in out
@@ -1109,7 +1194,7 @@ def test_view_section_number_out_of_range(tmp_path):
 
     code, out, _err = _run_cli(db_path, "view", "1", "--section", "99")
     assert code == 1
-    assert "Section 99 is out of range for book 1" in out
+    assert "Section 99 is out of range for book ID 1" in out
     assert "gutenbit toc 1" in out
 
 
@@ -1627,13 +1712,16 @@ def test_search_json_output(tmp_path):
     assert data["query"]["raw"] == "Ishmael"
     assert data["order"] == "ranked"
     assert data["limit"] == 10
+    assert data["filters"]["book_id"] is None
+    assert "book" not in data["filters"]
     assert data["filters"]["kind"] == "text"
     assert data["total_results"] >= 1
     assert data["shown_results"] >= 1
     assert len(data["items"]) >= 1
 
     result = data["items"][0]
-    assert result["book"] == 1
+    assert result["book_id"] == 1
+    assert "book" not in result
     assert result["title"] == "Moby Dick"
     assert result["author"] == "Melville, Herman"
     assert "Ishmael" in result["content"]
@@ -1659,7 +1747,7 @@ def test_search_json_radius_output(tmp_path):
     data = payload["data"]
     result = data["items"][0]
     assert list(result.keys())[:10] == [
-        "book",
+        "book_id",
         "title",
         "author",
         "section",
@@ -1933,7 +2021,8 @@ def test_view_section_json_output(tmp_path):
     assert payload["ok"] is True
     assert payload["command"] == "view"
     data = payload["data"]
-    assert data["book"] == 1
+    assert data["book_id"] == 1
+    assert "book" not in data
     assert data["title"] == "Moby Dick"
     assert data["author"] == "Melville, Herman"
     assert data["section"] == "CHAPTER 1"
@@ -1956,7 +2045,7 @@ def test_view_position_json_radius_output(tmp_path):
     payload = json.loads(out)
     data = payload["data"]
     assert list(data.keys())[:10] == [
-        "book",
+        "book_id",
         "title",
         "author",
         "section",

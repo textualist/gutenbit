@@ -47,11 +47,15 @@ Canonical test corpus (covers diverse structural patterns):
 | Book | PG ID | Why it matters |
 |------|-------|----------------|
 | War and Peace (Tolstoy) | 2600 | Word-ordinal BOOK headings (`BOOK ONE: 1805`), 15 books × ~28 chapters |
+| Anna Karenina (Tolstoy) | 1399 | Partial TOC: parts in TOC, chapters only in body headings; TOC refinement must recover chapter structure |
 | Crime and Punishment (Dostoevsky) | 2554 | PART + CHAPTER two-level hierarchy |
 | A Christmas Carol (Dickens) | 46 | STAVE headings with colon subtitles |
 | Nicholas Nickleby (Dickens) | 967 | Multi-chapter with trailing short text at boundaries |
 | Oliver Twist (Dickens) | 730 | Short dialogue accumulation |
 | Pride and Prejudice (Austen) | 1342 | Illustrated edition with `Chapter I.]` bracket artifacts |
+| King James Bible | 10 | TOC emphasis distinguishes Testament-level broad divisions from individual books |
+| Locke, Essay Concerning Human Understanding, Vol. 1 | 10615 | Split BOOK/CHAPTER headings that should merge cleanly without false subsections |
+| Locke, Essay Concerning Human Understanding, Vol. 2 | 10616 | Noisy contents/synopsis/subheads; fallback heading scan must reject non-structural headings |
 | Locke's Second Treatise | 7370 | `CHAPTER. I.` period-after-keyword format |
 | Moby Dick (Melville) | 15 | 136 chapters, ETYMOLOGY/EXTRACTS as unsectioned opening |
 | The Odyssey (Homer/Butler) | 1727 | BOOK-based epic, endnotes after last section |

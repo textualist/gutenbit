@@ -134,6 +134,25 @@ def test_bold_toc_link_is_div1():
     assert headings[1].div2 == "CHAPTER I"
 
 
+def test_font_size_toc_link_is_div1():
+    html = _make_html("""
+    <p><a href="#ot" class="pginternal"><span style="font-size:150%;">OLD TESTAMENT</span></a></p>
+    <p><a href="#gen" class="pginternal">GENESIS</a></p>
+    <h2><a id="ot"></a>OLD TESTAMENT</h2>
+    <p>Testament introduction paragraph.</p>
+    <h2><a id="gen"></a>GENESIS</h2>
+    <p>Book content paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 2
+    assert headings[0].div1 == "OLD TESTAMENT"
+    assert headings[0].div2 == ""
+    assert headings[1].div1 == "OLD TESTAMENT"
+    assert headings[1].div2 == "GENESIS"
+
+
 def test_keyword_based_hierarchy_without_bold():
     html = _make_html("""
     <p><a href="#p1" class="pginternal">PART I</a></p>
@@ -173,6 +192,50 @@ def test_div_reset_on_new_broad_heading():
     assert headings[2].div2 == ""
     assert headings[3].div1 == "BOOK TWO"
     assert headings[3].div2 == "CHAPTER I"
+
+
+def test_body_headings_refine_partial_toc():
+    html = _make_html("""
+    <table><tbody>
+      <tr><td><a href="#p1" class="pginternal">PART ONE</a></td></tr>
+      <tr><td><a href="#p2" class="pginternal">PART TWO</a></td></tr>
+    </tbody></table>
+    <div class="chapter">
+      <h2><a id="p1"></a>PART ONE</h2>
+      <h3>Chapter 1</h3>
+      <p>Part one, chapter one paragraph.</p>
+      <h3>Chapter 2</h3>
+      <p>Part one, chapter two paragraph.</p>
+    </div>
+    <div class="chapter">
+      <h2><a id="p2"></a>PART TWO</h2>
+      <h3>Chapter 1</h3>
+      <p>Part two, chapter one paragraph.</p>
+    </div>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == [
+        "PART ONE",
+        "Chapter 1",
+        "Chapter 2",
+        "PART TWO",
+        "Chapter 1",
+    ]
+    assert headings[1].div1 == "PART ONE"
+    assert headings[1].div2 == "Chapter 1"
+    assert headings[2].div1 == "PART ONE"
+    assert headings[2].div2 == "Chapter 2"
+    assert headings[4].div1 == "PART TWO"
+    assert headings[4].div2 == "Chapter 1"
+    assert paragraphs[0].div1 == "PART ONE"
+    assert paragraphs[0].div2 == "Chapter 1"
+    assert paragraphs[1].div1 == "PART ONE"
+    assert paragraphs[1].div2 == "Chapter 2"
+    assert paragraphs[2].div1 == "PART TWO"
+    assert paragraphs[2].div2 == "Chapter 1"
 
 
 # ------------------------------------------------------------------
@@ -494,6 +557,124 @@ def test_heading_scan_skips_notes_and_page_markers():
     chunks = chunk_html(html)
     headings = [c.content for c in chunks if c.kind == "heading"]
     assert headings == ["CHAPTER I"]
+
+
+def test_heading_scan_skips_front_contents_cluster_and_merges_split_headings():
+    html = _make_html("""
+    <p>CONTENTS OF THE SECOND VOLUME</p>
+    <h4>BOOK III. OF WORDS</h4>
+    <h5>CHAP.</h5>
+    <h5>I. OF WORDS OR LANGUAGE IN GENERAL II. OF THE SIGNIFICATION OF WORDS</h5>
+    <h2>BOOK III</h2>
+    <h5>OF WORDS</h5>
+    <h4>CHAPTER I.</h4>
+    <h5>OF WORDS OR LANGUAGE IN GENERAL</h5>
+    <p>Actual first chapter paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert [h.content for h in headings] == [
+        "BOOK III OF WORDS",
+        "CHAPTER I OF WORDS OR LANGUAGE IN GENERAL",
+    ]
+    assert headings[0].div1 == "BOOK III OF WORDS"
+    assert headings[1].div1 == "BOOK III OF WORDS"
+    assert headings[1].div2 == "CHAPTER I OF WORDS OR LANGUAGE IN GENERAL"
+
+
+def test_heading_scan_strips_synopsis_from_book_heading():
+    html = _make_html("""
+    <h2>BOOK IV</h2>
+    <h5>OF KNOWLEDGE AND PROBABILITY SYNOPSIS OF THE FOURTH BOOK.</h5>
+    <p>Book-level synopsis paragraph.</p>
+    <h2>CHAPTER I.</h2>
+    <p>First chapter paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == [
+        "BOOK IV OF KNOWLEDGE AND PROBABILITY",
+        "CHAPTER I",
+    ]
+    assert paragraphs[0].div1 == "BOOK IV OF KNOWLEDGE AND PROBABILITY"
+    assert paragraphs[0].content == "Book-level synopsis paragraph."
+
+
+def test_heading_scan_ignores_internal_non_structural_subheads():
+    html = _make_html("""
+    <h2>CHAPTER XX</h2>
+    <h5>OF WRONG ASSENT, OR ERROR</h5>
+    <h5>I. WANT OF PROOFS.</h5>
+    <h5>II. WANT OF ABILITY TO USE THEM.</h5>
+    <p>Actual chapter text paragraph.</p>
+    <h2>CHAPTER XXI</h2>
+    <p>Next chapter paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == [
+        "CHAPTER XX OF WRONG ASSENT, OR ERROR",
+        "CHAPTER XXI",
+    ]
+    assert paragraphs[0].div1 == "CHAPTER XX OF WRONG ASSENT, OR ERROR"
+    assert paragraphs[0].content == "Actual chapter text paragraph."
+
+
+def test_heading_scan_skips_editorial_placeholder_heading():
+    html = _make_html("""
+    <h2>BOOK IV</h2>
+    <h5>OF KNOWLEDGE AND PROBABILITY</h5>
+    <h2>CHAPTER XIX. [not in early editions]</h2>
+    <h2>CHAPTER XX</h2>
+    <h5>OF WRONG ASSENT, OR ERROR</h5>
+    <p>Actual chapter text paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == [
+        "BOOK IV OF KNOWLEDGE AND PROBABILITY",
+        "CHAPTER XX OF WRONG ASSENT, OR ERROR",
+    ]
+
+
+def test_heading_scan_keeps_dialogue_subheadings_after_book_start():
+    html = _make_html("""
+    <h2>BOOK I</h2>
+    <h4>SOCRATES - GLAUCON</h4>
+    <p>Dialogue paragraph one.</p>
+    <h5>SOCRATES - THRASYMACHUS</h5>
+    <p>Dialogue paragraph two.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert [h.content for h in headings] == [
+        "BOOK I SOCRATES - GLAUCON",
+        "SOCRATES - THRASYMACHUS",
+    ]
+
+
+def test_heading_scan_uses_non_keyword_headings_when_no_structural_keywords_exist():
+    html = _make_html("""
+    <h1>Metamorphosis</h1>
+    <p>Front paragraph.</p>
+    <h2>I</h2>
+    <p>Gregor awoke one morning.</p>
+    <h2>II</h2>
+    <p>Another paragraph.</p>
+    <h2>III</h2>
+    <p>Final paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == ["Metamorphosis", "I", "II", "III"]
 
 
 # ------------------------------------------------------------------

@@ -1,8 +1,8 @@
 """HTML chunker for Project Gutenberg books.
 
-Uses the table of contents ``<a class="pginternal">`` links as the structural
-map. Each TOC link points to a body anchor inside an ``<h2>``–``<h3>`` tag,
-giving section boundaries and heading text directly from the markup.
+Uses the table of contents ``<a class="pginternal">`` links as the primary
+structural map. When a TOC is present but coarse, body headings can refine it
+without replacing TOC-derived hierarchy.
 
 Corpus boundaries are defined by Gutenberg's explicit text delimiters:
 ``*** START OF (THE|THIS) PROJECT GUTENBERG EBOOK ... ***`` through
@@ -50,7 +50,7 @@ class Chunk:
 # ---------------------------------------------------------------------------
 
 _BROAD_KEYWORDS = frozenset({"book", "part", "act", "epilogue", "volume"})
-CHUNKER_VERSION = 10
+CHUNKER_VERSION = 12
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
@@ -83,6 +83,7 @@ _STRUCTURAL_HEADING_TRAILER_RE = re.compile(
 )
 _NUMERIC_LINK_TEXT_RE = re.compile(r"^\[?\d+\]?$")
 _ROMAN_NUMERAL_RE = re.compile(r"^[IVXLCDM]+$")
+_PLAIN_NUMBER_HEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.?$", re.IGNORECASE)
 _PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
 _NON_STRUCTURAL_HEADING_RE = re.compile(
     r"^(?:notes?|footnotes?|endnotes?|transcriber's note|transcribers note|"
@@ -135,7 +136,7 @@ class _ContentBounds:
 
 
 def chunk_html(html: str) -> list[Chunk]:
-    """Split an HTML book into labelled chunks using the TOC as structural map.
+    """Split an HTML book into labelled chunks using TOC plus body heading cues.
 
     Each ``<p>`` element becomes its own chunk. Returns chunks in document order.
     """
@@ -143,9 +144,17 @@ def chunk_html(html: str) -> list[Chunk]:
     tag_positions = _tag_positions(soup)
     bounds = _find_gutenberg_bounds(soup, tag_positions)
 
-    # Build section list from TOC links.
-    sections = _parse_toc_sections(soup, tag_positions=tag_positions, bounds=bounds)
-    if not sections:
+    # Build section list from TOC links and refine with body headings when the
+    # TOC is a coarse but valid subsequence of the body structure.
+    toc_sections = _parse_toc_sections(soup, tag_positions=tag_positions, bounds=bounds)
+    if toc_sections:
+        heading_sections = _parse_heading_sections(
+            soup,
+            tag_positions=tag_positions,
+            bounds=bounds,
+        )
+        sections = _refine_toc_sections(toc_sections, heading_sections)
+    else:
         # Some Gutenberg editions expose page-number TOC links only.
         sections = _parse_heading_sections(soup, tag_positions=tag_positions, bounds=bounds)
     if not sections:
@@ -286,8 +295,8 @@ def _parse_toc_sections(
         if _is_non_structural_heading_text(heading_text):
             continue
 
-        is_bold = link.find("b") is not None
-        level = _classify_level(heading_text, is_bold)
+        is_emphasized = _is_emphasized_toc_link(link)
+        level = _classify_level(heading_text, is_emphasized)
         sections.append(_Section(anchor_id, heading_text, level, body_anchor))
 
     sections.sort(key=lambda section: tag_positions.get(id(section.body_anchor), float("inf")))
@@ -313,10 +322,35 @@ _STANDALONE_STRUCTURAL_RE = re.compile(
     r"\bEPILOGUE\b|\bPROLOGUE\b|\bAPPENDIX\b",
     re.IGNORECASE,
 )
+_NON_SUBTITLE_HEADING_RE = re.compile(r"^(?:chap(?:ters?)?)\.?$", re.IGNORECASE)
+_SYNOPSIS_SUFFIX_RE = re.compile(r"\s+SYNOPSIS OF\b.*$", re.IGNORECASE)
+_EDITORIAL_PLACEHOLDER_HEADING_RE = re.compile(
+    r"(?:\[\s*(?:not\b|omitted\b|wanting\b)|\bnot in early editions\b)",
+    re.IGNORECASE,
+)
+_ENUMERATED_SUBHEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.\s+\S", re.IGNORECASE)
+_LIST_ITEM_MARKER_RE = re.compile(r"(?:^|\s)(?:[IVXLCDM]+|[0-9]+)\.\s+\S", re.IGNORECASE)
+_STANDALONE_APPARATUS_HEADING_RE = re.compile(r"^SYNOPSIS OF\b", re.IGNORECASE)
+_FONT_SIZE_STYLE_RE = re.compile(
+    r"font-size\s*:\s*([0-9.]+)\s*(%|em|rem|px)",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _HeadingRow:
+    """One cleaned heading candidate used by heading-scan fallback."""
+
+    tag: Tag
+    anchor: Tag
+    heading_text: str
+    rank: int
 
 
 def _next_heading_is_subtitle(heading_text: str) -> bool:
     """Return True when a heading looks like a chapter subtitle, not a structural division."""
+    if _NON_SUBTITLE_HEADING_RE.fullmatch(heading_text):
+        return False
     if _HEADING_KEYWORD_RE.match(heading_text):
         return False
     # Reject if the text contains an embedded structural heading pattern
@@ -372,7 +406,7 @@ def _parse_heading_sections(
     Used when TOC links don't point at structural anchors (e.g., page-number
     links only). We start from the first heading that looks structural.
     """
-    heading_rows: list[tuple[Tag, str]] = []
+    heading_rows: list[_HeadingRow] = []
     for heading in soup.find_all(_HEADING_TAGS):
         if not _tag_within_bounds(heading, tag_positions, bounds):
             continue
@@ -381,25 +415,107 @@ def _parse_heading_sections(
             continue
         if _is_non_structural_heading_text(heading_text):
             continue
-        heading_rows.append((heading, heading_text))
+        rank = _heading_tag_rank(heading)
+        if rank is None:
+            continue
+        anchor = heading.find("a", id=True) or heading
+        heading_rows.append(_HeadingRow(heading, anchor, heading_text, rank))
 
     if not heading_rows:
         return []
 
-    start_idx = 0
-    for idx, (_heading, heading_text) in enumerate(heading_rows):
-        if _HEADING_KEYWORD_RE.match(heading_text):
-            start_idx = idx
-            break
+    start_idx = _fallback_start_index(heading_rows)
+    if start_idx is None:
+        return []
 
     sections: list[_Section] = []
-    for heading, heading_text in heading_rows[start_idx:]:
-        level = _classify_level(heading_text, False)
-        anchor = heading.find("a", id=True) or heading
-        anchor_id = str(anchor.get("id", ""))
-        sections.append(_Section(anchor_id, heading_text, level, anchor))
+    i = start_idx
+    while i < len(heading_rows):
+        row = heading_rows[i]
+        heading_text = row.heading_text
+        next_row = heading_rows[i + 1] if i + 1 < len(heading_rows) else None
 
-    return _merge_bare_heading_pairs(sections)
+        if next_row is not None and _is_editorial_placeholder_heading(
+            row,
+            next_row,
+            tag_positions=tag_positions,
+        ):
+            i += 1
+            continue
+
+        if _BARE_HEADING_NUMBER_RE.fullmatch(heading_text) and next_row is not None:
+            subtitle = _normalized_heading_continuation(
+                row,
+                next_row,
+                tag_positions=tag_positions,
+            )
+            if subtitle:
+                heading_text = f"{heading_text} {subtitle}"
+                i += 1
+
+        elif _is_ignorable_fallback_heading(heading_text):
+            i += 1
+            continue
+
+        level = _classify_level(heading_text, False)
+        anchor_id = str(row.anchor.get("id", ""))
+        sections.append(_Section(anchor_id, heading_text, level, row.anchor))
+        i += 1
+
+    return sections
+
+
+def _refine_toc_sections(
+    toc_sections: list[_Section],
+    heading_sections: list[_Section],
+) -> list[_Section]:
+    """Supplement a valid TOC with deeper body headings.
+
+    The TOC remains authoritative for matched headings so visually emphasized
+    broad divisions keep their TOC-derived levels. Body headings are inserted
+    only when they refine that TOC in document order.
+    """
+    if not toc_sections or not heading_sections:
+        return toc_sections
+
+    matches: list[tuple[int, int]] = []
+    heading_idx = 0
+    for toc_idx, toc_section in enumerate(toc_sections):
+        while heading_idx < len(heading_sections):
+            if heading_sections[heading_idx].heading_text == toc_section.heading_text:
+                matches.append((toc_idx, heading_idx))
+                heading_idx += 1
+                break
+            heading_idx += 1
+        else:
+            return toc_sections
+
+    matched_toc_by_heading_idx = {
+        heading_idx: toc_sections[toc_idx] for toc_idx, heading_idx in matches
+    }
+    refined: list[_Section] = []
+    added = 0
+    current_toc: _Section | None = None
+
+    for heading_idx in range(matches[0][1], len(heading_sections)):
+        matched_toc = matched_toc_by_heading_idx.get(heading_idx)
+        if matched_toc is not None:
+            refined.append(matched_toc)
+            current_toc = matched_toc
+            continue
+
+        if current_toc is None:
+            continue
+
+        candidate = heading_sections[heading_idx]
+        if candidate.level <= current_toc.level:
+            continue
+        if not _is_refinement_heading(candidate.heading_text):
+            continue
+        refined.append(candidate)
+        added += 1
+
+    return refined if added else toc_sections
 
 
 # Tail-boundary pattern: only clearly apparatus headings, not ambiguous
@@ -519,9 +635,9 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
     return _NON_STRUCTURAL_HEADING_RE.match(text) is not None
 
 
-def _classify_level(heading_text: str, is_bold_in_toc: bool) -> int:
+def _classify_level(heading_text: str, is_emphasized_in_toc: bool) -> int:
     """Determine structural level: 1=broad (BOOK/PART), 2=chapter, 3=sub-chapter."""
-    if is_bold_in_toc:
+    if is_emphasized_in_toc:
         return 1
     m = _HEADING_KEYWORD_RE.match(heading_text)
     if m:
@@ -682,6 +798,141 @@ def _is_structural_toc_link(link: Tag) -> bool:
         return False
     # Filter bare roman numerals (I, II, III — sub-section markers, not chapters)
     return not _ROMAN_NUMERAL_RE.fullmatch(link_text)
+
+
+def _heading_tag_rank(tag: Tag) -> int | None:
+    if tag.name and len(tag.name) == 2 and tag.name.startswith("h") and tag.name[1].isdigit():
+        return int(tag.name[1])
+    return None
+
+
+def _fallback_start_index(heading_rows: list[_HeadingRow]) -> int | None:
+    """Return the first body-structure heading to use for heading-scan fallback."""
+    structural_rows = [
+        (idx, row) for idx, row in enumerate(heading_rows) if _HEADING_KEYWORD_RE.match(row.heading_text)
+    ]
+    if structural_rows:
+        start_rows = structural_rows
+    else:
+        start_rows = list(enumerate(heading_rows))
+    start_rank = min(row.rank for _, row in start_rows)
+    for idx, row in start_rows:
+        if row.rank == start_rank:
+            return idx
+    return None
+
+
+def _subtree_end_position(tag: Tag, tag_positions: dict[int, int]) -> int | None:
+    """Return the last document-order position covered by *tag*'s subtree."""
+    end_pos = _tag_position(tag, tag_positions)
+    for child in tag.find_all(True):
+        child_pos = _tag_position(child, tag_positions)
+        if child_pos is not None and (end_pos is None or child_pos > end_pos):
+            end_pos = child_pos
+    return end_pos
+
+
+def _headings_have_text_between(
+    current: _HeadingRow,
+    next_row: _HeadingRow,
+    *,
+    tag_positions: dict[int, int],
+) -> bool:
+    """Return True when body paragraphs intervene between two heading rows."""
+    start_pos = _subtree_end_position(current.tag, tag_positions)
+    stop_pos = _tag_position(next_row.tag, tag_positions)
+    if start_pos is None or stop_pos is None or stop_pos <= start_pos:
+        return True
+    for paragraph in current.tag.find_all_next("p"):
+        pos = _tag_position(paragraph, tag_positions)
+        if pos is None:
+            continue
+        if pos >= stop_pos:
+            break
+        if pos > start_pos and _extract_paragraph_text(paragraph):
+            return True
+    return False
+
+
+def _normalize_heading_subtitle(heading_text: str) -> str:
+    """Strip apparatus trailers from a continuation heading."""
+    text = _SYNOPSIS_SUFFIX_RE.sub("", heading_text).strip(" .,:;[]()-")
+    return " ".join(text.split()).strip()
+
+
+def _is_ignorable_fallback_heading(heading_text: str) -> bool:
+    """Return True for heading-scan rows that are likely contents or inline subheads."""
+    if _NON_SUBTITLE_HEADING_RE.fullmatch(heading_text):
+        return True
+    if _STANDALONE_APPARATUS_HEADING_RE.match(heading_text):
+        return True
+    if _ENUMERATED_SUBHEADING_RE.match(heading_text):
+        return True
+    return len(_LIST_ITEM_MARKER_RE.findall(heading_text)) >= 2
+
+
+def _is_refinement_heading(heading_text: str) -> bool:
+    """Return True when a body heading is strong enough to refine a TOC."""
+    if _HEADING_KEYWORD_RE.match(heading_text):
+        return True
+    if _STANDALONE_STRUCTURAL_RE.search(heading_text):
+        return True
+    return _PLAIN_NUMBER_HEADING_RE.fullmatch(heading_text) is not None
+
+
+def _normalized_heading_continuation(
+    current: _HeadingRow,
+    next_row: _HeadingRow,
+    *,
+    tag_positions: dict[int, int],
+) -> str | None:
+    """Return a normalized continuation subtitle for a bare heading, if present."""
+    if _headings_have_text_between(current, next_row, tag_positions=tag_positions):
+        return None
+    subtitle = _normalize_heading_subtitle(next_row.heading_text)
+    if not subtitle:
+        return None
+    if not _next_heading_is_subtitle(subtitle):
+        return None
+    return subtitle
+
+
+def _is_editorial_placeholder_heading(
+    current: _HeadingRow,
+    next_row: _HeadingRow,
+    *,
+    tag_positions: dict[int, int],
+) -> bool:
+    """Return True for editorial 'missing chapter' headings that should be skipped."""
+    if not _EDITORIAL_PLACEHOLDER_HEADING_RE.search(current.heading_text):
+        return False
+    if not _HEADING_KEYWORD_RE.match(next_row.heading_text):
+        return False
+    return not _headings_have_text_between(current, next_row, tag_positions=tag_positions)
+
+
+def _style_has_emphasized_font(style: str) -> bool:
+    match = _FONT_SIZE_STYLE_RE.search(style)
+    if not match:
+        return False
+    value = float(match.group(1))
+    unit = match.group(2).lower()
+    if unit == "%":
+        return value > 100
+    if unit in {"em", "rem"}:
+        return value > 1.0
+    return value > 16.0
+
+
+def _is_emphasized_toc_link(link: Tag) -> bool:
+    """Return True when a TOC link is visually emphasized as a broad division."""
+    if link.find(["b", "strong"]) is not None:
+        return True
+    for el in [link, *link.find_all(True)]:
+        style = str(el.get("style", ""))
+        if style and _style_has_emphasized_font(style):
+            return True
+    return False
 
 
 def _tag_positions(soup: BeautifulSoup) -> dict[int, int]:
