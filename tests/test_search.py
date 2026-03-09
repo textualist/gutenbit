@@ -389,6 +389,15 @@ def test_search_help_documents_radius(tmp_path):
     assert "--radius" in out
 
 
+def test_search_help_documents_kind(tmp_path):
+    code, out, _err = _run_cli(tmp_path / "any.db", "search", "-h")
+    assert code == 0
+    assert "--kind" in out
+    assert "text" in out
+    assert "heading" in out
+    assert "all" in out
+
+
 def test_search_invalid_fts_syntax_returns_friendly_error(tmp_path):
     db = _make_db(tmp_path)
     db_path = db.path
@@ -468,7 +477,88 @@ def test_search_cli_raw_passes_fts5_syntax(tmp_path):
 
     code, out, _err = _run_cli(db_path, "search", "Ishmael OR truth", "--raw")
     assert code == 0
-    assert "result(s)" in out
+    assert "total_results=2  shown_results=2" in out
+    assert "2 results · ranked order" in out
+
+
+def test_search_cli_defaults_to_text_chunks(tmp_path):
+    db = Database(tmp_path / "test.db")
+    db._store(_BOOK3, chunk_html(_BOOK3_HTML))
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "STAVE", "--book", "3")
+    assert code == 0
+    assert "No results" in out
+
+
+def test_search_cli_can_search_heading_chunks(tmp_path):
+    db = Database(tmp_path / "test.db")
+    db._store(_BOOK3, chunk_html(_BOOK3_HTML))
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "STAVE", "--book", "3", "--kind", "heading")
+    assert code == 0
+    assert "STAVE ONE" in out
+    assert "total_results=1  shown_results=1" in out
+
+
+def test_search_cli_kind_all_includes_heading_chunks(tmp_path):
+    db = Database(tmp_path / "test.db")
+    db._store(_BOOK3, chunk_html(_BOOK3_HTML))
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "STAVE", "--book", "3", "--kind", "all")
+    assert code == 0
+    assert "STAVE ONE" in out
+    assert "total_results=1  shown_results=1" in out
+
+
+def test_search_cli_footer_shows_total_and_shown_when_limited(tmp_path):
+    db = _make_db(tmp_path)
+    total_results = db.search_count("the", book_id=1)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "the", "--book", "1", "--limit", "1")
+    assert code == 0
+    assert f"total_results={total_results}  shown_results=1" in out
+    assert f"{total_results} results · 1 shown · ranked order" in out
+
+
+def test_search_cli_skips_count_for_untruncated_page(tmp_path, monkeypatch):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    def _unexpected_count(*args, **kwargs):
+        raise AssertionError("search_count should not be called")
+
+    monkeypatch.setattr(Database, "search_count", _unexpected_count)
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael")
+    assert code == 0
+    assert "total_results=1  shown_results=1" in out
+
+
+def test_search_cli_section_search_does_not_double_count(tmp_path, monkeypatch):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    total_results = len(db.search("the", book_id=1, div_path="CHAPTER 1", limit=20))
+    db.close()
+
+    def _unexpected_count(*args, **kwargs):
+        raise AssertionError("search_count should not be called")
+
+    monkeypatch.setattr(Database, "search_count", _unexpected_count)
+
+    code, out, _err = _run_cli(
+        db_path, "search", "the", "--book", "1", "--section", "1", "--limit", "1"
+    )
+    assert code == 0
+    assert f"total_results={total_results}  shown_results=1" in out
 
 
 def test_search_cli_raw_and_phrase_mutually_exclusive(tmp_path):
@@ -711,14 +801,13 @@ def test_toc_default_shows_structure(tmp_path):
     assert code == 0
     assert "Moby Dick" in out
     assert "CHAPTER 1" in out
-    assert "Sections" in out
-    assert "Section #" in out
+    assert "#  Section" in out
     assert "Section" in out
-    assert "Paras" in out
-    assert "Chars" in out
-    assert "Est words" in out
-    assert "Est read" in out
+    assert "Position" in out
+    assert "Words" in out
+    assert "Read" in out
     assert "Opening" in out
+    assert "2 sections · 3 paragraphs · 151 words · 756 chars · 1m read" in out
     assert "gutenbit view 1 --section 1 --forward 20" in out
     assert "gutenbit view 1 --all" in out
 
@@ -792,6 +881,10 @@ def test_toc_default_json(tmp_path):
     assert (
         summary["quick_actions"]["view_first_section"]
         == "gutenbit view 1 --section 1 --forward 20"
+    )
+    assert (
+        summary["quick_actions"]["view_by_position"]
+        == "gutenbit view 1 --position 0 --forward 20"
     )
     assert summary["quick_actions"]["view_all"] == "gutenbit view 1 --all"
 
@@ -1534,6 +1627,9 @@ def test_search_json_output(tmp_path):
     assert data["query"]["raw"] == "Ishmael"
     assert data["order"] == "ranked"
     assert data["limit"] == 10
+    assert data["filters"]["kind"] == "text"
+    assert data["total_results"] >= 1
+    assert data["shown_results"] >= 1
     assert len(data["items"]) >= 1
 
     result = data["items"][0]
@@ -1547,6 +1643,7 @@ def test_search_json_output(tmp_path):
     assert result["forward"] is None
     assert result["radius"] is None
     assert result["all"] is None
+    assert result["kind"] == "text"
     assert "rank" in result
     assert "score" in result
 
@@ -1576,8 +1673,34 @@ def test_search_json_radius_output(tmp_path):
     assert result["forward"] is None
     assert result["radius"] == 2
     assert result["all"] is None
+    assert result["kind"] == "text"
     assert result["content"].startswith("CHAPTER 1")
     assert "Call me Ishmael" in result["content"]
+
+
+def test_search_json_heading_kind_output(tmp_path):
+    db = Database(tmp_path / "test.db")
+    db._store(_BOOK3, chunk_html(_BOOK3_HTML))
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(
+        db_path,
+        "search",
+        "STAVE",
+        "--book",
+        "3",
+        "--kind",
+        "heading",
+        "--json",
+    )
+    assert code == 0
+    payload = json.loads(out)
+    data = payload["data"]
+    assert data["filters"]["kind"] == "heading"
+    assert data["total_results"] == 1
+    assert data["items"][0]["kind"] == "heading"
+    assert data["items"][0]["content"] == "STAVE ONE"
 
 
 def test_search_json_empty(tmp_path):
@@ -1590,6 +1713,9 @@ def test_search_json_empty(tmp_path):
     payload = json.loads(out)
     assert payload["ok"] is True
     assert payload["command"] == "search"
+    assert payload["data"]["filters"]["kind"] == "text"
+    assert payload["data"]["total_results"] == 0
+    assert payload["data"]["shown_results"] == 0
     assert payload["data"]["items"] == []
 
 

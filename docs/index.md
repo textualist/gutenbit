@@ -29,7 +29,8 @@ with Database("gutenbit.db") as db:
 ```bash
 gutenbit catalog --title "Pride and Prejudice"
 gutenbit add 1342
-gutenbit search "truth universally acknowledged"
+gutenbit search "truth universally acknowledged"            # text chunks by default
+gutenbit search "chapter" --book 1342 --kind heading
 gutenbit view 1342 --section 1 --forward 5
 gutenbit search "truth universally acknowledged" --limit 3 --radius 1
 ```

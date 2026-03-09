@@ -89,6 +89,23 @@ JOIN books b ON b.id = c.book_id
 WHERE chunks_fts MATCH ?
 """
 
+_SEARCH_COUNT_SQL = """\
+SELECT COUNT(*) AS count
+FROM chunks_fts
+JOIN chunks c ON c.id = chunks_fts.rowid
+JOIN books b ON b.id = c.book_id
+WHERE chunks_fts MATCH ?
+"""
+
+_SEARCH_DIV_PATH_SQL = """\
+SELECT
+    c.div1, c.div2, c.div3, c.div4
+FROM chunks_fts
+JOIN chunks c ON c.id = chunks_fts.rowid
+JOIN books b ON b.id = c.book_id
+WHERE chunks_fts MATCH ?
+"""
+
 _DIV_TRAILING_PUNCT_RE = re.compile(r"[.,;:!?]+$")
 _DIV_PUNCT_SPACING_RE = re.compile(r"\s*([.,;:!?])\s*")
 
@@ -122,6 +139,22 @@ def _div_parts_match(query: list[str], row: list[str]) -> bool:
     return last_r.startswith(last_q) and (len(last_r) == len(last_q) or last_r[len(last_q)] == " ")
 
 
+def _normalized_div_parts(div_path: str | None) -> list[str] | None:
+    """Normalize a slash-delimited div path for stable matching."""
+    if div_path is None:
+        return None
+    return [_normalize_div_segment(part) for part in div_path.split("/") if part.strip()]
+
+
+def _row_div_parts(row: sqlite3.Row) -> list[str]:
+    """Return normalized division segments from a row."""
+    return [
+        _normalize_div_segment(part)
+        for part in [row["div1"], row["div2"], row["div3"], row["div4"]]
+        if part
+    ]
+
+
 @dataclass(frozen=True, slots=True)
 class SearchResult:
     """A single search hit — one chunk with its book metadata."""
@@ -141,6 +174,14 @@ class SearchResult:
     kind: str
     char_count: int
     score: float
+
+
+@dataclass(frozen=True, slots=True)
+class SearchPage:
+    """One CLI search page plus exact total-hit metadata."""
+
+    items: list[SearchResult]
+    total_results: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +213,27 @@ def _row_to_chunk_record(row: sqlite3.Row) -> ChunkRecord:
         content=row["content"],
         kind=row["kind"],
         char_count=row["char_count"],
+    )
+
+
+def _row_to_search_result(row: sqlite3.Row) -> SearchResult:
+    """Convert a database row to a SearchResult."""
+    return SearchResult(
+        chunk_id=row["id"],
+        book_id=row["book_id"],
+        title=row["title"],
+        authors=row["authors"],
+        language=row["language"],
+        subjects=row["subjects"],
+        div1=row["div1"],
+        div2=row["div2"],
+        div3=row["div3"],
+        div4=row["div4"],
+        position=row["position"],
+        content=row["content"],
+        kind=row["kind"],
+        char_count=row["char_count"],
+        score=-row["rank"],
     )
 
 
@@ -408,6 +470,197 @@ class Database:
     # Full-text search
     # ------------------------------------------------------------------
 
+    def _search_sql_parts(
+        self,
+        query: str,
+        *,
+        author: str | None = None,
+        title: str | None = None,
+        language: str | None = None,
+        subject: str | None = None,
+        book_id: int | None = None,
+        kind: str | None = None,
+        sql: str,
+    ) -> tuple[str, list[object]]:
+        params: list[object] = [query]
+
+        like_filters = {
+            "b.authors": author,
+            "b.title": title,
+            "b.language": language,
+            "b.subjects": subject,
+        }
+        for column, value in like_filters.items():
+            if value is not None:
+                sql += f" AND {column} LIKE ?"
+                params.append(f"%{value}%")
+        if book_id is not None:
+            sql += " AND c.book_id = ?"
+            params.append(book_id)
+        if kind is not None:
+            sql += " AND c.kind = ?"
+            params.append(kind)
+
+        return sql, params
+
+    def _search_sql(
+        self,
+        query: str,
+        *,
+        author: str | None = None,
+        title: str | None = None,
+        language: str | None = None,
+        subject: str | None = None,
+        book_id: int | None = None,
+        kind: str | None = None,
+        mode: Literal["ranked", "first", "last"] = "ranked",
+        limit: int | None = None,
+    ) -> tuple[str, list[object]]:
+        """Build the ordered search SQL and params for one search query."""
+        sql, params = self._search_sql_parts(
+            query,
+            author=author,
+            title=title,
+            language=language,
+            subject=subject,
+            book_id=book_id,
+            kind=kind,
+            sql=_SEARCH_SQL,
+        )
+
+        if mode == "ranked":
+            sql += " ORDER BY rank, c.book_id, c.position"
+        elif mode == "first":
+            sql += " ORDER BY c.book_id, c.position, rank"
+        elif mode == "last":
+            sql += " ORDER BY c.book_id DESC, c.position DESC, rank"
+        else:
+            raise ValueError("mode must be one of: ranked, first, last")
+
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+
+        return sql, params
+
+    def search_count(
+        self,
+        query: str,
+        *,
+        author: str | None = None,
+        title: str | None = None,
+        language: str | None = None,
+        subject: str | None = None,
+        book_id: int | None = None,
+        kind: str | None = None,
+        div_path: str | None = None,
+    ) -> int:
+        """Return the total number of search hits before any CLI display limit."""
+        if div_path is None:
+            sql, params = self._search_sql_parts(
+                query,
+                author=author,
+                title=title,
+                language=language,
+                subject=subject,
+                book_id=book_id,
+                kind=kind,
+                sql=_SEARCH_COUNT_SQL,
+            )
+            row = self._conn.execute(sql, params).fetchone()
+            return int(row["count"]) if row is not None else 0
+
+        sql, params = self._search_sql_parts(
+            query,
+            author=author,
+            title=title,
+            language=language,
+            subject=subject,
+            book_id=book_id,
+            kind=kind,
+            sql=_SEARCH_DIV_PATH_SQL,
+        )
+        rows = self._conn.execute(sql, params).fetchall()
+        div_parts = _normalized_div_parts(div_path)
+        assert div_parts is not None
+
+        count = 0
+        for row in rows:
+            if _div_parts_match(div_parts, _row_div_parts(row)):
+                count += 1
+        return count
+
+    def search_page(
+        self,
+        query: str,
+        *,
+        author: str | None = None,
+        title: str | None = None,
+        language: str | None = None,
+        subject: str | None = None,
+        book_id: int | None = None,
+        kind: str | None = None,
+        div_path: str | None = None,
+        mode: Literal["ranked", "first", "last"] = "ranked",
+        limit: int = 20,
+    ) -> SearchPage:
+        """Return one CLI search page plus an exact total-hit count."""
+        page_limit = max(0, limit)
+        if div_path is None:
+            fetch_limit = page_limit + 1
+            sql, params = self._search_sql(
+                query,
+                author=author,
+                title=title,
+                language=language,
+                subject=subject,
+                book_id=book_id,
+                kind=kind,
+                mode=mode,
+                limit=fetch_limit,
+            )
+            rows = self._conn.execute(sql, params).fetchall()
+            page_rows = rows[:page_limit]
+            total_results = len(page_rows)
+            if len(rows) > page_limit:
+                total_results = self.search_count(
+                    query,
+                    author=author,
+                    title=title,
+                    language=language,
+                    subject=subject,
+                    book_id=book_id,
+                    kind=kind,
+                )
+            return SearchPage(
+                items=[_row_to_search_result(row) for row in page_rows],
+                total_results=total_results,
+            )
+
+        sql, params = self._search_sql(
+            query,
+            author=author,
+            title=title,
+            language=language,
+            subject=subject,
+            book_id=book_id,
+            kind=kind,
+            mode=mode,
+        )
+        rows = self._conn.execute(sql, params).fetchall()
+        div_parts = _normalized_div_parts(div_path)
+        assert div_parts is not None
+
+        items: list[SearchResult] = []
+        total_results = 0
+        for row in rows:
+            if not _div_parts_match(div_parts, _row_div_parts(row)):
+                continue
+            total_results += 1
+            if len(items) < page_limit:
+                items.append(_row_to_search_result(row))
+        return SearchPage(items=items, total_results=total_results)
+
     def search(
         self,
         query: str,
@@ -428,76 +681,28 @@ class Database:
         path-prefix matching as :meth:`chunks_by_div` (normalized, with
         word-boundary prefix on the deepest segment).
         """
-        sql = _SEARCH_SQL
-        params: list[object] = [query]
-
-        like_filters = {
-            "b.authors": author,
-            "b.title": title,
-            "b.language": language,
-            "b.subjects": subject,
-        }
-        for column, value in like_filters.items():
-            if value is not None:
-                sql += f" AND {column} LIKE ?"
-                params.append(f"%{value}%")
-        if book_id is not None:
-            sql += " AND c.book_id = ?"
-            params.append(book_id)
-        if kind is not None:
-            sql += " AND c.kind = ?"
-            params.append(kind)
-
-        if mode == "ranked":
-            sql += " ORDER BY rank, c.book_id, c.position"
-        elif mode == "first":
-            sql += " ORDER BY c.book_id, c.position, rank"
-        elif mode == "last":
-            sql += " ORDER BY c.book_id DESC, c.position DESC, rank"
-        else:
-            raise ValueError("mode must be one of: ranked, first, last")
-
-        # When post-filtering by div_path, skip the SQL LIMIT so we don't
-        # under-fetch, then apply the limit in Python after filtering.
-        if div_path is None:
-            sql += " LIMIT ?"
-            params.append(limit)
+        sql_limit = None if div_path is not None else limit
+        sql, params = self._search_sql(
+            query,
+            author=author,
+            title=title,
+            language=language,
+            subject=subject,
+            book_id=book_id,
+            kind=kind,
+            mode=mode,
+            limit=sql_limit,
+        )
 
         rows = self._conn.execute(sql, params).fetchall()
 
-        div_parts: list[str] | None = None
-        if div_path is not None:
-            div_parts = [_normalize_div_segment(p) for p in div_path.split("/") if p.strip()]
+        div_parts = _normalized_div_parts(div_path)
 
         out: list[SearchResult] = []
         for row in rows:
-            if div_parts is not None:
-                row_parts = [
-                    _normalize_div_segment(d)
-                    for d in [row["div1"], row["div2"], row["div3"], row["div4"]]
-                    if d
-                ]
-                if not _div_parts_match(div_parts, row_parts):
-                    continue
-            out.append(
-                SearchResult(
-                    chunk_id=row["id"],
-                    book_id=row["book_id"],
-                    title=row["title"],
-                    authors=row["authors"],
-                    language=row["language"],
-                    subjects=row["subjects"],
-                    div1=row["div1"],
-                    div2=row["div2"],
-                    div3=row["div3"],
-                    div4=row["div4"],
-                    position=row["position"],
-                    content=row["content"],
-                    kind=row["kind"],
-                    char_count=row["char_count"],
-                    score=-row["rank"],
-                )
-            )
+            if div_parts is not None and not _div_parts_match(div_parts, _row_div_parts(row)):
+                continue
+            out.append(_row_to_search_result(row))
             if len(out) >= limit:
                 break
         return out

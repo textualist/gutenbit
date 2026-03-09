@@ -914,11 +914,15 @@ class TestCLICommands:
     def test_cli_toc_default(self, db_path: str):
         result = _run_cli("toc", "46", db=db_path)
         assert result.returncode == 0
+        assert "Overview" in result.stdout
         assert "A Christmas Carol" in result.stdout
         assert "STAVE" in result.stdout
-        assert "Sections" in result.stdout
         assert "Section" in result.stdout
-        assert "Position" not in result.stdout
+        assert "Position" in result.stdout
+        assert (
+            "5 sections · 710 paragraphs · 31,271 words · 156,357 chars · 2h 5m read"
+            in result.stdout
+        )
         assert "gutenbit view 46 --section 1 --forward 20" in result.stdout
 
     def test_cli_view_section_header(self, db_path: str):
@@ -952,7 +956,8 @@ class TestCLICommands:
         result = _run_cli("search", "Scrooge", "--book", "46", db=db_path)
         assert result.returncode == 0
         assert "Scrooge" in result.stdout
-        assert "result(s)" in result.stdout
+        assert "total_results=305  shown_results=10" in result.stdout
+        assert "305 results · 10 shown · ranked order" in result.stdout
 
     def test_cli_search_section(self, db_path: str):
         result = _run_cli("search", "Marley", "--section", "STAVE ONE", "--book", "46", db=db_path)
