@@ -918,7 +918,8 @@ class TestCLICommands:
         assert "STAVE" in result.stdout
         assert "Sections" in result.stdout
         assert "Section" in result.stdout
-        assert "Position" in result.stdout
+        assert "Position" not in result.stdout
+        assert "gutenbit view 46 --section 1 --forward 20" in result.stdout
 
     def test_cli_view_section_header(self, db_path: str):
         result = _run_cli("view", "46", "--section", "STAVE ONE", "--forward", "1", db=db_path)

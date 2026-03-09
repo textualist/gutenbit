@@ -693,6 +693,14 @@ def test_view_default_skips_preface_when_main_section_exists(tmp_path):
     assert "PREFACE" not in out
     assert "Preface paragraph." not in out
 
+    toc_code, toc_out, _toc_err = _run_cli(db_path, "toc", "11", "--json")
+    assert toc_code == 0
+    toc_payload = json.loads(toc_out)
+    assert (
+        toc_payload["data"]["toc"]["quick_actions"]["view_first_section"]
+        == "gutenbit view 11 --section 2 --forward 20"
+    )
+
 
 def test_toc_default_shows_structure(tmp_path):
     db = _make_db(tmp_path)
@@ -705,13 +713,14 @@ def test_toc_default_shows_structure(tmp_path):
     assert "CHAPTER 1" in out
     assert "Sections" in out
     assert "Section #" in out
-    assert "Section" in out and "Position" in out
+    assert "Section" in out
     assert "Paras" in out
     assert "Chars" in out
     assert "Est words" in out
     assert "Est read" in out
     assert "Opening" in out
-    assert "--position" in out
+    assert "gutenbit view 1 --section 1 --forward 20" in out
+    assert "gutenbit view 1 --all" in out
 
 
 def test_view_default_json(tmp_path):
@@ -770,7 +779,6 @@ def test_toc_default_json(tmp_path):
     assert list(summary["sections"][0].keys()) == [
         "section_number",
         "section",
-        "position",
         "paras",
         "chars",
         "est_words",
@@ -785,10 +793,6 @@ def test_toc_default_json(tmp_path):
         summary["quick_actions"]["view_first_section"]
         == "gutenbit view 1 --section 1 --forward 20"
     )
-    assert summary["quick_actions"]["view_first_position"].startswith(
-        "gutenbit view 1 --position "
-    )
-    assert summary["quick_actions"]["view_from_position"].startswith("gutenbit view 1 --position ")
     assert summary["quick_actions"]["view_all"] == "gutenbit view 1 --all"
 
 
@@ -909,6 +913,7 @@ def test_view_section_with_forward_header(tmp_path):
     assert "author=Melville, Herman" in out
     assert "position=0  forward=1" in out
     assert "CHAPTER 1" in out
+    assert "Call me Ishmael" in out
 
 
 def test_view_section_miss_shows_examples(tmp_path):
@@ -987,7 +992,10 @@ def test_view_section_accepts_punctuation_spacing_variants(tmp_path):
         "1",
     )
     assert code == 0
+    assert "section=BOOK ONE / CHAPTER I.The Beginning" in out
+    assert "section_number=2" in out
     assert "CHAPTER I.The Beginning" in out
+    assert "First paragraph." in out
 
 
 def test_view_section_accepts_section_number(tmp_path):
@@ -997,6 +1005,7 @@ def test_view_section_accepts_section_number(tmp_path):
 
     code, out, _err = _run_cli(db_path, "view", "1", "--section", "2", "--forward", "2")
     assert code == 0
+    assert "CHAPTER 2" in out
     assert "I stuffed a shirt or two" in out
 
 
@@ -1019,6 +1028,17 @@ def test_view_rejects_multiple_selectors(tmp_path):
     code, out, _err = _run_cli(db_path, "view", "1", "--position", "1", "--section", "CHAPTER 1")
     assert code == 1
     assert "Choose at most one selector" in out
+
+
+def test_view_rejects_section_path_with_too_many_segments(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--section", "a/b/c/d/e")
+    assert code == 1
+    assert "Invalid section selector" in out
+    assert "max 4" in out
 
 
 def test_search_rejects_negative_limit(tmp_path):
@@ -1328,14 +1348,20 @@ def test_ingest_reprocesses_stale_chunker_version(tmp_path, monkeypatch):
         type="Text",
     )
     monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
-    monkeypatch.setattr(Database, "has_current_text", lambda _self, _book_id: False)
     monkeypatch.setattr(Database, "has_text", lambda _self, _book_id: True)
 
     ingested_ids: list[int] = []
+    current_ids: set[int] = set()
+
+    def _has_current(_self, book_id):
+        return book_id in current_ids
 
     def _capture_ingest(_self, books, *, delay=1.0):
-        ingested_ids.extend(book.id for book in books)
+        for book in books:
+            ingested_ids.append(book.id)
+            current_ids.add(book.id)
 
+    monkeypatch.setattr(Database, "has_current_text", _has_current)
     monkeypatch.setattr(Database, "ingest", _capture_ingest)
 
     code, out, _err = _run_cli(tmp_path / "stale.db", "add", "889", "--delay", "0")
@@ -1358,14 +1384,20 @@ def test_ingest_remaps_to_canonical_catalog_id(tmp_path, monkeypatch):
     )
     catalog = Catalog([canonical], canonical_id_by_id={100: 100, 101: 100})
     monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: catalog))
-    monkeypatch.setattr(Database, "has_current_text", lambda _self, _book_id: False)
     monkeypatch.setattr(Database, "has_text", lambda _self, _book_id: False)
 
     ingested_ids: list[int] = []
+    current_ids: set[int] = set()
+
+    def _has_current(_self, book_id):
+        return book_id in current_ids
 
     def _capture_ingest(_self, books, *, delay=1.0):
-        ingested_ids.extend(book.id for book in books)
+        for book in books:
+            ingested_ids.append(book.id)
+            current_ids.add(book.id)
 
+    monkeypatch.setattr(Database, "has_current_text", _has_current)
     monkeypatch.setattr(Database, "ingest", _capture_ingest)
 
     code, out, _err = _run_cli(tmp_path / "canonical.db", "add", "101", "--delay", "0")
@@ -1407,6 +1439,17 @@ def test_search_radius_rejected_with_count(tmp_path):
     code, out, _err = _run_cli(db_path, "search", "Ishmael", "--count", "--radius", "1")
     assert code == 1
     assert "--radius cannot be used with --count." in out
+
+
+def test_search_rejects_section_path_with_too_many_segments(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--section", "a/b/c/d/e")
+    assert code == 1
+    assert "Invalid section selector" in out
+    assert "max 4" in out
 
 
 def test_view_negative_radius_rejected(tmp_path):
@@ -1699,6 +1742,38 @@ def test_add_json_failure_reports_failed_and_stays_parseable(tmp_path, monkeypat
     assert "Failed to add 555: Broken Download" in payload["errors"]
 
 
+def test_add_non_json_failure_returns_exit_1(tmp_path, monkeypatch):
+    record = BookRecord(
+        id=555,
+        title="Broken Download",
+        authors="Example, Author",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
+
+    def _boom(_book_id):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("gutenbit.db.download_html", _boom)
+
+    code, out, _err = _run_cli(
+        tmp_path / "broken.db",
+        "add",
+        "555",
+        "--delay",
+        "0",
+    )
+    assert code == 1
+    assert "adding 555: Broken Download" in out
+    assert "failed 555: Broken Download" in out
+    assert "Completed with 1 failure(s)." in out
+
+
 def test_delete_json_output(tmp_path):
     db = _make_db(tmp_path)
     db_path = db.path
@@ -1741,7 +1816,8 @@ def test_view_section_json_output(tmp_path):
     assert data["forward"] == 1
     assert data["radius"] is None
     assert data["all"] is None
-    assert data["content"] == "CHAPTER 1"
+    assert data["content"].startswith("CHAPTER 1")
+    assert "Call me Ishmael" in data["content"]
 
 
 def test_view_position_json_radius_output(tmp_path):
