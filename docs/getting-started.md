@@ -68,7 +68,14 @@ Read from an exact chunk position:
 gutenbit view 1342 --position 50 -n 5
 ```
 
-The `-n` flag controls how many chunks to return. Use `-n 0` for all chunks in scope.
+Read a centered window around a position or section start:
+
+```bash
+gutenbit view 1342 --position 50 -r 2
+gutenbit view 1342 --section 1 -r 2
+```
+
+Use `-n` for forward slices and `-r` for symmetric windows. `-n 0` returns all chunks in scope.
 
 ### Search
 
@@ -88,6 +95,12 @@ Search for an exact phrase:
 
 ```bash
 gutenbit search "truth universally acknowledged" --phrase
+```
+
+Search with nearby chunk context:
+
+```bash
+gutenbit search "truth universally acknowledged" --book-id 1342 -n 3 -r 1
 ```
 
 All commands accept `--json` for machine-readable output.

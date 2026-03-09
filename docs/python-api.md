@@ -198,6 +198,8 @@ window = db.chunk_window(1342, position=50, around=3)
 # Returns chunks at positions 47, 48, 49, 50, 51, 52, 53
 ```
 
+The CLI `view -r/--radius` and `search -r/--radius` options use this same centered-window concept.
+
 **By section path:**
 
 ```python

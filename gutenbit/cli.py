@@ -313,6 +313,7 @@ def _chunk_payload(
     preview_chars: int,
     rank: int | None = None,
     score: float | None = None,
+    role: str | None = None,
 ) -> dict[str, Any]:
     content = row.content if full else _preview(row.content, preview_chars)
     payload = {
@@ -331,6 +332,8 @@ def _chunk_payload(
         payload["rank"] = rank
     if score is not None:
         payload["score"] = round(score, 4)
+    if role is not None:
+        payload["role"] = role
     return payload
 
 
@@ -340,9 +343,11 @@ def _search_result_payload(
     full: bool,
     preview_chars: int,
     rank: int,
+    chunks: list[dict[str, Any]] | None = None,
+    center_index: int | None = None,
 ) -> dict[str, Any]:
     content = result.content if full else _preview(result.content, preview_chars)
-    return {
+    payload = {
         "rank": rank,
         "book_id": result.book_id,
         "position": result.position,
@@ -359,6 +364,86 @@ def _search_result_payload(
         "content": content,
         "is_preview": not full,
     }
+    if chunks is not None:
+        payload["chunks"] = chunks
+    if center_index is not None:
+        payload["center_index"] = center_index
+    return payload
+
+
+def _chunk_window_payload(
+    rows: list[ChunkRecord],
+    *,
+    center_position: int,
+    full: bool,
+    preview_chars: int,
+) -> tuple[list[dict[str, Any]], int]:
+    chunks: list[dict[str, Any]] = []
+    center_index = -1
+    for idx, row in enumerate(rows):
+        if row.position < center_position:
+            role = "before"
+        elif row.position > center_position:
+            role = "after"
+        else:
+            role = "center"
+            center_index = idx
+        chunks.append(
+            _chunk_payload(
+                row,
+                full=full,
+                preview_chars=preview_chars,
+                role=role,
+            )
+        )
+    return chunks, center_index
+
+
+def _print_chunk_window(
+    rows: list[ChunkRecord],
+    *,
+    center_position: int,
+    full: bool,
+    preview_chars: int,
+    title: str = "",
+    show_meta: bool = False,
+) -> None:
+    chunks, center_index = _chunk_window_payload(
+        rows,
+        center_position=center_position,
+        full=full,
+        preview_chars=preview_chars,
+    )
+    _print_chunk_payload_window(
+        chunks,
+        center_index=center_index,
+        title=title,
+        show_meta=show_meta,
+    )
+
+
+def _print_chunk_payload_window(
+    chunks: list[dict[str, Any]],
+    *,
+    center_index: int,
+    title: str = "",
+    show_meta: bool = False,
+) -> None:
+    if title:
+        print(title)
+    for idx, chunk in enumerate(chunks, start=1):
+        role = str(chunk["role"])
+        if show_meta:
+            print(
+                f"\n{idx:>2}. role={role}  position={chunk['position']}  "
+                f"kind={chunk['kind']}  chars={chunk['char_count']}"
+            )
+            print(f"    section={chunk['section']}")
+            print(f"    {chunk['content']}")
+            continue
+        marker = "center" if idx - 1 == center_index else role
+        print(f"\n[{marker}] {chunk['content']}")
+    print(f"\n{len(chunks)} chunk(s)")
 
 
 def _print_key_value_table(
@@ -614,6 +699,7 @@ examples:
   gutenbit search "door" --mode first                       # reading order (earliest)
   gutenbit search "door" --mode last                        # reverse reading order
   gutenbit search "freedom" --kind text -n 5                # filter by chunk kind
+  gutenbit search "ghost" -n 5 -r 2                         # include neighboring chunks
   gutenbit search "ghost" --full -n 3                       # full chunk text
   gutenbit search "battle" --count                          # just show match count
   gutenbit search "battle" --json                           # JSON output
@@ -680,6 +766,13 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
         help="max results (default: ranked=20, first/last=1; 0=default)",
     )
     se.add_argument(
+        "-r",
+        "--radius",
+        type=int,
+        default=None,
+        help="neighboring chunks on each side of each hit (default: none)",
+    )
+    se.add_argument(
         "--count",
         action="store_true",
         help="just print the number of matching chunks",
@@ -725,8 +818,8 @@ section numbers in this output can be passed to:
         description=(
             "Read from the first structural section by default, or focus from an exact position "
             "or section selector. Section selectors accept path text or a section "
-            "number from `gutenbit toc <book_id>`. Use -n consistently to control "
-            "how much text to return."
+            "number from `gutenbit toc <book_id>`. Use -n for forward slices "
+            "or -r/--radius for centered windows."
         ),
         epilog="""\
 examples:
@@ -735,8 +828,10 @@ examples:
   gutenbit view 2600 -n 0                            # full reconstructed text
   gutenbit view 2600 --section 3                     # first chunk in section 3
   gutenbit view 2600 --section 3 -n 20               # first 20 chunks in section 3
+  gutenbit view 2600 --section 3 -r 2                # centered window around section start
   gutenbit view 2600 --position 12345                # chunk at position 12345
   gutenbit view 2600 --position 12345 -n 20          # continue reading from position
+  gutenbit view 2600 --position 12345 -r 2           # centered window around position
   gutenbit view 2600 --position 12345 --preview --chars 120
   gutenbit view 2600 --section "BOOK I/CHAPTER I" -n 10 --json
   gutenbit view 2600 --section 3 -n 10 --meta        # include metadata headers
@@ -753,7 +848,7 @@ section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowes
         action="store_true",
         help="output as JSON",
     )
-    vw.add_argument("--position", type=int, help="retrieve chunks starting at this position")
+    vw.add_argument("--position", type=int, help="select the chunk at this exact position")
     vw.add_argument(
         "--section",
         help=(
@@ -779,6 +874,13 @@ section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowes
             "chunks to return (default: opening=3, section/position=1); "
             "0 means all in selected scope"
         ),
+    )
+    vw.add_argument(
+        "-r",
+        "--radius",
+        type=int,
+        default=None,
+        help="neighboring chunks on each side of the selected center chunk",
     )
     vw.add_argument(
         "--chars",
@@ -1067,8 +1169,16 @@ def _cmd_search(args: argparse.Namespace) -> int:
     as_json = getattr(args, "json", False)
     if args.limit < 0:
         return _command_error("search", "--limit must be >= 0.", as_json=as_json)
+    if args.radius is not None and args.radius < 0:
+        return _command_error("search", "--radius must be >= 0.", as_json=as_json)
     if args.preview_chars <= 0:
         return _command_error("search", "--preview-chars must be > 0.", as_json=as_json)
+    if args.count and args.radius is not None:
+        return _command_error(
+            "search",
+            "--radius cannot be used with --count.",
+            as_json=as_json,
+        )
 
     query_text = args.query.strip()
     if not query_text:
@@ -1088,6 +1198,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
 
     kind = args.kind
     preview_chars = args.preview_chars
+    radius = args.radius
 
     # Resolve --section: accept a section number (from 'toc') or path prefix.
     div_path: str | None = None
@@ -1172,9 +1283,22 @@ def _cmd_search(args: argparse.Namespace) -> int:
                     },
                     "mode": args.mode,
                     "limit": limit,
+                    **({"radius": radius} if radius is not None else {}),
                 },
                 warnings=warnings,
             )
+
+        result_windows: list[tuple[list[dict[str, Any]], int]] = []
+        if radius is not None:
+            for result in results:
+                rows = db.chunk_window(result.book_id, result.position, around=radius)
+                chunks, center_index = _chunk_window_payload(
+                    rows,
+                    center_position=result.position,
+                    full=args.full,
+                    preview_chars=preview_chars,
+                )
+                result_windows.append((chunks, center_index))
 
     # --count: just print the total.
     if args.count:
@@ -1204,37 +1328,42 @@ def _cmd_search(args: argparse.Namespace) -> int:
         return 0
 
     if as_json:
+        data = {
+            "query": {
+                "raw": args.query,
+                "fts": search_query,
+                "mode": query_mode,
+            },
+            "filters": {
+                "author": args.author,
+                "title": args.title,
+                "book_id": args.book_id,
+                "section": section_arg,
+                "kind": kind,
+            },
+            "mode": args.mode,
+            "limit": limit,
+            "full": bool(args.full),
+            "preview_chars": preview_chars,
+            "count": len(results),
+            "items": [
+                _search_result_payload(
+                    r,
+                    full=args.full,
+                    preview_chars=preview_chars,
+                    rank=idx,
+                    chunks=result_windows[idx - 1][0] if radius is not None else None,
+                    center_index=result_windows[idx - 1][1] if radius is not None else None,
+                )
+                for idx, r in enumerate(results, start=1)
+            ],
+        }
+        if radius is not None:
+            data["radius"] = radius
         _print_json_envelope(
             "search",
             ok=True,
-            data={
-                "query": {
-                    "raw": args.query,
-                    "fts": search_query,
-                    "mode": query_mode,
-                },
-                "filters": {
-                    "author": args.author,
-                    "title": args.title,
-                    "book_id": args.book_id,
-                    "section": section_arg,
-                    "kind": kind,
-                },
-                "mode": args.mode,
-                "limit": limit,
-                "full": bool(args.full),
-                "preview_chars": preview_chars,
-                "count": len(results),
-                "items": [
-                    _search_result_payload(
-                        r,
-                        full=args.full,
-                        preview_chars=preview_chars,
-                        rank=idx,
-                    )
-                    for idx, r in enumerate(results, start=1)
-                ],
-            },
+            data=data,
             warnings=warnings,
         )
         return 0
@@ -1246,11 +1375,17 @@ def _cmd_search(args: argparse.Namespace) -> int:
     print(f"query={args.query!r}  mode={args.mode}  shown={len(results)}")
     for idx, r in enumerate(results, start=1):
         section = _section_path(r.div1, r.div2, r.div3, r.div4)
-        body = r.content if args.full else _preview(r.content, preview_chars)
         print(f"\n{idx:>2}. book={r.book_id} position={r.position}  title={_single_line(r.title)}")
         print(f"    section={section}")
         print(f"    score={r.score:.2f}  kind={r.kind}  chars={r.char_count}")
-        print(f"    {body}")
+        if radius is None:
+            body = r.content if args.full else _preview(r.content, preview_chars)
+            print(f"    {body}")
+        else:
+            _print_chunk_payload_window(
+                result_windows[idx - 1][0],
+                center_index=result_windows[idx - 1][1],
+            )
         print()
     print(f"{len(results)} result(s)")
     return 0
@@ -1627,6 +1762,8 @@ def _cmd_view(args: argparse.Namespace) -> int:
         )
     if args.n is not None and args.n < 0:
         return _command_error("view", "-n must be >= 0.", as_json=as_json)
+    if args.radius is not None and args.radius < 0:
+        return _command_error("view", "--radius must be >= 0.", as_json=as_json)
     if args.preview and (args.position is None and args.section is None):
         return _command_error(
             "view",
@@ -1641,17 +1778,38 @@ def _cmd_view(args: argparse.Namespace) -> int:
         )
     if args.chars <= 0:
         return _command_error("view", "--chars must be > 0.", as_json=as_json)
+    if args.radius is not None and args.n is not None:
+        return _command_error(
+            "view",
+            (
+                "Choose one retrieval shape: -n for forward chunks "
+                "or -r/--radius for a centered window."
+            ),
+            as_json=as_json,
+        )
+    if args.radius is not None and selected == 0:
+        return _command_error(
+            "view",
+            "--radius requires --position or --section.",
+            as_json=as_json,
+        )
 
     def _effective_n(default: int) -> int:
         return args.n if args.n is not None else default
 
+    def _view_request_shape() -> dict[str, int]:
+        if args.radius is not None:
+            return {"radius": args.radius}
+        return {"n": _effective_n(DEFAULT_VIEW_SELECTOR_N)}
+
     full = not args.preview
     preview_chars = args.chars
+    radius = args.radius
     with Database(args.db) as db:
         if args.position is not None:
-            n = _effective_n(DEFAULT_VIEW_SELECTOR_N)
             anchor = db.chunk_by_position(args.book_id, args.position)
             if anchor is None:
+                n = _effective_n(DEFAULT_VIEW_SELECTOR_N)
                 return _command_error(
                     "view",
                     f"No chunk found at position {args.position} in book {args.book_id}.",
@@ -1660,50 +1818,82 @@ def _cmd_view(args: argparse.Namespace) -> int:
                         "book_id": args.book_id,
                         "mode": "position",
                         "position": args.position,
-                        "n": n,
+                        **_view_request_shape(),
                     },
                 )
-            rows = [row for row in db.chunk_records(args.book_id) if row.position >= args.position]
-            if n > 0:
-                rows = rows[:n]
+            if radius is not None:
+                rows = db.chunk_window(args.book_id, args.position, around=radius)
+                chunks, center_index = _chunk_window_payload(
+                    rows,
+                    center_position=args.position,
+                    full=full,
+                    preview_chars=preview_chars,
+                )
+            else:
+                n = _effective_n(DEFAULT_VIEW_SELECTOR_N)
+                rows = [
+                    row
+                    for row in db.chunk_records(args.book_id)
+                    if row.position >= args.position
+                ]
+                if n > 0:
+                    rows = rows[:n]
             if as_json:
-                _print_json_envelope(
-                    "view",
-                    ok=True,
-                    data={
-                        "book_id": args.book_id,
-                        "mode": "position",
-                        "position": args.position,
-                        "n": n,
-                        "full": full,
-                        "chars": preview_chars,
-                        "count": len(rows),
-                        "chunks": _chunk_rows_json_payload(
-                            rows,
-                            full=full,
-                            preview_chars=preview_chars,
-                        ),
-                    },
-                )
+                data = {
+                    "book_id": args.book_id,
+                    "mode": "position",
+                    "position": args.position,
+                    "full": full,
+                    "chars": preview_chars,
+                    "count": len(rows),
+                }
+                if radius is not None:
+                    data["radius"] = radius
+                    data["center_index"] = center_index
+                    data["chunks"] = chunks
+                else:
+                    data["n"] = n
+                    data["chunks"] = _chunk_rows_json_payload(
+                        rows,
+                        full=full,
+                        preview_chars=preview_chars,
+                    )
+                _print_json_envelope("view", ok=True, data=data)
                 return 0
-            _print_chunk_blocks(
-                rows,
-                full=full,
-                preview_chars=preview_chars,
-                title=(f"book={args.book_id}  position={args.position}  n={n}"),
-                show_meta=bool(args.meta),
-            )
+            if radius is not None:
+                _print_chunk_window(
+                    rows,
+                    center_position=args.position,
+                    full=full,
+                    preview_chars=preview_chars,
+                    title=(
+                        f"book={args.book_id}  position={args.position}  radius={radius}"
+                    ),
+                    show_meta=bool(args.meta),
+                )
+            else:
+                _print_chunk_blocks(
+                    rows,
+                    full=full,
+                    preview_chars=preview_chars,
+                    title=(f"book={args.book_id}  position={args.position}  n={n}"),
+                    show_meta=bool(args.meta),
+                )
             return 0
 
         if args.section is not None:
-            n = _effective_n(DEFAULT_VIEW_SELECTOR_N)
             section_query = args.section.strip()
+            n = _effective_n(DEFAULT_VIEW_SELECTOR_N)
             if not section_query:
                 return _command_error(
                     "view",
                     "--section must not be empty.",
                     as_json=as_json,
-                    data={"book_id": args.book_id, "mode": "section", "n": n},
+                    data={
+                        "book_id": args.book_id,
+                        "mode": "section",
+                        **_view_request_shape(),
+                    },
                 )
 
             section_number: int | None = None
@@ -1719,7 +1909,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                             "book_id": args.book_id,
                             "mode": "section",
                             "section": section_query,
-                            "n": n,
+                            **_view_request_shape(),
                         },
                     )
                 summary = _build_section_summary(db, args.book_id)
@@ -1733,7 +1923,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                             "mode": "section",
                             "section": section_query,
                             "section_number": section_number,
-                            "n": n,
+                            **_view_request_shape(),
                         },
                     )
                 raw_sections = summary["sections"]
@@ -1756,7 +1946,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                                 "max_section_number": len(raw_sections),
                                 "available_sections": examples,
                                 "tip": f"gutenbit toc {args.book_id}",
-                                "n": n,
+                                **_view_request_shape(),
                             },
                         )
                     print(message)
@@ -1781,7 +1971,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                             "section": section_query,
                             "section_number": section_number,
                             "tip": f"gutenbit toc {args.book_id}",
-                            "n": n,
+                            **_view_request_shape(),
                         },
                     )
                 resolved_section = selected_section["section"].strip()
@@ -1799,13 +1989,11 @@ def _cmd_view(args: argparse.Namespace) -> int:
                             "section": section_query,
                             "section_number": section_number,
                             "tip": f"gutenbit toc {args.book_id}",
-                            "n": n,
+                            **_view_request_shape(),
                         },
                     )
 
             rows = db.chunks_by_div(args.book_id, resolved_section, limit=0)
-            if n > 0:
-                rows = rows[:n]
             if not rows:
                 examples = _section_examples(db, args.book_id)
                 message = (
@@ -1822,7 +2010,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                             "section": resolved_section,
                             "section_query": section_query,
                             "section_number": section_number,
-                            "n": n,
+                            **_view_request_shape(),
                             "available_sections": examples,
                             "tip": f"gutenbit toc {args.book_id}",
                         },
@@ -1834,38 +2022,62 @@ def _cmd_view(args: argparse.Namespace) -> int:
                         print(f"  {section}")
                 print(f"Tip: run `gutenbit toc {args.book_id}` to list all sections.")
                 return 1
-            if as_json:
-                _print_json_envelope(
-                    "view",
-                    ok=True,
-                    data={
-                        "book_id": args.book_id,
-                        "mode": "section",
-                        "section": resolved_section,
-                        "section_query": section_query,
-                        "section_number": section_number,
-                        "n": n,
-                        "full": full,
-                        "chars": preview_chars,
-                        "count": len(rows),
-                        "chunks": _chunk_rows_json_payload(
-                            rows,
-                            full=full,
-                            preview_chars=preview_chars,
-                        ),
-                    },
+            if radius is not None:
+                center_position = rows[0].position
+                rows = db.chunk_window(args.book_id, center_position, around=radius)
+                chunks, center_index = _chunk_window_payload(
+                    rows,
+                    center_position=center_position,
+                    full=full,
+                    preview_chars=preview_chars,
                 )
+            else:
+                if n > 0:
+                    rows = rows[:n]
+            if as_json:
+                data = {
+                    "book_id": args.book_id,
+                    "mode": "section",
+                    "section": resolved_section,
+                    "section_query": section_query,
+                    "section_number": section_number,
+                    "full": full,
+                    "chars": preview_chars,
+                    "count": len(rows),
+                }
+                if radius is not None:
+                    data["radius"] = radius
+                    data["center_index"] = center_index
+                    data["chunks"] = chunks
+                else:
+                    data["n"] = n
+                    data["chunks"] = _chunk_rows_json_payload(
+                        rows,
+                        full=full,
+                        preview_chars=preview_chars,
+                    )
+                _print_json_envelope("view", ok=True, data=data)
                 return 0
             section_title = (
                 section_query if resolved_section == section_query else resolved_section
             )
-            _print_chunk_blocks(
-                rows,
-                full=full,
-                preview_chars=preview_chars,
-                title=f"book={args.book_id}  section={section_title!r}",
-                show_meta=bool(args.meta),
-            )
+            if radius is not None:
+                _print_chunk_window(
+                    rows,
+                    center_position=rows[center_index].position,
+                    full=full,
+                    preview_chars=preview_chars,
+                    title=f"book={args.book_id}  section={section_title!r}  radius={radius}",
+                    show_meta=bool(args.meta),
+                )
+            else:
+                _print_chunk_blocks(
+                    rows,
+                    full=full,
+                    preview_chars=preview_chars,
+                    title=f"book={args.book_id}  section={section_title!r}",
+                    show_meta=bool(args.meta),
+                )
             return 0
 
         n = _effective_n(DEFAULT_OPENING_CHUNK_COUNT)
