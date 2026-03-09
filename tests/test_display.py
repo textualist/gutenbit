@@ -4,6 +4,7 @@ from io import StringIO
 from gutenbit.cli import _build_section_summary, _passage_payload
 from gutenbit.display import (
     CliDisplay,
+    _toc_rows,
     format_search_footer_stats,
     format_search_summary_count,
     format_summary_stats,
@@ -27,6 +28,14 @@ def test_format_summary_stats_uses_consistent_ordering():
     ]
 
 
+def test_format_summary_stats_uses_dash_for_zero_words_and_read():
+    assert format_summary_stats(paragraphs=0, words=0, read="n/a") == [
+        "0 paragraphs",
+        "- words",
+        "- read",
+    ]
+
+
 def test_format_search_stats_show_total_and_shown_when_limited():
     assert format_search_summary_count(shown_results=10, total_results=237) == "10 shown"
     assert format_search_footer_stats(
@@ -40,10 +49,29 @@ def test_format_search_stats_show_total_and_shown_when_limited():
     ]
 
 
+def test_toc_rows_use_dash_for_empty_section_metrics():
+    rows = _toc_rows(
+        [
+            {
+                "section_number": 1,
+                "section": "PART ONE",
+                "position": 0,
+                "est_words": 0,
+                "est_read": "n/a",
+                "opening_line": "",
+            }
+        ]
+    )
+
+    assert rows[0].words == "-"
+    assert rows[0].read == "-"
+    assert rows[0].opening == "-"
+
+
 def test_rich_search_results_use_visual_header(tmp_path):
     _make_db(tmp_path)
     item = _passage_payload(
-        book=1,
+        book_id=1,
         title="Moby Dick",
         author="Melville, Herman",
         section="CHAPTER 1",
@@ -76,7 +104,7 @@ def test_rich_search_results_use_visual_header(tmp_path):
 def test_rich_passage_separates_title_from_metadata(tmp_path):
     _make_db(tmp_path)
     payload = _passage_payload(
-        book=1,
+        book_id=1,
         title="Moby Dick",
         author="Melville, Herman",
         section="CHAPTER 1",
@@ -102,10 +130,34 @@ def test_rich_passage_separates_title_from_metadata(tmp_path):
     assert "View" in rendered
     assert "Moby Dick" in rendered
     assert "title=Moby Dick" not in rendered
-    assert "Book 1 · Section CHAPTER 1 · No. 1 · Position 0 · Forward 3" in rendered
+    assert "Book ID 1 · Section CHAPTER 1 · No. 1 · Position 0 · Forward 3" in rendered
     assert "Forward 3\n\nCHAPTER 1" in rendered
     assert "\nNext\n" in rendered
     assert "gutenbit toc 1" in rendered
+
+
+def test_plain_passage_shows_footer_stats(tmp_path):
+    _make_db(tmp_path)
+    payload = _passage_payload(
+        book_id=1,
+        title="Moby Dick",
+        author="Melville, Herman",
+        section="CHAPTER 1",
+        section_number=1,
+        position=0,
+        forward=1,
+        radius=None,
+        content="CHAPTER 1",
+    )
+    out = StringIO()
+
+    CliDisplay(stdout=out, interactive=False).passage(
+        payload,
+        footer_stats=format_summary_stats(paragraphs=0, words=0, read="n/a"),
+    )
+
+    rendered = out.getvalue()
+    assert "0 paragraphs · - words · - read" in rendered
 
 
 def test_rich_section_summary_uses_simple_section_layout(tmp_path):

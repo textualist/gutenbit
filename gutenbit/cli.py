@@ -19,6 +19,8 @@ DEFAULT_DB = "gutenbit.db"
 JSON_OPENING_LINE_PREVIEW_CHARS = 140
 DEFAULT_OPENING_CHUNK_COUNT = 3
 DEFAULT_VIEW_FORWARD = 1
+JSON_BOOK_ID_KEY = "book_id"
+OPENING_PREVIEW_PARAGRAPH_LIMIT = 4
 OPENING_SECTION_SKIP_HEADINGS = frozenset(
     {
         "preface",
@@ -35,6 +37,28 @@ OPENING_SECTION_SKIP_HEADINGS = frozenset(
         "authors note",
     }
 )
+_TITLE_STYLE_CONNECTORS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "as",
+        "at",
+        "by",
+        "for",
+        "from",
+        "in",
+        "of",
+        "on",
+        "or",
+        "the",
+        "to",
+        "with",
+    }
+)
+_TITLE_STYLE_WORD_RE = re.compile(r"^[A-Za-z]+(?:['\u2019][A-Za-z]+)*$")
+_ROMAN_NUMERAL_RE = re.compile(r"^[IVXLCDM]+$", re.IGNORECASE)
+_SENTENCE_END_RE = re.compile(r'[.!?]["\')\]]*$')
 
 _DISPLAY_CACHE: tuple[int, int, CliDisplay] | None = None
 
@@ -61,7 +85,7 @@ class _SectionState(TypedDict):
     paragraphs: int
     chars: int
     first_position: int
-    opening_line: str
+    opening_candidates: list[str]
 
 
 class _BookSummary(TypedDict):
@@ -154,6 +178,7 @@ def _command_error(
     message: str,
     *,
     as_json: bool,
+    display_message: str | None = None,
     code: int = 1,
     data: dict[str, Any] | list[Any] | None = None,
     warnings: list[str] | None = None,
@@ -161,7 +186,7 @@ def _command_error(
     if as_json:
         _print_json_envelope(command, ok=False, data=data, warnings=warnings, errors=[message])
     else:
-        _display().error(message)
+        _display().error(display_message or message)
     return code
 
 
@@ -170,6 +195,21 @@ def _no_chunks_message(db: Database, book_id: int) -> str:
     if db.book(book_id) is None:
         return f"Book {book_id} is not in the database. Use 'gutenbit add {book_id}' to add it."
     return f"No chunks found for book {book_id}."
+
+
+def _book_id_ref(book_id: int, *, capitalize: bool = True) -> str:
+    prefix = "Book ID" if capitalize else "book ID"
+    return f"{prefix} {book_id}"
+
+
+def _no_chunks_display_message(db: Database, book_id: int) -> str:
+    """Return the human-facing no-chunks message with an explicit book ID label."""
+    if db.book(book_id) is None:
+        return (
+            f"{_book_id_ref(book_id)} is not in the database. "
+            f"Use 'gutenbit add {book_id}' to add it."
+        )
+    return f"No chunks found for {_book_id_ref(book_id, capitalize=False)}."
 
 
 def _preview(text: str, limit: int) -> str:
@@ -182,6 +222,69 @@ def _preview(text: str, limit: int) -> str:
 def _single_line(text: str) -> str:
     """Collapse all whitespace so tabular CLI output stays on one line."""
     return " ".join(text.split())
+
+
+def _opening_preview_tokens(text: str) -> list[str]:
+    tokens: list[str] = []
+    for raw in text.split():
+        token = raw.strip("()[]{}\"'“”‘’,;:-")
+        if not token:
+            continue
+        tokens.append(token)
+    return tokens
+
+
+def _is_title_style_token(token: str) -> bool:
+    if _ROMAN_NUMERAL_RE.fullmatch(token):
+        return True
+    if token.isupper() and any(ch.isalpha() for ch in token):
+        return True
+    if not _TITLE_STYLE_WORD_RE.fullmatch(token):
+        return False
+    lower = token.casefold()
+    if lower in _TITLE_STYLE_CONNECTORS:
+        return True
+    return token[0].isupper() and token[1:] == token[1:].lower()
+
+
+def _looks_like_opening_title_line(text: str) -> bool:
+    flat = _single_line(text).strip()
+    if not flat or _SENTENCE_END_RE.search(flat):
+        return False
+    if "," in flat or ";" in flat:
+        return False
+    tokens = _opening_preview_tokens(flat)
+    if not tokens or len(tokens) > 8:
+        return False
+    return all(_is_title_style_token(token) for token in tokens)
+
+
+def _select_section_opening_line(paragraphs: list[str]) -> str:
+    """Choose a representative opening line for a section preview.
+
+    Keep the first paragraph as the fallback, but skip a short title-like
+    opening block when it is immediately followed by body text.
+    """
+    preview_lines: list[str] = []
+    for text in paragraphs:
+        flat = _single_line(text)
+        if flat:
+            preview_lines.append(flat)
+    if not preview_lines:
+        return ""
+
+    prefix_len = 0
+    while prefix_len < len(preview_lines) and _looks_like_opening_title_line(
+        preview_lines[prefix_len]
+    ):
+        prefix_len += 1
+
+    if prefix_len < len(preview_lines):
+        first_line = preview_lines[0]
+        if prefix_len > 1 or first_line.endswith(":"):
+            return preview_lines[prefix_len]
+
+    return preview_lines[0]
 
 
 def _fts_phrase_query(query: str) -> str:
@@ -222,6 +325,23 @@ def _safe_fts_query(query: str) -> str:
 
 def _format_int(value: int) -> str:
     return f"{value:,}"
+
+
+def _json_search_filters(
+    *,
+    author: str | None,
+    title: str | None,
+    book_id: int | None,
+    kind: str,
+    section: str | None,
+) -> dict[str, Any]:
+    return {
+        "author": author,
+        "title": title,
+        JSON_BOOK_ID_KEY: book_id,
+        "kind": kind,
+        "section": section,
+    }
 
 
 def _section_path(*levels: str) -> str:
@@ -355,7 +475,7 @@ def _indent_block(text: str, prefix: str = "    ") -> str:
 
 def _passage_payload(
     *,
-    book: int,
+    book_id: int,
     title: str,
     author: str,
     section: str | None,
@@ -368,7 +488,7 @@ def _passage_payload(
     extras: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "book": book,
+        JSON_BOOK_ID_KEY: book_id,
         "title": title,
         "author": author,
         "section": section,
@@ -386,7 +506,7 @@ def _passage_payload(
 
 def _passage_header(payload: dict[str, Any]) -> str:
     parts = [
-        f"book={payload['book']}",
+        f"{JSON_BOOK_ID_KEY}={payload[JSON_BOOK_ID_KEY]}",
         f"title={payload['title']}",
     ]
     if payload.get("author"):
@@ -936,7 +1056,11 @@ def _cmd_add(args: argparse.Namespace) -> int:
             warnings.append(warning)
             request_results.append({"requested_id": requested_id, "status": "out_of_policy"})
             if not as_json:
-                display.warning(f"  warning: {warning}")
+                display.warning(
+                    "  warning: "
+                    f"{_book_id_ref(requested_id, capitalize=False)} is outside "
+                    "the English text catalog boundaries, skipping"
+                )
             continue
         title = _single_line(rec.title)
         if rec.id != requested_id and not as_json:
@@ -1109,13 +1233,17 @@ def _cmd_delete(args: argparse.Namespace) -> int:
                 errors.append(message)
                 results.append({"book_id": book_id, "status": "missing"})
                 if not as_json:
-                    display.error(message)
+                    display.error(
+                        f"No book found for {_book_id_ref(book_id, capitalize=False)}."
+                    )
                 any_missing = True
             else:
                 deleted_count += 1
                 results.append({"book_id": book_id, "status": "deleted"})
                 if not as_json:
-                    display.success(f"Deleted book {book_id} from {args.db}.")
+                    display.success(
+                        f"Deleted {_book_id_ref(book_id, capitalize=False)} from {args.db}."
+                    )
     if as_json:
         _print_json_envelope(
             "delete",
@@ -1177,7 +1305,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
             warning = f"Book {args.book} is not in the database."
             warnings.append(warning)
             if not as_json:
-                display.warning(f"warning: {warning}")
+                display.warning(f"warning: {_book_id_ref(args.book)} is not in the database.")
 
         # Resolve section number → div path (requires book_id).
         if section_arg is not None:
@@ -1199,6 +1327,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
                         "search",
                         f"Book {args.book} has no sections.",
                         as_json=as_json,
+                        display_message=f"{_book_id_ref(args.book)} has no sections.",
                     )
                 sections = summary["sections"]
                 if section_number > len(sections):
@@ -1207,6 +1336,11 @@ def _cmd_search(args: argparse.Namespace) -> int:
                         f"Section {section_number} is out of range "
                         f"(book {args.book} has {len(sections)} sections).",
                         as_json=as_json,
+                        display_message=(
+                            f"Section {section_number} is out of range "
+                            f"({_book_id_ref(args.book, capitalize=False)} "
+                            f"has {len(sections)} sections)."
+                        ),
                     )
                 div_path = sections[section_number - 1]["section"]
             else:
@@ -1261,13 +1395,13 @@ def _cmd_search(args: argparse.Namespace) -> int:
                         "fts": search_query,
                         "mode": query_mode,
                     },
-                    "filters": {
-                        "author": args.author,
-                        "title": args.title,
-                        "book": args.book,
-                        "kind": args.kind,
-                        "section": section_arg,
-                    },
+                    "filters": _json_search_filters(
+                        author=args.author,
+                        title=args.title,
+                        book_id=args.book,
+                        kind=args.kind,
+                        section=section_arg,
+                    ),
                     "order": args.mode,
                     "limit": limit,
                     **({"radius": radius} if radius is not None else {}),
@@ -1285,7 +1419,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
                 content = _joined_chunk_text(rows)
             result_items.append(
                 _passage_payload(
-                    book=result.book_id,
+                    book_id=result.book_id,
                     title=_single_line(result.title),
                     author=_single_line(result.authors),
                     section=section,
@@ -1314,13 +1448,13 @@ def _cmd_search(args: argparse.Namespace) -> int:
                         "fts": search_query,
                         "mode": query_mode,
                     },
-                    "filters": {
-                        "author": args.author,
-                        "title": args.title,
-                        "book": args.book,
-                        "kind": args.kind,
-                        "section": section_arg,
-                    },
+                    "filters": _json_search_filters(
+                        author=args.author,
+                        title=args.title,
+                        book_id=args.book,
+                        kind=args.kind,
+                        section=section_arg,
+                    ),
                     "count": total_results,
                 },
                 warnings=warnings,
@@ -1336,13 +1470,13 @@ def _cmd_search(args: argparse.Namespace) -> int:
                 "fts": search_query,
                 "mode": query_mode,
             },
-            "filters": {
-                "author": args.author,
-                "title": args.title,
-                "book": args.book,
-                "kind": args.kind,
-                "section": section_arg,
-            },
+            "filters": _json_search_filters(
+                author=args.author,
+                title=args.title,
+                book_id=args.book,
+                kind=args.kind,
+                section=section_arg,
+            ),
             "order": args.mode,
             "limit": limit,
             "total_results": total_results,
@@ -1407,14 +1541,15 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
                     "paragraphs": 0,
                     "chars": 0,
                     "first_position": rec.position,
-                    "opening_line": "",
+                    "opening_candidates": [],
                 }
             )
         elif rec.kind == "text" and sections:
             sections[-1]["paragraphs"] = int(sections[-1]["paragraphs"]) + 1
             sections[-1]["chars"] = int(sections[-1]["chars"]) + rec.char_count
-            if not sections[-1]["opening_line"]:
-                sections[-1]["opening_line"] = _single_line(rec.content)
+            opening_candidates = sections[-1]["opening_candidates"]
+            if len(opening_candidates) < OPENING_PREVIEW_PARAGRAPH_LIMIT:
+                opening_candidates.append(rec.content)
 
     total_chunks = len(chunk_records)
     total_sections = len(sections)
@@ -1427,6 +1562,7 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
     for idx, sec in enumerate(sections, start=1):
         chars = int(sec["chars"])
         est_words_for_section = round(chars / 5)
+        opening_line = _select_section_opening_line(sec["opening_candidates"])
         section_rows.append(
             {
                 "section_number": idx,
@@ -1440,7 +1576,7 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
                 "chars": chars,
                 "est_words": est_words_for_section,
                 "est_read": _estimate_read_time(est_words_for_section),
-                "opening_line": str(sec["opening_line"]),
+                "opening_line": opening_line,
             }
         )
 
@@ -1523,7 +1659,7 @@ def _section_summary_json_payload(summary: _SectionSummary) -> dict[str, Any]:
 def _render_section_summary(db: Database, book_id: int) -> int:
     summary = _build_section_summary(db, book_id)
     if summary is None:
-        _display().error(_no_chunks_message(db, book_id))
+        _display().error(_no_chunks_display_message(db, book_id))
         return 1
     _display().section_summary(summary)
     return 0
@@ -1566,13 +1702,13 @@ def _cmd_toc(args: argparse.Namespace) -> int:
                     "toc",
                     _no_chunks_message(db, args.book),
                     as_json=True,
-                    data={"book": args.book},
+                    data={JSON_BOOK_ID_KEY: args.book},
                 )
             _print_json_envelope(
                 "toc",
                 ok=True,
                 data={
-                    "book": args.book,
+                    JSON_BOOK_ID_KEY: args.book,
                     "toc": _section_summary_json_payload(summary),
                 },
             )
@@ -1652,7 +1788,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
             extras: dict[str, Any] | None = None,
         ) -> dict[str, Any]:
             return _passage_payload(
-                book=args.book,
+                book_id=args.book,
                 title=title,
                 author=author,
                 section=section,
@@ -1682,6 +1818,10 @@ def _cmd_view(args: argparse.Namespace) -> int:
                     "view",
                     f"No chunk found at position {args.position} in book {args.book}.",
                     as_json=as_json,
+                    display_message=(
+                        f"No chunk found at position {args.position} in "
+                        f"{_book_id_ref(args.book, capitalize=False)}."
+                    ),
                     data=_view_payload(
                         section=None,
                         section_number=None,
@@ -1762,6 +1902,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                         "view",
                         _no_chunks_message(db, args.book),
                         as_json=as_json,
+                        display_message=_no_chunks_display_message(db, args.book),
                         data=_view_payload(
                             section=section_query,
                             section_number=section_number,
@@ -1776,6 +1917,11 @@ def _cmd_view(args: argparse.Namespace) -> int:
                     message = (
                         f"Section {section_number} is out of range for book "
                         f"{args.book} (max {len(raw_sections)})."
+                    )
+                    display_message = (
+                        f"Section {section_number} is out of range for "
+                        f"{_book_id_ref(args.book, capitalize=False)} "
+                        f"(max {len(raw_sections)})."
                     )
                     examples = _section_examples(db, args.book)
                     if as_json:
@@ -1798,7 +1944,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                             ),
                         )
                     display.examples(
-                        message,
+                        display_message,
                         examples=examples,
                         tip=f"gutenbit toc {args.book}",
                     )
@@ -1812,6 +1958,10 @@ def _cmd_view(args: argparse.Namespace) -> int:
                             f"for book {args.book}."
                         ),
                         as_json=as_json,
+                        display_message=(
+                            f"Unable to resolve section number {section_number} "
+                            f"for {_book_id_ref(args.book, capitalize=False)}."
+                        ),
                         data=_view_payload(
                             section=section_query,
                             section_number=section_number,
@@ -1831,6 +1981,10 @@ def _cmd_view(args: argparse.Namespace) -> int:
                             f"for book {args.book}."
                         ),
                         as_json=as_json,
+                        display_message=(
+                            f"Unable to resolve section number {section_number} "
+                            f"for {_book_id_ref(args.book, capitalize=False)}."
+                        ),
                         data=_view_payload(
                             section=section_query,
                             section_number=section_number,
@@ -1870,6 +2024,10 @@ def _cmd_view(args: argparse.Namespace) -> int:
                 message = (
                     f"No chunks found for book {args.book} under section '{section_query}'."
                 )
+                display_message = (
+                    f"No chunks found for {_book_id_ref(args.book, capitalize=False)} "
+                    f"under section '{section_query}'."
+                )
                 if as_json:
                     return _command_error(
                         "view",
@@ -1889,7 +2047,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                         ),
                     )
                 display.examples(
-                    message,
+                    display_message,
                     examples=examples,
                     tip=f"gutenbit toc {args.book}",
                 )
@@ -1932,6 +2090,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                     "view",
                     _no_chunks_message(db, args.book),
                     as_json=as_json,
+                    display_message=_no_chunks_display_message(db, args.book),
                     data=_view_payload(
                         section=first_section["section"] if first_section else None,
                         section_number=(
@@ -1974,6 +2133,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
                 "view",
                 _no_chunks_message(db, args.book),
                 as_json=as_json,
+                display_message=_no_chunks_display_message(db, args.book),
                 data=_view_payload(
                     section=first_section["section"] if first_section else None,
                     section_number=(

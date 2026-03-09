@@ -905,7 +905,7 @@ class TestCLICommands:
     def test_cli_view_default(self, db_path: str):
         result = _run_cli("view", "46", db=db_path)
         assert result.returncode == 0
-        assert "book=46" in result.stdout
+        assert "book_id=46" in result.stdout
         assert "Quick actions" in result.stdout
         assert "gutenbit toc 46" in result.stdout
         assert "gutenbit view 46 --all" in result.stdout
@@ -984,7 +984,7 @@ class TestCLICommands:
     def test_cli_view_all_missing_book(self, db_path: str):
         result = _run_cli("view", "99999", "--all", db=db_path)
         assert result.returncode == 1
-        assert "Book 99999 is not in the database." in result.stdout
+        assert "Book ID 99999 is not in the database." in result.stdout
 
     def test_cli_view_missing_book(self, db_path: str):
         result = _run_cli("view", "99999", db=db_path)
@@ -1009,7 +1009,7 @@ class TestCLIDeleteCommand:
     def test_cli_delete_success(self, db_path: str):
         result = _run_cli("delete", "46", db=db_path)
         assert result.returncode == 0
-        assert "Deleted book 46" in result.stdout
+        assert "Deleted book ID 46" in result.stdout
 
         books = _run_cli("books", db=db_path)
         assert books.returncode == 0
@@ -1031,7 +1031,7 @@ class TestCLIDeleteCommand:
     def test_cli_delete_missing_book(self, db_path: str):
         result = _run_cli("delete", "99999", db=db_path)
         assert result.returncode == 1
-        assert "No book found for id 99999." in result.stdout
+        assert "No book found for book ID 99999." in result.stdout
 
 
 # ===================================================================
