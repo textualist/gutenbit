@@ -28,9 +28,10 @@ with Database("gutenbit.db") as db:
 
 ```bash
 gutenbit catalog --title "Pride and Prejudice"
-gutenbit ingest 1342
+gutenbit add 1342
 gutenbit search "truth universally acknowledged"
-gutenbit view 1342 --section 1 -n 5
+gutenbit view 1342 --section 1 --forward 5
+gutenbit search "truth universally acknowledged" --limit 3 --radius 1
 ```
 
 ## Next steps

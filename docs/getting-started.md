@@ -30,10 +30,10 @@ gutenbit catalog --author "Austen, Jane"
 
 ### Download and store
 
-Pass one or more Project Gutenberg IDs to `ingest`:
+Pass one or more Project Gutenberg IDs to `add`:
 
 ```bash
-gutenbit ingest 1342
+gutenbit add 1342
 ```
 
 The book's HTML is downloaded, parsed into paragraph-level chunks with structural metadata, and stored in a local SQLite database (`gutenbit.db` by default).
@@ -59,16 +59,29 @@ gutenbit view 1342
 Read a specific section:
 
 ```bash
-gutenbit view 1342 --section 1 -n 10
+gutenbit view 1342 --section 1 --forward 10
+```
+
+Read a full section:
+
+```bash
+gutenbit view 1342 --section 1 --all
 ```
 
 Read from an exact chunk position:
 
 ```bash
-gutenbit view 1342 --position 50 -n 5
+gutenbit view 1342 --position 50 --forward 5
 ```
 
-The `-n` flag controls how many chunks to return. Use `-n 0` for all chunks in scope.
+Read surrounding passage around a position or section start:
+
+```bash
+gutenbit view 1342 --position 50 --radius 2
+gutenbit view 1342 --section 1 --radius 2
+```
+
+Use `--forward` for forward reading, `--radius` for a surrounding passage window, and `--all` for a full book or section. `--all` does not apply to `--position`.
 
 ### Search
 
@@ -81,13 +94,19 @@ gutenbit search "pride"
 Narrow results to a single book:
 
 ```bash
-gutenbit search "pride" --book-id 1342
+gutenbit search "pride" --book 1342
 ```
 
 Search for an exact phrase:
 
 ```bash
 gutenbit search "truth universally acknowledged" --phrase
+```
+
+Search with nearby chunk context:
+
+```bash
+gutenbit search "truth universally acknowledged" --book 1342 --limit 3 --radius 1
 ```
 
 All commands accept `--json` for machine-readable output.

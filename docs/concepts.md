@@ -65,7 +65,7 @@ Gutenbit enforces a fixed corpus policy during catalog fetching:
 - **Media type:** Text only.
 - **Deduplication:** When multiple Gutenberg IDs correspond to the same work (same title and author), the lowest ID is kept as the canonical edition. All other IDs remap to it.
 
-The `canonical_id` method on `Catalog` resolves any Gutenberg ID to its canonical form. During `ingest`, requested IDs are remapped automatically.
+The `canonical_id` method on `Catalog` resolves any Gutenberg ID to its canonical form. During `gutenbit add`, requested IDs are remapped automatically.
 
 ## Search
 
@@ -75,4 +75,4 @@ Search uses SQLite FTS5 with BM25 ranking. The index is configured with Porter s
 - Unicode normalization handles accented characters and non-ASCII text.
 - Ranking considers term frequency, document length, and inverse document frequency across the corpus.
 
-Search results include the full text of each matching chunk along with its structural metadata, so you can identify where in a book a match occurs without a separate lookup.
+Search results include the full text of each matching chunk along with its structural metadata, so you can identify where in a book a match occurs without a separate lookup. The CLI can also attach surrounding passage with `--radius` when you want local reading context around each hit.
