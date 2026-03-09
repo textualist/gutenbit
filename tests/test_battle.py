@@ -62,6 +62,17 @@ def _run_cli(*args: str, db: str = "test.db") -> subprocess.CompletedProcess[str
 # ---------------------------------------------------------------------------
 
 _BOOKS: dict[int, BookRecord] = {
+    100: BookRecord(
+        100,
+        "The Complete Works of William Shakespeare",
+        "Shakespeare, William, 1564-1616",
+        "en",
+        "",
+        "",
+        "",
+        "",
+        "Text",
+    ),
     2600: BookRecord(2600, "War and Peace", "Tolstoy, Leo", "en", "", "", "", "", "Text"),
     2554: BookRecord(
         2554, "Crime and Punishment", "Dostoyevsky, Fyodor", "en", "", "", "", "", "Text"
@@ -245,6 +256,77 @@ class TestChristmasCarol:
         assert len(paragraphs) > 600
         assert any("Marley" in p.content for p in paragraphs)
         assert any("Scrooge" in p.content for p in paragraphs)
+
+
+class TestShakespeareCompleteWorks:
+    """PG 100 — anthology titles should contain acts and scenes cleanly."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(100)
+
+    def test_work_titles_are_top_level(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        for title in [
+            "ALL’S WELL THAT ENDS WELL",
+            "THE TRAGEDY OF ANTONY AND CLEOPATRA",
+            "THE TWO NOBLE KINSMEN",
+            "THE WINTER’S TALE",
+            "VENUS AND ADONIS",
+        ]:
+            match = next(h for h in headings if h.content == title)
+            assert match.div1 == title
+            assert match.div2 == ""
+
+    def test_acts_and_scenes_nest_under_work_titles(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+
+        alls_well_act = next(
+            h
+            for h in headings
+            if h.content == "ACT I" and h.div1 == "ALL’S WELL THAT ENDS WELL"
+        )
+        assert alls_well_act.div2 == "ACT I"
+
+        alls_well_scene = next(
+            h
+            for h in headings
+            if h.content == "Scene I. Rossillon. A room in the Countess’s palace"
+        )
+        assert alls_well_scene.div1 == "ALL’S WELL THAT ENDS WELL"
+        assert alls_well_scene.div2 == "ACT I"
+        assert alls_well_scene.div3 == "Scene I. Rossillon. A room in the Countess’s palace"
+
+        antony_scene = next(
+            h
+            for h in headings
+            if h.content == "Scene I. Alexandria. A Room in Cleopatra’s palace"
+        )
+        assert antony_scene.div1 == "THE TRAGEDY OF ANTONY AND CLEOPATRA"
+        assert antony_scene.div2 == "ACT I"
+
+    def test_scene_headings_match_raw_shakespeare_headings(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert any(h.content == "SCENE II. Rome. Before Titus’s House" for h in headings)
+        assert any(h.content == "SCENE III. The country near Athens" for h in headings)
+        assert all("Enter " not in h.content for h in headings)
+
+    def test_new_work_titles_are_not_nested_under_previous_act_five(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        for title in [
+            "THE TRAGEDY OF ANTONY AND CLEOPATRA",
+            "THE TWO NOBLE KINSMEN",
+            "THE WINTER’S TALE",
+            "VENUS AND ADONIS",
+        ]:
+            match = next(h for h in headings if h.content == title)
+            assert match.div1 == title
+            assert match.div2 != "ACT V"
+
+    def test_sonnets_remain_top_level(self, chunks: list[Chunk]):
+        heading = next(h for h in _headings(chunks) if h.content == "THE SONNETS")
+        assert heading.div1 == "THE SONNETS"
+        assert heading.div2 == ""
 
 
 class TestNicholasNickleby:
