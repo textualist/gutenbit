@@ -238,6 +238,30 @@ def test_body_headings_refine_partial_toc():
     assert paragraphs[2].div2 == "Chapter 1"
 
 
+def test_title_like_toc_section_still_allows_body_refinement():
+    html = _make_html("""
+    <p><a href="#work" class="pginternal">Collected Play</a></p>
+    <p><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <h2><a id="work"></a>Collected Play</h2>
+    <h2>BOOK I</h2>
+    <p>Book introduction paragraph.</p>
+    <h3><a id="ch1"></a>CHAPTER I</h3>
+    <p>First chapter paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == ["Collected Play", "BOOK I", "CHAPTER I"]
+    assert headings[0].div1 == ""
+    assert headings[0].div2 == "Collected Play"
+    assert headings[1].div1 == "BOOK I"
+    assert headings[1].div2 == ""
+    assert headings[2].div1 == "BOOK I"
+    assert headings[2].div2 == "CHAPTER I"
+    assert paragraphs[0].div1 == "BOOK I"
+
+
 # ------------------------------------------------------------------
 # Anchor patterns
 # ------------------------------------------------------------------
@@ -257,6 +281,102 @@ def test_anchor_before_heading_pattern():
     assert len(headings) == 1
     assert headings[0].content == "CHAPTER 1"
     assert headings[0].div1 == "CHAPTER 1"
+
+
+def test_scene_one_toc_link_pointing_to_act_anchor_emits_both_levels():
+    html = _make_html("""
+    <p><a href="#play" class="pginternal">PLAY TITLE</a></p>
+    <p><a href="#scene1" class="pginternal">Scene I. Hall.</a></p>
+    <p><a href="#scene2" class="pginternal">Scene II. Garden.</a></p>
+    <h2><a id="play"></a>PLAY TITLE</h2>
+    <h2><a id="scene1"></a>ACT I</h2>
+    <h3>SCENE I. Hall.</h3>
+    <p>Scene one text.</p>
+    <h3><a id="scene2"></a>SCENE II. Garden.</h3>
+    <p>Scene two text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == [
+        "PLAY TITLE",
+        "ACT I",
+        "Scene I. Hall",
+        "SCENE II. Garden",
+    ]
+    assert headings[1].div1 == "ACT I"
+    assert headings[2].div1 == "ACT I"
+    assert headings[2].div2 == "Scene I. Hall"
+    assert paragraphs[0].div1 == "ACT I"
+    assert paragraphs[0].div2 == "Scene I. Hall"
+
+
+def test_collection_titles_promote_to_top_level_when_repeated():
+    html = _make_html("""
+    <p><a href="#play1" class="pginternal">PLAY ONE</a></p>
+    <p><a href="#play1_scene1" class="pginternal">Scene I. Hall.</a></p>
+    <p><a href="#play2" class="pginternal">PLAY TWO</a></p>
+    <p><a href="#play2_scene1" class="pginternal">Scene I. Garden.</a></p>
+    <p><a href="#poem" class="pginternal">POEM THREE</a></p>
+    <h2><a id="play1"></a>PLAY ONE</h2>
+    <h2><a id="play1_scene1"></a>ACT I</h2>
+    <h3>SCENE I. Hall.</h3>
+    <p>Play one text.</p>
+    <h2><a id="play2"></a>PLAY TWO</h2>
+    <h2><a id="play2_scene1"></a>ACT I</h2>
+    <h3>SCENE I. Garden.</h3>
+    <p>Play two text.</p>
+    <h2><a id="poem"></a>POEM THREE</h2>
+    <p>Poem text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == [
+        "PLAY ONE",
+        "ACT I",
+        "Scene I. Hall",
+        "PLAY TWO",
+        "ACT I",
+        "Scene I. Garden",
+        "POEM THREE",
+    ]
+    assert headings[0].div1 == "PLAY ONE"
+    assert headings[1].div1 == "PLAY ONE"
+    assert headings[1].div2 == "ACT I"
+    assert headings[2].div1 == "PLAY ONE"
+    assert headings[2].div2 == "ACT I"
+    assert headings[2].div3 == "Scene I. Hall"
+    assert headings[3].div1 == "PLAY TWO"
+    assert headings[4].div1 == "PLAY TWO"
+    assert headings[4].div2 == "ACT I"
+    assert headings[6].div1 == "POEM THREE"
+    assert paragraphs[2].div1 == "POEM THREE"
+
+
+def test_single_work_title_is_not_promoted_above_parts():
+    html = _make_html("""
+    <p><a href="#title" class="pginternal">THE BOOK</a></p>
+    <p><a href="#p1" class="pginternal">PART I</a></p>
+    <p><a href="#c1" class="pginternal">CHAPTER I</a></p>
+    <h2><a id="title"></a>THE BOOK</h2>
+    <h2><a id="p1"></a>PART I</h2>
+    <p>Part introduction.</p>
+    <h3><a id="c1"></a>CHAPTER I</h3>
+    <p>Chapter text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert [h.content for h in headings] == ["THE BOOK", "PART I", "CHAPTER I"]
+    assert headings[0].div1 == ""
+    assert headings[0].div2 == "THE BOOK"
+    assert headings[1].div1 == "PART I"
+    assert headings[1].div2 == ""
+    assert headings[2].div1 == "PART I"
+    assert headings[2].div2 == "CHAPTER I"
 
 
 def test_illustration_links_ignored():

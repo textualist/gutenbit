@@ -94,11 +94,11 @@ def _section_label(value: Any) -> str:
     return label or "(unsectioned opening)"
 
 
-def _compact_section_path(label: str) -> str:
-    """Collapse nested TOC paths to their most specific segment."""
+def _toc_section_label(label: str) -> str:
+    """Render a section path as a depth-indented TOC row label."""
     parts = label.split(" / ")
     if len(parts) > 1:
-        return f".../ {parts[-1]}"
+        return f"{'  ' * (len(parts) - 1)}{parts[-1]}"
     return label
 
 
@@ -111,7 +111,7 @@ def _truncate_single_line(text: str, width: int) -> str:
 
 def _compact_section_label(label: str, width: int) -> str:
     """Fit a TOC section path on one line, preferring the deepest level."""
-    return _truncate_single_line(_compact_section_path(label), width)
+    return _truncate_single_line(_toc_section_label(label), width)
 
 
 def _plural(value: int, singular: str, plural: str | None = None) -> str:
@@ -239,7 +239,7 @@ def _toc_rows(sections: list[dict[str, Any]]) -> list[_TocRow]:
         rows.append(
             _TocRow(
                 number=str(section["section_number"]),
-                section=_compact_section_path(_section_label(section["section"])),
+                section=_toc_section_label(_section_label(section["section"])),
                 position=_format_int(int(section["position"])),
                 words=_display_words(est_words) or EMPTY_DISPLAY,
                 read=_display_read(str(section["est_read"]), words=est_words) or EMPTY_DISPLAY,

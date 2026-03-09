@@ -62,6 +62,17 @@ def _run_cli(*args: str, db: str = "test.db") -> subprocess.CompletedProcess[str
 # ---------------------------------------------------------------------------
 
 _BOOKS: dict[int, BookRecord] = {
+    100: BookRecord(
+        100,
+        "The Complete Works of William Shakespeare",
+        "Shakespeare, William, 1564-1616",
+        "en",
+        "",
+        "",
+        "",
+        "",
+        "Text",
+    ),
     2600: BookRecord(2600, "War and Peace", "Tolstoy, Leo", "en", "", "", "", "", "Text"),
     2554: BookRecord(
         2554, "Crime and Punishment", "Dostoyevsky, Fyodor", "en", "", "", "", "", "Text"
@@ -247,6 +258,77 @@ class TestChristmasCarol:
         assert any("Scrooge" in p.content for p in paragraphs)
 
 
+class TestShakespeareCompleteWorks:
+    """PG 100 — anthology titles should contain acts and scenes cleanly."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(100)
+
+    def test_work_titles_are_top_level(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        for title in [
+            "ALL’S WELL THAT ENDS WELL",
+            "THE TRAGEDY OF ANTONY AND CLEOPATRA",
+            "THE TWO NOBLE KINSMEN",
+            "THE WINTER’S TALE",
+            "VENUS AND ADONIS",
+        ]:
+            match = next(h for h in headings if h.content == title)
+            assert match.div1 == title
+            assert match.div2 == ""
+
+    def test_acts_and_scenes_nest_under_work_titles(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+
+        alls_well_act = next(
+            h
+            for h in headings
+            if h.content == "ACT I" and h.div1 == "ALL’S WELL THAT ENDS WELL"
+        )
+        assert alls_well_act.div2 == "ACT I"
+
+        alls_well_scene = next(
+            h
+            for h in headings
+            if h.content == "Scene I. Rossillon. A room in the Countess’s palace"
+        )
+        assert alls_well_scene.div1 == "ALL’S WELL THAT ENDS WELL"
+        assert alls_well_scene.div2 == "ACT I"
+        assert alls_well_scene.div3 == "Scene I. Rossillon. A room in the Countess’s palace"
+
+        antony_scene = next(
+            h
+            for h in headings
+            if h.content == "Scene I. Alexandria. A Room in Cleopatra’s palace"
+        )
+        assert antony_scene.div1 == "THE TRAGEDY OF ANTONY AND CLEOPATRA"
+        assert antony_scene.div2 == "ACT I"
+
+    def test_scene_headings_match_raw_shakespeare_headings(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert any(h.content == "SCENE II. Rome. Before Titus’s House" for h in headings)
+        assert any(h.content == "SCENE III. The country near Athens" for h in headings)
+        assert all("Enter " not in h.content for h in headings)
+
+    def test_new_work_titles_are_not_nested_under_previous_act_five(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        for title in [
+            "THE TRAGEDY OF ANTONY AND CLEOPATRA",
+            "THE TWO NOBLE KINSMEN",
+            "THE WINTER’S TALE",
+            "VENUS AND ADONIS",
+        ]:
+            match = next(h for h in headings if h.content == title)
+            assert match.div1 == title
+            assert match.div2 != "ACT V"
+
+    def test_sonnets_remain_top_level(self, chunks: list[Chunk]):
+        heading = next(h for h in _headings(chunks) if h.content == "THE SONNETS")
+        assert heading.div1 == "THE SONNETS"
+        assert heading.div2 == ""
+
+
 class TestNicholasNickleby:
     """PG 967 — Multi-chapter with preface."""
 
@@ -356,6 +438,49 @@ class TestLockeSecondTreatise:
         chapter_headings = [h for h in headings if h.content.startswith("CHAPTER")]
         for h in chapter_headings:
             assert h.div1.startswith("CHAPTER"), f"Expected div1 to be CHAPTER, got {h.div1!r}"
+
+
+class TestLockeEssayVolume2:
+    """PG 10616 — heading-scan fallback should skip contents scaffolding."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(10616)
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert len(headings) == 33
+
+    def test_contents_block_is_not_emitted_as_sections(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert [h.content for h in headings[:3]] == [
+            "BOOK III OF WORDS",
+            "CHAPTER I OF WORDS OR LANGUAGE IN GENERAL",
+            "CHAPTER II OF THE SIGNIFICATION OF WORDS",
+        ]
+        heading_texts = {h.content for h in headings}
+        assert "BOOK III. OF WORDS" not in heading_texts
+        assert "BOOK IV. OF KNOWLEDGE AND PROBABILITY" not in heading_texts
+        assert "CHAP" not in heading_texts
+
+    def test_book_four_heading_drops_editorial_synopsis(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        heading_texts = {h.content for h in headings}
+        assert "BOOK IV OF KNOWLEDGE AND PROBABILITY" in heading_texts
+        assert "BOOK IV OF KNOWLEDGE AND PROBABILITY SYNOPSIS OF THE FOURTH BOOK" not in (
+            heading_texts
+        )
+
+    def test_wrong_assent_subheads_are_not_sections(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        heading_texts = {h.content for h in headings}
+        assert "CHAPTER XX OF WRONG ASSENT, OR ERROR" in heading_texts
+        assert "CHAPTER XXI OF THE DIVISION OF THE SCIENCES" in heading_texts
+        assert "CHAPTER XIX. [not in early editions" not in heading_texts
+        assert "I. WANT OF PROOFS" not in heading_texts
+        assert "II. WANT OF ABILITY TO USE THEM" not in heading_texts
+        assert "III. WANT OF WILL TO SEE THEM" not in heading_texts
+        assert "IV. WRONG MEASURES OF PROBABILITY" not in heading_texts
 
 
 class TestSherlockHolmes:
