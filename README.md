@@ -29,6 +29,7 @@ gutenbit catalog --author "Austen, Jane"
 gutenbit add 1342
 gutenbit search "pride"
 gutenbit view 1342 --section 1 -n 5
+gutenbit search "truth universally acknowledged" -n 3 -r 1
 ```
 
 All commands support `--json` for machine-readable output.

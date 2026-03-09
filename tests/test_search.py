@@ -383,6 +383,13 @@ def test_search_help_shows_post_subcommand_global_flags(tmp_path):
     assert "--verbose" in out
 
 
+def test_search_help_documents_radius(tmp_path):
+    code, out, _err = _run_cli(tmp_path / "any.db", "search", "-h")
+    assert code == 0
+    assert "-r" in out
+    assert "--radius" in out
+
+
 def test_search_invalid_fts_syntax_returns_friendly_error(tmp_path):
     db = _make_db(tmp_path)
     db_path = db.path
@@ -392,6 +399,27 @@ def test_search_invalid_fts_syntax_returns_friendly_error(tmp_path):
     assert code == 1
     payload = json.loads(out)
     assert payload["ok"] is False
+    assert payload["errors"] == ["Invalid FTS query syntax: unterminated string."]
+
+
+def test_search_invalid_fts_syntax_with_radius_keeps_radius_in_json(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(
+        db_path,
+        "search",
+        '"unclosed phrase',
+        "--raw",
+        "--json",
+        "--radius",
+        "2",
+    )
+    assert code == 1
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    assert payload["data"]["radius"] == 2
     assert payload["errors"] == ["Invalid FTS query syntax: unterminated string."]
 
 
@@ -797,6 +825,49 @@ def test_view_position_with_n(tmp_path):
     assert "Call me Ishmael" in out
     assert "It is a way I have of driving off the spleen" in out
     assert "position=" not in out
+
+
+def test_view_position_with_radius_and_meta(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(
+        db_path,
+        "view",
+        "1",
+        "--position",
+        "1",
+        "-r",
+        "1",
+        "--meta",
+    )
+    assert code == 0
+    assert "radius=1" in out
+    assert "role=center" in out
+    assert "Call me Ishmael" in out
+    assert "CHAPTER 1" in out
+
+
+def test_view_section_with_radius_crosses_section_boundary(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(
+        db_path,
+        "view",
+        "1",
+        "--section",
+        "2",
+        "-r",
+        "1",
+    )
+    assert code == 0
+    assert "[before]" in out
+    assert "It is a way I have of driving off the spleen" in out
+    assert "[center] CHAPTER 2" in out
+    assert "I stuffed a shirt or two" in out
 
 
 def test_view_section_with_n_and_meta(tmp_path):
@@ -1346,6 +1417,58 @@ def test_view_negative_n_rejected(tmp_path):
     assert "-n must be >= 0." in out
 
 
+def test_search_negative_radius_rejected(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--radius", "-1")
+    assert code == 1
+    assert "--radius must be >= 0." in out
+
+
+def test_search_radius_rejected_with_count(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--count", "--radius", "1")
+    assert code == 1
+    assert "--radius cannot be used with --count." in out
+
+
+def test_view_negative_radius_rejected(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--position", "1", "--radius", "-1")
+    assert code == 1
+    assert "--radius must be >= 0." in out
+
+
+def test_view_radius_requires_selector(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--radius", "1")
+    assert code == 1
+    assert "--radius requires --position or --section." in out
+
+
+def test_view_radius_rejected_with_n(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(
+        db_path, "view", "1", "--position", "1", "-n", "2", "--radius", "1"
+    )
+    assert code == 1
+    assert "Choose one retrieval shape" in out
+
+
 def test_add_rejects_non_positive_ids(tmp_path):
     code, out, _err = _run_cli(tmp_path / "any.db", "add", "0", "-1")
     assert code == 1
@@ -1388,6 +1511,23 @@ def test_search_json_output(tmp_path):
     assert "score" in result
     assert "kind" in result
     assert "char_count" in result
+
+
+def test_search_json_radius_output(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--json", "--radius", "2")
+    assert code == 0
+    payload = json.loads(out)
+    data = payload["data"]
+    assert data["radius"] == 2
+    result = data["items"][0]
+    assert result["center_index"] == 1
+    assert [chunk["position"] for chunk in result["chunks"]] == [0, 1, 2, 3]
+    assert [chunk["role"] for chunk in result["chunks"]] == ["before", "center", "after", "after"]
+    assert result["chunks"][result["center_index"]]["content"].startswith("Call me Ishmael")
 
 
 def test_search_json_empty(tmp_path):
@@ -1589,6 +1729,88 @@ def test_view_section_json_output(tmp_path):
     assert payload["data"]["count"] == 1
     assert payload["data"]["chunks"][0]["content"] == "CHAPTER 1"
     assert payload["data"]["chunks"][0]["kind"] == "heading"
+
+
+def test_view_position_json_radius_output(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--position", "1", "--radius", "1", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    data = payload["data"]
+    assert data["mode"] == "position"
+    assert data["radius"] == 1
+    assert data["center_index"] == 1
+    assert [chunk["position"] for chunk in data["chunks"]] == [0, 1, 2]
+    assert [chunk["role"] for chunk in data["chunks"]] == ["before", "center", "after"]
+
+
+def test_view_section_json_radius_output(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "view", "1", "--section", "2", "--radius", "1", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    data = payload["data"]
+    assert data["mode"] == "section"
+    assert data["section_number"] == 2
+    assert data["radius"] == 1
+    assert data["center_index"] == 1
+    assert [chunk["position"] for chunk in data["chunks"]] == [2, 3, 4]
+    assert data["chunks"][1]["content"] == "CHAPTER 2"
+
+
+def test_view_position_json_radius_error_keeps_radius(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(
+        db_path,
+        "view",
+        "1",
+        "--position",
+        "999",
+        "--radius",
+        "2",
+        "--json",
+    )
+    assert code == 1
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    assert payload["data"]["mode"] == "position"
+    assert payload["data"]["position"] == 999
+    assert payload["data"]["radius"] == 2
+    assert "n" not in payload["data"]
+
+
+def test_view_section_json_radius_error_keeps_radius(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(
+        db_path,
+        "view",
+        "1",
+        "--section",
+        "999",
+        "--radius",
+        "2",
+        "--json",
+    )
+    assert code == 1
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    assert payload["data"]["mode"] == "section"
+    assert payload["data"]["section"] == "999"
+    assert payload["data"]["section_number"] == 999
+    assert payload["data"]["radius"] == 2
+    assert "n" not in payload["data"]
 
 
 def test_view_section_json_meta_output(tmp_path):
