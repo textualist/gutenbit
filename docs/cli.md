@@ -23,6 +23,10 @@ If `gutenbit` is not found after install, run `uv tool update-shell` once and re
 
 All CLI-managed state lives under `.gutenbit/` by default: the database is `.gutenbit/gutenbit.db`, and the catalog cache is stored under `.gutenbit/cache/`. Use `--db PATH` to store the database elsewhere. All commands support `--json` for machine-readable output.
 
+## Project Gutenberg Access
+
+Use gutenbit for individual downloads, not bulk harvesting. It prefers official mirrors and uses the main site only as a zip fallback, with a default `2.0` second delay between downloads. Review the [Robot Access Policy](https://www.gutenberg.org/policy/robot_access.html) and [Terms of Use](https://www.gutenberg.org/policy/terms_of_use.html).
+
 ## catalog
 
 Search the Project Gutenberg catalog for books by metadata.
@@ -60,7 +64,7 @@ gutenbit add 2600 --delay 2.0
 | Flag | Description |
 |------|-------------|
 | `BOOK_IDS` | One or more Project Gutenberg IDs (positional) |
-| `--delay SECONDS` | Pause between downloads (default: 1.0) |
+| `--delay SECONDS` | Pause between downloads (default: 2.0) |
 | `--refresh` | Ignore the local catalog cache and redownload it now |
 | `--json` | Output as JSON |
 
@@ -81,7 +85,7 @@ gutenbit books --update --dry-run
 | Flag | Description |
 |------|-------------|
 | `--update` | Reprocess stored books whose parser version is stale |
-| `--delay SECONDS` | Pause between downloads in update mode (default: 1.0) |
+| `--delay SECONDS` | Pause between downloads in update mode (default: 2.0) |
 | `--force` | Reprocess all stored books in update mode, even if already current |
 | `--dry-run` | Show which stored books would be updated without downloading |
 | `--json` | Output as JSON |

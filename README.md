@@ -58,6 +58,10 @@ All commands support `--json` for machine-readable output.
 CLI-managed state is stored under `.gutenbit/` by default, including the database at
 `.gutenbit/gutenbit.db` and the catalog cache under `.gutenbit/cache/`.
 
+## Project Gutenberg Access
+
+Gutenbit is for individual downloads, not bulk harvesting. It prefers official mirrors and uses the main site only as a zip fallback, with a default `2.0` second delay between downloads. Review Project Gutenberg's [Robot Access Policy](https://www.gutenberg.org/policy/robot_access.html) and [Terms of Use](https://www.gutenberg.org/policy/terms_of_use.html).
+
 ## Documentation
 
 Full documentation: [Getting Started](docs/getting-started.md) | [Python API](docs/python-api.md) | [CLI](docs/cli.md) | [Concepts](docs/concepts.md)
