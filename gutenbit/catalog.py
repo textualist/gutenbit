@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import csv
 import gzip
+import os
 import re
+import tempfile
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from io import StringIO
+from pathlib import Path
 from typing import Literal
 
 import httpx
 
 CATALOG_URL = "https://www.gutenberg.org/cache/epub/feeds/pg_catalog.csv.gz"
+_CATALOG_CACHE_TTL_SECONDS = 2 * 60 * 60
 
 # Ingestion boundaries for this package. These are intentionally explicit and
 # centrally defined so they're easy to discover and adjust in one place.
@@ -52,6 +57,99 @@ class CatalogPolicy:
 
 
 DEFAULT_CATALOG_POLICY = CatalogPolicy()
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogFetchInfo:
+    """How a catalog payload was loaded."""
+
+    source: Literal["cache", "downloaded", "stale_cache"]
+    cache_path: Path
+    cache_age_seconds: float | None = None
+
+
+def _default_cache_dir() -> Path:
+    cache_home = os.environ.get("XDG_CACHE_HOME")
+    if cache_home:
+        return Path(cache_home) / "gutenbit"
+    return Path.home() / ".cache" / "gutenbit"
+
+
+def _policy_cache_key(policy: CatalogPolicy) -> str:
+    langs = "-".join(sorted(policy.allowed_language_codes)) or "none"
+    media_types = "-".join(sorted(policy.allowed_media_types)) or "none"
+    return f"catalog-{langs}-{media_types}-{policy.dedupe_strategy}"
+
+
+def _catalog_cache_path(policy: CatalogPolicy, cache_dir: str | Path | None = None) -> Path:
+    root = _default_cache_dir() if cache_dir is None else Path(cache_dir)
+    return root / f"{_policy_cache_key(policy)}.csv.gz"
+
+
+def _read_catalog_cache(payload_path: Path) -> bytes | None:
+    try:
+        payload = payload_path.read_bytes()
+    except OSError:
+        return None
+    if not payload:
+        return None
+    return payload
+
+
+def _write_bytes_atomic(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as tmp:
+        tmp.write(payload)
+        tmp_path = Path(tmp.name)
+    tmp_path.replace(path)
+
+
+def _write_catalog_cache(payload_path: Path, payload: bytes) -> None:
+    try:
+        _write_bytes_atomic(payload_path, payload)
+    except OSError:
+        return
+
+
+def _catalog_cache_age_seconds(payload_path: Path, *, now: float) -> float | None:
+    try:
+        mtime = payload_path.stat().st_mtime
+    except OSError:
+        return None
+    return max(0.0, now - mtime)
+
+
+def _is_fresh_catalog_cache(payload_path: Path, *, now: float) -> bool:
+    age_seconds = _catalog_cache_age_seconds(payload_path, now=now)
+    return age_seconds is not None and age_seconds < _CATALOG_CACHE_TTL_SECONDS
+
+
+def _catalog_from_payload(
+    payload: bytes, *, policy: CatalogPolicy = DEFAULT_CATALOG_POLICY
+) -> Catalog:
+    text = gzip.decompress(payload).decode("utf-8")
+
+    records: list[BookRecord] = []
+    for row in csv.DictReader(StringIO(text)):
+        try:
+            book_id = int(row["Text#"])
+        except ValueError:
+            continue
+        records.append(
+            BookRecord(
+                id=book_id,
+                title=row.get("Title", ""),
+                authors=row.get("Authors", ""),
+                language=row.get("Language", ""),
+                subjects=row.get("Subjects", ""),
+                locc=row.get("LoCC", ""),
+                bookshelves=row.get("Bookshelves", ""),
+                issued=row.get("Issued", ""),
+                type=row.get("Type", ""),
+            )
+        )
+    bounded_records, canonical_id_by_id = apply_catalog_policy(records, policy=policy)
+    return Catalog(bounded_records, canonical_id_by_id=canonical_id_by_id)
 
 
 def _normalized_tokens(raw: str) -> set[str]:
@@ -151,41 +249,69 @@ class Catalog:
         records: list[BookRecord],
         *,
         canonical_id_by_id: dict[int, int] | None = None,
+        fetch_info: CatalogFetchInfo | None = None,
     ) -> None:
         self.records = sorted(records, key=lambda record: record.id)
         self._by_id = {record.id: record for record in self.records}
         if canonical_id_by_id is None:
             canonical_id_by_id = {record.id: record.id for record in self.records}
         self._canonical_id_by_id = dict(canonical_id_by_id)
+        self.fetch_info = fetch_info
 
     @classmethod
-    def fetch(cls, *, policy: CatalogPolicy = DEFAULT_CATALOG_POLICY) -> Catalog:
+    def fetch(
+        cls,
+        *,
+        policy: CatalogPolicy = DEFAULT_CATALOG_POLICY,
+        cache_dir: str | Path | None = None,
+        refresh: bool = False,
+    ) -> Catalog:
         """Download the CSV catalog from Project Gutenberg."""
-        response = httpx.get(CATALOG_URL, follow_redirects=True, timeout=60.0)
-        response.raise_for_status()
-        text = gzip.decompress(response.content).decode("utf-8")
+        payload_path = _catalog_cache_path(policy, cache_dir)
+        cached = _read_catalog_cache(payload_path)
+        now = time.time()
+        cache_age_seconds = _catalog_cache_age_seconds(payload_path, now=now)
 
-        records: list[BookRecord] = []
-        for row in csv.DictReader(StringIO(text)):
+        if cached is not None and not refresh and _is_fresh_catalog_cache(payload_path, now=now):
             try:
-                book_id = int(row["Text#"])
-            except ValueError:
-                continue
-            records.append(
-                BookRecord(
-                    id=book_id,
-                    title=row.get("Title", ""),
-                    authors=row.get("Authors", ""),
-                    language=row.get("Language", ""),
-                    subjects=row.get("Subjects", ""),
-                    locc=row.get("LoCC", ""),
-                    bookshelves=row.get("Bookshelves", ""),
-                    issued=row.get("Issued", ""),
-                    type=row.get("Type", ""),
+                catalog = _catalog_from_payload(cached, policy=policy)
+            except (OSError, ValueError):
+                cached = None
+            else:
+                catalog.fetch_info = CatalogFetchInfo(
+                    source="cache",
+                    cache_path=payload_path,
+                    cache_age_seconds=cache_age_seconds,
                 )
+                return catalog
+
+        try:
+            response = httpx.get(
+                CATALOG_URL,
+                follow_redirects=True,
+                timeout=60.0,
             )
-        bounded_records, canonical_id_by_id = apply_catalog_policy(records, policy=policy)
-        return cls(bounded_records, canonical_id_by_id=canonical_id_by_id)
+            response.raise_for_status()
+        except httpx.HTTPError:
+            if cached is not None and not refresh:
+                catalog = _catalog_from_payload(cached, policy=policy)
+                catalog.fetch_info = CatalogFetchInfo(
+                    source="stale_cache",
+                    cache_path=payload_path,
+                    cache_age_seconds=cache_age_seconds,
+                )
+                return catalog
+            raise
+
+        payload = response.content
+        _write_catalog_cache(payload_path, payload)
+        catalog = _catalog_from_payload(payload, policy=policy)
+        catalog.fetch_info = CatalogFetchInfo(
+            source="downloaded",
+            cache_path=payload_path,
+            cache_age_seconds=None,
+        )
+        return catalog
 
     def canonical_id(self, book_id: int) -> int | None:
         """Resolve any known id to the canonical id under current policy."""
