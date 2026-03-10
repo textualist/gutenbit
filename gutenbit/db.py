@@ -252,7 +252,9 @@ class Database:
     # Ingest
     # ------------------------------------------------------------------
 
-    def ingest(self, books: list[BookRecord], *, delay: float = 1.0) -> None:
+    def ingest(
+        self, books: list[BookRecord], *, delay: float = 1.0, force: bool = False
+    ) -> None:
         """Download, chunk, and store books.
 
         Enforces package ingestion boundaries: English text records only, with
@@ -279,11 +281,12 @@ class Database:
                 )
 
         for book in canonical_books:
-            if self._has_current_text(book.id):
+            if self._has_current_text(book.id) and not force:
                 logger.info("Skipping %s (already downloaded)", book.title)
                 continue
             if self._has_text(book.id):
-                logger.info("Reprocessing %s (chunker version updated)", book.title)
+                reason = "forced refresh" if force else "chunker version updated"
+                logger.info("Reprocessing %s (%s)", book.title, reason)
             logger.info("Downloading %s (id=%d)", book.title, book.id)
             try:
                 html = download_html(book.id)
@@ -312,6 +315,20 @@ class Database:
     def books(self) -> list[BookRecord]:
         """Return all stored books."""
         rows = self._conn.execute("SELECT * FROM books ORDER BY id").fetchall()
+        return [BookRecord(**row) for row in rows]
+
+    def stale_books(self) -> list[BookRecord]:
+        """Return stored books whose text is missing or stale for this chunker version."""
+        rows = self._conn.execute(
+            """
+            SELECT b.*
+            FROM books b
+            LEFT JOIN texts t ON t.book_id = b.id
+            WHERE t.book_id IS NULL OR t.chunker_version != ?
+            ORDER BY b.id
+            """,
+            (CHUNKER_VERSION,),
+        ).fetchall()
         return [BookRecord(**row) for row in rows]
 
     def book(self, book_id: int) -> BookRecord | None:

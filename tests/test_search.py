@@ -1584,6 +1584,156 @@ def test_ingest_remaps_to_canonical_catalog_id(tmp_path, monkeypatch):
     assert ingested_ids == [100]
 
 
+def test_books_update_rejects_delay_without_update(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "books", "--delay", "0")
+    assert code == 1
+    assert "--delay can only be used with --update." in out
+
+
+def test_books_update_rejects_force_without_update(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "books", "--force")
+    assert code == 1
+    assert "--force can only be used with --update." in out
+
+
+def test_books_update_rejects_dry_run_without_update(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "books", "--dry-run")
+    assert code == 1
+    assert "--dry-run can only be used with --update." in out
+
+
+def test_books_update_empty_db(tmp_path):
+    db_path = tmp_path / "empty.db"
+
+    code, out, _err = _run_cli(db_path, "books", "--update")
+    assert code == 0
+    assert "No books stored yet" in out
+
+
+def test_books_update_noop_when_all_current(tmp_path, monkeypatch):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    def _ingest_should_not_run(_self, _books, *, delay=1.0, force=False):
+        raise AssertionError("ingest() should not run when all stored books are current")
+
+    monkeypatch.setattr(Database, "ingest", _ingest_should_not_run)
+
+    code, out, _err = _run_cli(db_path, "books", "--update")
+    assert code == 0
+    assert "All 2 stored book(s) are current." in out
+
+
+def test_books_update_reprocesses_only_stale_books(tmp_path, monkeypatch):
+    db = _make_db(tmp_path)
+    db._conn.execute(
+        "UPDATE texts SET chunker_version = ? WHERE book_id = ?",
+        (CHUNKER_VERSION - 1, 1),
+    )
+    db._conn.commit()
+    db_path = db.path
+    db.close()
+
+    seen_downloads: list[int] = []
+
+    def _fake_download(book_id: int) -> str:
+        seen_downloads.append(book_id)
+        return {1: _BOOK_HTML, 2: _BOOK2_HTML}[book_id]
+
+    monkeypatch.setattr("gutenbit.db.download_html", _fake_download)
+
+    code, out, _err = _run_cli(db_path, "books", "--update", "--delay", "0")
+    assert code == 0
+    assert "reprocessing 1: Moby Dick (chunker updated)" in out
+    assert "reprocessing 2:" not in out
+    assert seen_downloads == [1]
+
+
+def test_books_update_force_reprocesses_all_books(tmp_path, monkeypatch):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    seen_downloads: list[int] = []
+
+    def _fake_download(book_id: int) -> str:
+        seen_downloads.append(book_id)
+        return {1: _BOOK_HTML, 2: _BOOK2_HTML}[book_id]
+
+    monkeypatch.setattr("gutenbit.db.download_html", _fake_download)
+
+    code, out, _err = _run_cli(db_path, "books", "--update", "--force", "--delay", "0")
+    assert code == 0
+    assert "reprocessing 1: Moby Dick (forced)" in out
+    assert "reprocessing 2: Pride and Prejudice (forced)" in out
+    assert seen_downloads == [1, 2]
+
+
+def test_books_update_dry_run_does_not_ingest(tmp_path, monkeypatch):
+    db = _make_db(tmp_path)
+    db._conn.execute(
+        "UPDATE texts SET chunker_version = ? WHERE book_id = ?",
+        (CHUNKER_VERSION - 1, 1),
+    )
+    db._conn.commit()
+    db_path = db.path
+    db.close()
+
+    def _ingest_should_not_run(_self, _books, *, delay=1.0, force=False):
+        raise AssertionError("ingest() should not run during dry-run")
+
+    monkeypatch.setattr(Database, "ingest", _ingest_should_not_run)
+
+    code, out, _err = _run_cli(db_path, "books", "--update", "--dry-run")
+    assert code == 0
+    assert "Would reprocess 1 of 2 stored book(s):" in out
+    assert "1: Moby Dick" in out
+
+
+def test_books_update_json_output(tmp_path, monkeypatch):
+    db = _make_db(tmp_path)
+    db._conn.execute(
+        "UPDATE texts SET chunker_version = ? WHERE book_id = ?",
+        (CHUNKER_VERSION - 1, 1),
+    )
+    db._conn.commit()
+    db_path = db.path
+    db.close()
+
+    def _fake_download(book_id: int) -> str:
+        return {1: _BOOK_HTML, 2: _BOOK2_HTML}[book_id]
+
+    monkeypatch.setattr("gutenbit.db.download_html", _fake_download)
+
+    code, out, _err = _run_cli(db_path, "books", "--update", "--delay", "0", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["ok"] is True
+    assert payload["command"] == "books"
+    assert payload["data"]["action"] == "update"
+    assert payload["data"]["counts"]["stored"] == 2
+    assert payload["data"]["counts"]["selected"] == 1
+    assert payload["data"]["counts"]["updated"] == 1
+    assert payload["data"]["counts"]["skipped_current"] == 1
+    assert payload["data"]["counts"]["failed"] == 0
+    assert payload["data"]["results"] == [
+        {"book_id": 1, "title": "Moby Dick", "status": "reprocessed"}
+    ]
+
+
 # ------------------------------------------------------------------
 # Validation edge cases
 # ------------------------------------------------------------------
