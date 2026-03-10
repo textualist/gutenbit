@@ -4,8 +4,26 @@ Fast local search across public-domain literary works. Find, browse, and search 
 
 ## Install
 
+Gutenbit is not published on PyPI yet, so the quickest way to try it is to run it directly from the GitHub repo:
+
 ```bash
-uv add gutenbit
+uvx --from git+https://github.com/keinan1/gutenbit gutenbit --help
+```
+
+If you want to keep it installed for repeated use:
+
+```bash
+uv tool install git+https://github.com/keinan1/gutenbit
+```
+
+Then run `gutenbit --help`. Remove it later with `uv tool uninstall gutenbit`.
+
+If this is your first `uv`-managed tool, run `uv tool update-shell` once and restart your shell so `gutenbit` is on your `PATH`.
+
+To use `gutenbit` as a project dependency instead of a standalone CLI tool:
+
+```bash
+uv add git+https://github.com/keinan1/gutenbit
 ```
 
 ## Python

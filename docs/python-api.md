@@ -1,6 +1,12 @@
 # Python API
 
-Gutenbit exposes four public classes and one function from its top-level package:
+Gutenbit exposes four public classes and one function from its top-level package.
+
+Because the project is not published on PyPI yet, add it from GitHub when using it as a library:
+
+```bash
+uv add git+https://github.com/keinan1/gutenbit
+```
 
 ```python
 from gutenbit import Catalog, BookRecord, Database, SearchResult, Chunk, chunk_html
