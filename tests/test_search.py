@@ -398,7 +398,7 @@ def test_search_help_documents_ordering(tmp_path):
     assert code == 0
     assert "--order" in out
     assert "--mode" not in out
-    assert "ranked" in out and "BM25" in out
+    assert "rank" in out and "BM25" in out
     assert "first" in out and "book ascending" in out
     assert "last" in out and "book descending" in out
 
@@ -505,7 +505,7 @@ def test_search_cli_raw_passes_fts5_syntax(tmp_path):
     code, out, _err = _run_cli(db_path, "search", "Ishmael OR truth", "--raw")
     assert code == 0
     assert "total_results=2  shown_results=2" in out
-    assert "2 results · ranked order" in out
+    assert "2 results · rank order" in out
 
 
 def test_search_cli_rejects_legacy_mode_flag(tmp_path):
@@ -573,7 +573,7 @@ def test_search_cli_footer_shows_total_and_shown_when_limited(tmp_path):
     code, out, _err = _run_cli(db_path, "search", "the", "--book", "1", "--limit", "1")
     assert code == 0
     assert f"total_results={total_results}  shown_results=1" in out
-    assert f"{total_results} results · 1 shown · ranked order" in out
+    assert f"{total_results} results · 1 shown · rank order" in out
 
 
 def test_search_cli_skips_count_for_untruncated_page(tmp_path, monkeypatch):
@@ -2183,7 +2183,7 @@ def test_search_json_output(tmp_path):
 
     data = payload["data"]
     assert data["query"]["raw"] == "Ishmael"
-    assert data["order"] == "ranked"
+    assert data["order"] == "rank"
     assert data["limit"] == 10
     assert data["filters"]["book_id"] is None
     assert "book" not in data["filters"]
@@ -2207,6 +2207,18 @@ def test_search_json_output(tmp_path):
     assert result["kind"] == "text"
     assert "rank" in result
     assert "score" in result
+
+
+def test_search_cli_rejects_removed_default_order_value(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    removed_order = "rank" + "ed"
+    code, out, err = _run_cli(db_path, "search", "Ishmael", "--order", removed_order)
+    assert code == 2
+    assert out == ""
+    assert f"invalid choice: '{removed_order}'" in err
 
 
 def test_search_json_radius_output(tmp_path):

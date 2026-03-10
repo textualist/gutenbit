@@ -108,7 +108,7 @@ WHERE chunks_fts MATCH ?
 
 _DIV_TRAILING_PUNCT_RE = re.compile(r"[.,;:!?]+$")
 _DIV_PUNCT_SPACING_RE = re.compile(r"\s*([.,;:!?])\s*")
-SearchOrder = Literal["ranked", "first", "last"]
+SearchOrder = Literal["rank", "first", "last"]
 
 
 def _normalize_div_segment(value: str) -> str:
@@ -549,7 +549,7 @@ class Database:
         subject: str | None = None,
         book_id: int | None = None,
         kind: str | None = None,
-        order: SearchOrder = "ranked",
+        order: SearchOrder = "rank",
         limit: int | None = None,
     ) -> tuple[str, list[object]]:
         """Build the ordered search SQL and params for one search query."""
@@ -564,14 +564,14 @@ class Database:
             sql=_SEARCH_SQL,
         )
 
-        if order == "ranked":
+        if order == "rank":
             sql += " ORDER BY rank, c.book_id, c.position"
         elif order == "first":
             sql += " ORDER BY c.book_id, c.position, rank"
         elif order == "last":
             sql += " ORDER BY c.book_id DESC, c.position DESC, rank"
         else:
-            raise ValueError("order must be one of: ranked, first, last")
+            raise ValueError("order must be one of: rank, first, last")
 
         if limit is not None:
             sql += " LIMIT ?"
@@ -637,7 +637,7 @@ class Database:
         book_id: int | None = None,
         kind: str | None = None,
         div_path: str | None = None,
-        order: SearchOrder = "ranked",
+        order: SearchOrder = "rank",
         limit: int = 20,
     ) -> SearchPage:
         """Return one CLI search page plus an exact total-hit count."""
@@ -708,7 +708,7 @@ class Database:
         book_id: int | None = None,
         kind: str | None = None,
         div_path: str | None = None,
-        order: SearchOrder = "ranked",
+        order: SearchOrder = "rank",
         limit: int = 20,
     ) -> list[SearchResult]:
         """Search chunks via FTS5 with BM25 ranking.

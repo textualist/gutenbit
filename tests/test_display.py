@@ -41,11 +41,11 @@ def test_format_search_stats_show_total_and_shown_when_limited():
     assert format_search_footer_stats(
         shown_results=10,
         total_results=237,
-        order="ranked",
+        order="rank",
     ) == [
         "237 results",
         "10 shown",
-        "ranked order",
+        "rank order",
     ]
 
 
@@ -112,19 +112,19 @@ def test_rich_search_results_use_visual_header(tmp_path):
 
     CliDisplay(stdout=out, interactive=True, color=False, width=100).search_results(
         query="Ishmael",
-        order="ranked",
+        order="rank",
         items=[item],
         total_results=12,
     )
 
     rendered = out.getvalue()
     assert "Search" in rendered
-    assert 'Query "Ishmael" · ranked · 1 shown' in rendered
+    assert 'Query "Ishmael" · rank · 1 shown' in rendered
     assert "query='Ishmael'" not in rendered
     assert "Score 1.20" in rendered
     assert "Score 1.20\n\nCall me Ishmael." in rendered
     assert "Call me Ishmael." in rendered
-    assert "12 results · 1 shown · ranked order" in rendered
+    assert "12 results · 1 shown · rank order" in rendered
 
 
 def test_rich_passage_separates_title_from_metadata(tmp_path):

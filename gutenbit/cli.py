@@ -927,7 +927,7 @@ query modes:
   --raw      FTS5 syntax — AND, OR, NOT, NEAR(), prefix*, "phrases", (groups)
 
 result order:
-  ranked  BM25 rank, then book, then position (default)
+  rank    BM25 rank, then book, then position (default)
   first   book ascending, then position ascending
   last    book descending, then position descending
 
@@ -949,10 +949,10 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
     )
     se.add_argument(
         "--order",
-        choices=["ranked", "first", "last"],
-        default="ranked",
+        choices=["rank", "first", "last"],
+        default="rank",
         help=(
-            "search result order: ranked (BM25); "
+            "search result order: rank (BM25); "
             "first (book asc + position asc); "
             "last (book desc + position desc)"
         ),

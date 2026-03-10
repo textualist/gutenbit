@@ -134,7 +134,7 @@ gutenbit search "battle" --count
 | `QUERY` | Search query (positional) |
 | `--phrase` | Treat query as an exact phrase (mutually exclusive with `--raw`) |
 | `--raw` | Pass query directly to FTS5 for advanced syntax (mutually exclusive with `--phrase`) |
-| `--order ORDER` | `ranked` (default), `first`, or `last` |
+| `--order ORDER` | `rank` (default), `first`, or `last` |
 | `--author TEXT` | Filter by author (substring match) |
 | `--title TEXT` | Filter by title (substring match) |
 | `--book ID` | Restrict to a single book |
@@ -155,7 +155,7 @@ By default, punctuation in the query is auto-escaped so apostrophes, hyphens, an
 
 ### Search order
 
-- **ranked**: Results ordered by BM25 relevance score, then book, then position.
+- **rank**: Results ordered by BM25 relevance score, then book, then position.
 - **first**: Earliest matches. Ordered by book ascending, then position ascending.
 - **last**: Latest matches. Ordered by book descending, then position descending.
 

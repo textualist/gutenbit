@@ -116,7 +116,7 @@ db.ingest(books, force=True)  # reprocess even if already current
 results = db.search("battle")
 ```
 
-Returns a list of `SearchResult` objects ranked by BM25 relevance.
+Returns a list of `SearchResult` objects ordered by BM25 rank by default.
 
 **Filters** narrow the result set:
 
@@ -132,7 +132,7 @@ Metadata filters (`author`, `title`, `language`, `subject`) use substring matchi
 **Order** controls result ordering:
 
 ```python
-db.search("battle", order="ranked")  # BM25 score (default)
+db.search("battle", order="rank")    # BM25 score (default)
 db.search("battle", order="first")   # book_id asc, position asc
 db.search("battle", order="last")    # book_id desc, position desc
 ```
