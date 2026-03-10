@@ -108,6 +108,7 @@ WHERE chunks_fts MATCH ?
 
 _DIV_TRAILING_PUNCT_RE = re.compile(r"[.,;:!?]+$")
 _DIV_PUNCT_SPACING_RE = re.compile(r"\s*([.,;:!?])\s*")
+SearchOrder = Literal["rank", "first", "last"]
 
 
 def _normalize_div_segment(value: str) -> str:
@@ -115,7 +116,6 @@ def _normalize_div_segment(value: str) -> str:
     cleaned = " ".join(value.split()).strip().casefold()
     cleaned = _DIV_PUNCT_SPACING_RE.sub(r"\1", cleaned)
     return _DIV_TRAILING_PUNCT_RE.sub("", cleaned)
-
 
 def _div_parts_match(query: list[str], row: list[str]) -> bool:
     """Check if *query* segments match the leading segments of *row*.
@@ -549,7 +549,7 @@ class Database:
         subject: str | None = None,
         book_id: int | None = None,
         kind: str | None = None,
-        mode: Literal["ranked", "first", "last"] = "ranked",
+        order: SearchOrder = "rank",
         limit: int | None = None,
     ) -> tuple[str, list[object]]:
         """Build the ordered search SQL and params for one search query."""
@@ -564,14 +564,14 @@ class Database:
             sql=_SEARCH_SQL,
         )
 
-        if mode == "ranked":
+        if order == "rank":
             sql += " ORDER BY rank, c.book_id, c.position"
-        elif mode == "first":
+        elif order == "first":
             sql += " ORDER BY c.book_id, c.position, rank"
-        elif mode == "last":
+        elif order == "last":
             sql += " ORDER BY c.book_id DESC, c.position DESC, rank"
         else:
-            raise ValueError("mode must be one of: ranked, first, last")
+            raise ValueError("order must be one of: rank, first, last")
 
         if limit is not None:
             sql += " LIMIT ?"
@@ -637,7 +637,7 @@ class Database:
         book_id: int | None = None,
         kind: str | None = None,
         div_path: str | None = None,
-        mode: Literal["ranked", "first", "last"] = "ranked",
+        order: SearchOrder = "rank",
         limit: int = 20,
     ) -> SearchPage:
         """Return one CLI search page plus an exact total-hit count."""
@@ -652,7 +652,7 @@ class Database:
                 subject=subject,
                 book_id=book_id,
                 kind=kind,
-                mode=mode,
+                order=order,
                 limit=fetch_limit,
             )
             rows = self._conn.execute(sql, params).fetchall()
@@ -681,7 +681,7 @@ class Database:
             subject=subject,
             book_id=book_id,
             kind=kind,
-            mode=mode,
+            order=order,
         )
         rows = self._conn.execute(sql, params).fetchall()
         div_parts = _normalized_div_parts(div_path)
@@ -708,7 +708,7 @@ class Database:
         book_id: int | None = None,
         kind: str | None = None,
         div_path: str | None = None,
-        mode: Literal["ranked", "first", "last"] = "ranked",
+        order: SearchOrder = "rank",
         limit: int = 20,
     ) -> list[SearchResult]:
         """Search chunks via FTS5 with BM25 ranking.
@@ -726,7 +726,7 @@ class Database:
             subject=subject,
             book_id=book_id,
             kind=kind,
-            mode=mode,
+            order=order,
             limit=sql_limit,
         )
 

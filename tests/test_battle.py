@@ -1137,7 +1137,7 @@ class TestCLICommands:
         assert result.returncode == 0
         assert "Scrooge" in result.stdout
         assert "total_results=305  shown_results=10" in result.stdout
-        assert "305 results · 10 shown · ranked order" in result.stdout
+        assert "305 results · 10 shown · rank order" in result.stdout
 
     def test_cli_search_section(self, db_path: str):
         result = _run_cli("search", "Marley", "--section", "STAVE ONE", "--book", "46", db=db_path)

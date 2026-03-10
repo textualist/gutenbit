@@ -170,7 +170,7 @@ for hit in results:
     print(f"{hit.title} | {hit.div1} | {hit.content[:80]}")
 ```
 
-Results are ranked by BM25 relevance. Each `SearchResult` includes the matching text, its structural position (div1 through div4), book metadata, and a relevance score.
+Results use BM25 rank ordering by default. Each `SearchResult` includes the matching text, its structural position (div1 through div4), book metadata, and a relevance score.
 
 ### Read structured chunks
 

@@ -121,7 +121,7 @@ gutenbit search "battle"
 gutenbit search "don't stop"                              # punctuation just works
 gutenbit search "truth universally acknowledged" --phrase
 gutenbit search "ghost OR spirit" --raw                   # FTS5 boolean query
-gutenbit search "Levin" --book 1399 --mode first
+gutenbit search "Levin" --book 1399 --order first
 gutenbit search "battle" --section "BOOK ONE" --book 2600
 gutenbit search "STAVE" --book 46 --kind heading
 gutenbit search "ghost" --radius 2                        # include surrounding passage
@@ -134,7 +134,7 @@ gutenbit search "battle" --count
 | `QUERY` | Search query (positional) |
 | `--phrase` | Treat query as an exact phrase (mutually exclusive with `--raw`) |
 | `--raw` | Pass query directly to FTS5 for advanced syntax (mutually exclusive with `--phrase`) |
-| `--mode MODE` | `ranked` (default), `first`, or `last` |
+| `--order ORDER` | `rank` (default), `first`, or `last` |
 | `--author TEXT` | Filter by author (substring match) |
 | `--title TEXT` | Filter by title (substring match) |
 | `--book ID` | Restrict to a single book |
@@ -153,9 +153,9 @@ By default, punctuation in the query is auto-escaped so apostrophes, hyphens, an
 - **--phrase**: Exact phrase — word order and adjacency must match exactly.
 - **--raw**: FTS5 syntax — AND, OR, NOT, NEAR(), prefix\*, "phrases", (groups).
 
-### Search modes
+### Search order
 
-- **ranked**: Results ordered by BM25 relevance score, then book, then position.
+- **rank**: Results ordered by BM25 relevance score, then book, then position.
 - **first**: Earliest matches. Ordered by book ascending, then position ascending.
 - **last**: Latest matches. Ordered by book descending, then position descending.
 
@@ -243,7 +243,7 @@ When `ok` is `false`, the `errors` list contains error messages. The `data` fiel
 
 For `view`, the response body is content-first. Successful responses include a shared passage shape: `book`, `title`, `author`, `section`, `section_number`, `position`, `forward`, `radius`, `all`, and `content`.
 
-For `search`, `data["filters"]` includes the resolved `kind`, and `data["items"]` remains the hit list. Each hit uses that same passage shape, with search-specific fields such as `kind`, `rank`, and `score` appended after the shared fields. When `--radius` is used, `content` is the joined surrounding passage in reading order.
+For `search`, `data["order"]` records the selected result order, `data["filters"]` includes the resolved `kind`, and `data["items"]` remains the hit list. Each hit uses that same passage shape, with search-specific fields such as `kind`, `rank`, and `score` appended after the shared fields. When `--radius` is used, `content` is the joined surrounding passage in reading order.
 
 ## Global flags
 
