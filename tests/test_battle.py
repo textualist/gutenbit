@@ -486,6 +486,21 @@ class TestLockeEssayVolume2:
 class TestSherlockHolmes:
     """PG 48320 — Adventures of Sherlock Holmes, story collection."""
 
+    _STORY_TITLES = [
+        "Adventure I A SCANDAL IN BOHEMIA",
+        "Adventure II THE RED-HEADED LEAGUE",
+        "Adventure III A CASE OF IDENTITY",
+        "Adventure IV THE BOSCOMBE VALLEY MYSTERY",
+        "Adventure V THE FIVE ORANGE PIPS",
+        "Adventure VI THE MAN WITH THE TWISTED LIP",
+        "Adventure VII THE ADVENTURE OF THE BLUE CARBUNCLE",
+        "Adventure VIII THE ADVENTURE OF THE SPECKLED BAND",
+        "Adventure IX THE ADVENTURE OF THE ENGINEER’S THUMB",
+        "Adventure X THE ADVENTURE OF THE NOBLE BACHELOR",
+        "Adventure XI THE ADVENTURE OF THE BERYL CORONET",
+        "Adventure XII THE ADVENTURE OF THE COPPER BEECHES",
+    ]
+
     @pytest.fixture(scope="class")
     def chunks(self) -> list[Chunk]:
         return _download_and_chunk(48320)
@@ -495,12 +510,12 @@ class TestSherlockHolmes:
 
     def test_has_stories(self, chunks: list[Chunk]):
         headings = _headings(chunks)
-        assert len(headings) >= 3
+        assert len(headings) == len(self._STORY_TITLES)
 
     def test_story_titles(self, chunks: list[Chunk]):
         headings = _headings(chunks)
         titles = [h.content for h in headings]
-        assert any("SPECKLED BAND" in t.upper() for t in titles)
+        assert titles == self._STORY_TITLES
 
     def test_stories_as_div1(self, chunks: list[Chunk]):
         headings = _headings(chunks)
