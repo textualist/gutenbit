@@ -914,8 +914,8 @@ examples:
   gutenbit search "battle" --book 2600                      # restrict to one book
   gutenbit search "battle" --section "BOOK ONE"             # restrict to a section
   gutenbit search "STAVE" --book 46 --kind heading          # search headings only
-  gutenbit search "door" --mode first                       # reading order (earliest)
-  gutenbit search "door" --mode last                        # reverse reading order
+  gutenbit search "door" --order first                      # reading order (earliest)
+  gutenbit search "door" --order last                       # reverse reading order
   gutenbit search "ghost" --radius 2                        # show surrounding passage
   gutenbit search "ghost" --limit 3                         # limit the result set
   gutenbit search "battle" --count                          # just show match count
@@ -926,7 +926,7 @@ query modes:
   --phrase   exact phrase — word order and adjacency must match exactly
   --raw      FTS5 syntax — AND, OR, NOT, NEAR(), prefix*, "phrases", (groups)
 
-mode ordering:
+result order:
   ranked  BM25 rank, then book, then position (default)
   first   book ascending, then position ascending
   last    book descending, then position descending
@@ -948,11 +948,11 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
         help="pass query directly to FTS5 (AND/OR/NOT, prefix*, NEAR, groups)",
     )
     se.add_argument(
-        "--mode",
+        "--order",
         choices=["ranked", "first", "last"],
         default="ranked",
         help=(
-            "search mode: ranked (BM25); "
+            "search result order: ranked (BM25); "
             "first (book asc + position asc); "
             "last (book desc + position desc)"
         ),
@@ -1731,7 +1731,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
                     book_id=search_book_id,
                     kind=search_kind,
                     div_path=search_div_path,
-                    mode=args.mode,
+                    order=args.order,
                     limit=limit,
                 )
                 total_results = search_page.total_results
@@ -1754,7 +1754,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
                         kind=args.kind,
                         section=section_arg,
                     ),
-                    "order": args.mode,
+                    "order": args.order,
                     "limit": limit,
                     **({"radius": radius} if radius is not None else {}),
                 },
@@ -1829,7 +1829,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
                 kind=args.kind,
                 section=section_arg,
             ),
-            "order": args.mode,
+            "order": args.order,
             "limit": limit,
             "total_results": total_results,
             "shown_results": len(result_items),
@@ -1849,7 +1849,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
 
     display.search_results(
         query=args.query,
-        order=args.mode,
+        order=args.order,
         items=result_items,
         total_results=total_results,
     )
