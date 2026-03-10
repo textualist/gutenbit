@@ -979,6 +979,48 @@ def test_dense_chapter_index_paragraph_falls_back_to_heading_scan():
     assert headings == ["CHAPTER I", "CHAPTER II", "CHAPTER III"]
 
 
+def test_toc_ignores_title_like_h3_subheads_inside_chapters():
+    html = _make_html("""
+    <table><tbody>
+      <tr><td><a href="#intro" class="pginternal">THE INTRODUCTION</a></td></tr>
+      <tr><td><a href="#part1" class="pginternal"><b>PART I. OF MAN</b></a></td></tr>
+      <tr><td><a href="#ch1" class="pginternal">CHAPTER I. OF SENSE</a></td></tr>
+      <tr><td><a href="#memory" class="pginternal">Memory</a></td></tr>
+      <tr><td><a href="#dreams" class="pginternal">Dreams</a></td></tr>
+      <tr><td><a href="#ch2" class="pginternal">CHAPTER II. OF IMAGINATION</a></td></tr>
+    </tbody></table>
+    <h2><a id="intro"></a>THE INTRODUCTION</h2>
+    <p>Intro paragraph.</p>
+    <h2><a id="part1"></a>PART I. OF MAN</h2>
+    <h2><a id="ch1"></a>CHAPTER I. OF SENSE</h2>
+    <p>Chapter one paragraph.</p>
+    <h3><a id="memory"></a>Memory</h3>
+    <p>Memory paragraph.</p>
+    <h3><a id="dreams"></a>Dreams</h3>
+    <p>Dreams paragraph.</p>
+    <h2><a id="ch2"></a>CHAPTER II. OF IMAGINATION</h2>
+    <p>Chapter two paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == [
+        "THE INTRODUCTION",
+        "PART I. OF MAN",
+        "CHAPTER I. OF SENSE",
+        "CHAPTER II. OF IMAGINATION",
+    ]
+    assert all(h.content not in {"Memory", "Dreams"} for h in headings)
+
+    memory_paragraph = next(p for p in paragraphs if p.content == "Memory paragraph.")
+    dreams_paragraph = next(p for p in paragraphs if p.content == "Dreams paragraph.")
+    assert memory_paragraph.div1 == "PART I. OF MAN"
+    assert memory_paragraph.div2 == "CHAPTER I. OF SENSE"
+    assert dreams_paragraph.div1 == "PART I. OF MAN"
+    assert dreams_paragraph.div2 == "CHAPTER I. OF SENSE"
+
+
 # ------------------------------------------------------------------
 # Chunk kind coverage
 # ------------------------------------------------------------------

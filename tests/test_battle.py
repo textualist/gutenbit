@@ -128,6 +128,7 @@ _BOOKS: dict[int, BookRecord] = {
     28054: BookRecord(
         28054, "The Brothers Karamazov", "Dostoyevsky, Fyodor", "en", "", "", "", "", "Text"
     ),
+    3207: BookRecord(3207, "Leviathan", "Hobbes, Thomas", "en", "", "", "", "", "Text"),
 }
 
 
@@ -939,6 +940,39 @@ class TestHardTimes:
         }
         assert len(chapter_one_books) == 3
         assert all(b.startswith("BOOK THE") for b in chapter_one_books)
+
+
+class TestLeviathan:
+    """PG 3207 — chapter subheads in the TOC must not become sections."""
+
+    @pytest.fixture(scope="class")
+    def chunks(self) -> list[Chunk]:
+        return _download_and_chunk(3207)
+
+    def test_heading_count(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        assert len(headings) == 53
+
+    def test_four_parts_and_forty_seven_chapters(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        part_headings = [h for h in headings if h.content.startswith("PART ")]
+        chapter_headings = [h for h in headings if h.content.startswith("CHAPTER ")]
+        assert len(part_headings) == 4
+        assert len(chapter_headings) == 47
+        assert any(h.content == "THE INTRODUCTION" for h in headings)
+        assert any(h.content == "A REVIEW, AND CONCLUSION" for h in headings)
+
+    def test_toc_subheads_are_not_promoted_to_sections(self, chunks: list[Chunk]):
+        heading_texts = {h.content for h in _headings(chunks)}
+        assert "Memory" not in heading_texts
+        assert "Dreams" not in heading_texts
+        assert "Understanding" not in heading_texts
+
+    def test_chapter_paragraphs_keep_part_and_chapter_context(self, chunks: list[Chunk]):
+        paragraphs = [c for c in chunks if c.kind == "text"]
+        match = next(p for p in paragraphs if "The cause of Sense" in p.content)
+        assert match.div1 == "PART I. OF MAN"
+        assert match.div2 == "CHAPTER I. OF SENSE"
 
 
 # ===================================================================

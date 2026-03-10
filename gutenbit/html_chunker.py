@@ -51,7 +51,7 @@ class Chunk:
 # ---------------------------------------------------------------------------
 
 _BROAD_KEYWORDS = frozenset({"book", "part", "act", "epilogue", "volume"})
-CHUNKER_VERSION = 14
+CHUNKER_VERSION = 15
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
@@ -326,6 +326,17 @@ def _parse_toc_sections(
             continue
 
         is_emphasized = _is_emphasized_toc_link(link)
+        heading_rank = _heading_tag_rank(heading_el)
+        if heading_rank is None:
+            continue
+        if not _is_toc_section_heading(
+            heading_text,
+            link_text=link_text,
+            heading_rank=heading_rank,
+            is_emphasized=is_emphasized,
+        ):
+            continue
+
         heading_level = _classify_level(heading_text, is_emphasized)
         if _toc_link_refines_body_heading(link_text, heading_text):
             sections.append(_Section(anchor_id, heading_text, heading_level, body_anchor))
@@ -1165,6 +1176,25 @@ def _is_refinement_heading(heading_text: str) -> bool:
     if _STANDALONE_STRUCTURAL_RE.search(heading_text):
         return True
     return _PLAIN_NUMBER_HEADING_RE.fullmatch(heading_text) is not None
+
+
+def _is_toc_section_heading(
+    heading_text: str,
+    *,
+    link_text: str,
+    heading_rank: int,
+    is_emphasized: bool,
+) -> bool:
+    """Return True when a TOC entry points at a real structural section."""
+    if is_emphasized or heading_rank <= 2:
+        return True
+    if _BRACKETED_NUMERIC_HEADING_RE.fullmatch(heading_text):
+        return True
+    if _BRACKETED_NUMERIC_HEADING_RE.fullmatch(link_text):
+        return True
+    if _is_refinement_heading(heading_text):
+        return True
+    return _is_refinement_heading(link_text)
 
 
 def _is_dialogue_speaker_heading(heading_text: str) -> bool:
