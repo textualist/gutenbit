@@ -19,7 +19,7 @@ gutenbit catalog --author "Austen, Jane"
 ```
 
 ```
-  Fetching catalog from Project Gutenberg (English text corpus)…
+  Downloaded catalog from Project Gutenberg (English text corpus).
       ID  AUTHORS                                   TITLE
   ------  ----------------------------------------  -----
     1342  Austen, Jane                              Pride and Prejudice
@@ -130,7 +130,7 @@ for book in books[:5]:
     print(book.id, book.title)
 ```
 
-The catalog is fetched from Project Gutenberg on each call, filtered to English text, and deduplicated by normalized title plus primary author, keeping the lowest Project Gutenberg ID as canonical.
+The catalog is cached locally for two hours, filtered to English text, and deduplicated by normalized title plus primary author, keeping the lowest Project Gutenberg ID as canonical. Use `--refresh` to force a redownload.
 
 ### Ingest books
 

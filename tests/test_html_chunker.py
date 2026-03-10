@@ -780,6 +780,39 @@ def test_heading_scan_keeps_dialogue_subheadings_after_book_start():
     ]
 
 
+def test_heading_scan_keeps_repeated_dialogue_speakers_nested_under_each_book():
+    html = _make_html("""
+    <h2>BOOK I</h2>
+    <h4>SOCRATES - GLAUCON</h4>
+    <p>Dialogue paragraph one.</p>
+    <h5>SOCRATES - THRASYMACHUS</h5>
+    <p>Dialogue paragraph two.</p>
+    <h2>BOOK II</h2>
+    <h4>SOCRATES - GLAUCON</h4>
+    <p>Dialogue paragraph three.</p>
+    <h5>SOCRATES - THRASYMACHUS</h5>
+    <p>Dialogue paragraph four.</p>
+    <h2>BOOK III</h2>
+    <h4>SOCRATES - GLAUCON</h4>
+    <p>Dialogue paragraph five.</p>
+    <h5>SOCRATES - THRASYMACHUS</h5>
+    <p>Dialogue paragraph six.</p>
+    <h2>BOOK IV</h2>
+    <h4>SOCRATES - GLAUCON</h4>
+    <p>Dialogue paragraph seven.</p>
+    """)
+    headings = [c for c in chunk_html(html) if c.kind == "heading"]
+
+    book_headings = [h for h in headings if h.content.startswith("BOOK")]
+    assert [h.div1 for h in book_headings] == [
+        "BOOK I SOCRATES - GLAUCON",
+        "BOOK II SOCRATES - GLAUCON",
+        "BOOK III SOCRATES - GLAUCON",
+        "BOOK IV SOCRATES - GLAUCON",
+    ]
+    assert all(not h.div2 for h in book_headings)
+
+
 def test_heading_scan_uses_non_keyword_headings_when_no_structural_keywords_exist():
     html = _make_html("""
     <h1>Metamorphosis</h1>

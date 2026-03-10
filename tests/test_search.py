@@ -4,11 +4,20 @@ import contextlib
 import gzip
 import io
 import json
+import os
+import time
 
-from gutenbit.catalog import BookRecord, Catalog, apply_catalog_policy
+import httpx
+
+from gutenbit.catalog import (
+    BookRecord,
+    Catalog,
+    CatalogFetchInfo,
+    apply_catalog_policy,
+)
 from gutenbit.cli import _select_section_opening_line
 from gutenbit.cli import main as cli_main
-from gutenbit.db import Database, SearchResult
+from gutenbit.db import Database, SearchResult, TextState
 from gutenbit.html_chunker import CHUNKER_VERSION, chunk_html
 
 # ------------------------------------------------------------------
@@ -1259,7 +1268,10 @@ def test_catalog_output_collapses_embedded_newlines(tmp_path, monkeypatch):
         issued="",
         type="Text",
     )
-    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
+    monkeypatch.setattr(
+        "gutenbit.cli.Catalog.fetch",
+        staticmethod(lambda **_kwargs: Catalog([record])),
+    )
 
     code, out, _err = _run_cli(
         tmp_path / "any.db", "catalog", "--author", "Author", "--limit", "1"
@@ -1283,7 +1295,10 @@ def test_catalog_json_collapses_embedded_newlines(tmp_path, monkeypatch):
         issued="2000-01-01",
         type="Text",
     )
-    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
+    monkeypatch.setattr(
+        "gutenbit.cli.Catalog.fetch",
+        staticmethod(lambda **_kwargs: Catalog([record])),
+    )
 
     code, out, _err = _run_cli(tmp_path / "any.db", "catalog", "--author", "Author", "--json")
     assert code == 0
@@ -1296,7 +1311,7 @@ def test_catalog_json_collapses_embedded_newlines(tmp_path, monkeypatch):
     assert item["bookshelves"] == "Shelf One Shelf Two"
 
 
-def test_catalog_fetch_enforces_english_text_policy_and_canonical_ids(monkeypatch):
+def test_catalog_fetch_enforces_english_text_policy_and_canonical_ids(tmp_path, monkeypatch):
     csv_payload = "\n".join(
         [
             "Text#,Type,Issued,Title,Language,Authors,Subjects,LoCC,Bookshelves",
@@ -1316,6 +1331,7 @@ def test_catalog_fetch_enforces_english_text_policy_and_canonical_ids(monkeypatc
             return None
 
     compressed = gzip.compress(csv_payload.encode("utf-8"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     monkeypatch.setattr(
         "gutenbit.catalog.httpx.get",
         lambda *_args, **_kwargs: _FakeResponse(compressed),
@@ -1323,6 +1339,8 @@ def test_catalog_fetch_enforces_english_text_policy_and_canonical_ids(monkeypatc
 
     catalog = Catalog.fetch()
     assert [book.id for book in catalog.records] == [100, 200]
+    assert catalog.fetch_info is not None
+    assert catalog.fetch_info.source == "downloaded"
     assert catalog.canonical_id(100) == 100
     assert catalog.canonical_id(101) == 100
     alias = catalog.get(101)
@@ -1330,6 +1348,225 @@ def test_catalog_fetch_enforces_english_text_policy_and_canonical_ids(monkeypatc
     assert alias.id == 100
     assert catalog.get(300) is None
     assert catalog.get(400) is None
+
+
+def test_catalog_fetch_uses_fresh_cache_without_network(tmp_path, monkeypatch):
+    csv_payload = "\n".join(
+        [
+            "Text#,Type,Issued,Title,Language,Authors,Subjects,LoCC,Bookshelves",
+            "100,Text,2000-01-01,Duplicate Work,en,Author Example,,,",
+        ]
+    )
+    compressed = gzip.compress(csv_payload.encode("utf-8"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+
+    class _FakeResponse:
+        def __init__(self, content: bytes):
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+    calls: list[dict[str, object]] = []
+
+    def _fake_get(*_args, **kwargs):
+        calls.append(kwargs)
+        return _FakeResponse(compressed)
+
+    monkeypatch.setattr("gutenbit.catalog.httpx.get", _fake_get)
+
+    first = Catalog.fetch()
+    second = Catalog.fetch()
+
+    assert [book.id for book in first.records] == [100]
+    assert [book.id for book in second.records] == [100]
+    assert second.fetch_info is not None
+    assert second.fetch_info.source == "cache"
+    assert len(calls) == 1
+
+
+def test_catalog_fetch_redownloads_when_cache_is_older_than_two_hours(tmp_path, monkeypatch):
+    csv_payload = "\n".join(
+        [
+            "Text#,Type,Issued,Title,Language,Authors,Subjects,LoCC,Bookshelves",
+            "100,Text,2000-01-01,Duplicate Work,en,Author Example,,,",
+        ]
+    )
+    compressed = gzip.compress(csv_payload.encode("utf-8"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+
+    class _FakeResponse:
+        def __init__(self, content: bytes):
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+    calls = {"count": 0}
+
+    def _fake_get(*_args, **_kwargs):
+        calls["count"] += 1
+        return _FakeResponse(compressed)
+
+    monkeypatch.setattr("gutenbit.catalog.httpx.get", _fake_get)
+
+    initial = Catalog.fetch()
+    payload_path = next((tmp_path / "gutenbit").glob("*.csv.gz"))
+    stale_timestamp = time.time() - (2 * 60 * 60 + 1)
+    os.utime(payload_path, (stale_timestamp, stale_timestamp))
+    refreshed = Catalog.fetch()
+
+    assert [book.id for book in initial.records] == [100]
+    assert [book.id for book in refreshed.records] == [100]
+    assert refreshed.fetch_info is not None
+    assert refreshed.fetch_info.source == "downloaded"
+    assert calls["count"] == 2
+
+
+def test_catalog_fetch_falls_back_to_cached_payload_on_network_error(tmp_path, monkeypatch):
+    csv_payload = "\n".join(
+        [
+            "Text#,Type,Issued,Title,Language,Authors,Subjects,LoCC,Bookshelves",
+            "100,Text,2000-01-01,Duplicate Work,en,Author Example,,,",
+        ]
+    )
+    compressed = gzip.compress(csv_payload.encode("utf-8"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+
+    class _FakeResponse:
+        def __init__(self, content: bytes):
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "gutenbit.catalog.httpx.get",
+        lambda *_args, **_kwargs: _FakeResponse(compressed),
+    )
+
+    initial = Catalog.fetch()
+    payload_path = next((tmp_path / "gutenbit").glob("*.csv.gz"))
+    stale_timestamp = time.time() - (2 * 60 * 60 + 1)
+    os.utime(payload_path, (stale_timestamp, stale_timestamp))
+    monkeypatch.setattr(
+        "gutenbit.catalog.httpx.get",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            httpx.ConnectError("offline", request=httpx.Request("GET", "https://example.com"))
+        ),
+    )
+    fallback = Catalog.fetch()
+
+    assert [book.id for book in initial.records] == [100]
+    assert [book.id for book in fallback.records] == [100]
+    assert fallback.fetch_info is not None
+    assert fallback.fetch_info.source == "stale_cache"
+
+
+def test_catalog_fetch_refresh_bypasses_fresh_cache(tmp_path, monkeypatch):
+    csv_payload = "\n".join(
+        [
+            "Text#,Type,Issued,Title,Language,Authors,Subjects,LoCC,Bookshelves",
+            "100,Text,2000-01-01,Duplicate Work,en,Author Example,,,",
+        ]
+    )
+    compressed = gzip.compress(csv_payload.encode("utf-8"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+
+    class _FakeResponse:
+        def __init__(self, content: bytes):
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+    calls = {"count": 0}
+
+    def _fake_get(*_args, **_kwargs):
+        calls["count"] += 1
+        return _FakeResponse(compressed)
+
+    monkeypatch.setattr("gutenbit.catalog.httpx.get", _fake_get)
+
+    Catalog.fetch()
+    refreshed = Catalog.fetch(refresh=True)
+
+    assert refreshed.fetch_info is not None
+    assert refreshed.fetch_info.source == "downloaded"
+    assert calls["count"] == 2
+
+
+def test_catalog_cli_uses_db_local_cache_dir_and_reports_cache_hit(tmp_path, monkeypatch):
+    record = BookRecord(
+        id=777,
+        title="Cached Catalog Title",
+        authors="Example, Author",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    seen: dict[str, object] = {}
+
+    def _fake_fetch(*, policy=None, cache_dir=None, refresh=False):
+        seen["cache_dir"] = cache_dir
+        seen["refresh"] = refresh
+        return Catalog(
+            [record],
+            fetch_info=CatalogFetchInfo(
+                source="cache",
+                cache_path=(tmp_path / ".gutenbit" / "cache" / "catalog.csv.gz"),
+            ),
+        )
+
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(_fake_fetch))
+
+    code, out, _err = _run_cli(tmp_path / "library.db", "catalog", "--author", "Example")
+    assert code == 0
+    assert "Using cached catalog (English text corpus)." in out
+    assert seen["refresh"] is False
+    assert str(seen["cache_dir"]) == str(tmp_path / ".gutenbit" / "cache")
+
+
+def test_catalog_cli_refresh_flag_forces_redownload_message(tmp_path, monkeypatch):
+    record = BookRecord(
+        id=778,
+        title="Fresh Catalog Title",
+        authors="Example, Author",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    seen: dict[str, object] = {}
+
+    def _fake_fetch(*, policy=None, cache_dir=None, refresh=False):
+        seen["cache_dir"] = cache_dir
+        seen["refresh"] = refresh
+        return Catalog(
+            [record],
+            fetch_info=CatalogFetchInfo(
+                source="downloaded",
+                cache_path=(tmp_path / ".gutenbit" / "cache" / "catalog.csv.gz"),
+            ),
+        )
+
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(_fake_fetch))
+
+    code, out, _err = _run_cli(
+        tmp_path / "library.db",
+        "catalog",
+        "--author",
+        "Example",
+        "--refresh",
+    )
+    assert code == 0
+    assert "Refreshed catalog from Project Gutenberg (English text corpus)." in out
+    assert seen["refresh"] is True
 
 
 def test_catalog_policy_dedupes_by_primary_author_and_title():
@@ -1499,14 +1736,20 @@ def test_ingest_reports_skip_before_downloading(tmp_path, monkeypatch):
         issued="",
         type="Text",
     )
-    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
-    monkeypatch.setattr(Database, "has_current_text", lambda _self, _book_id: True)
-    monkeypatch.setattr(Database, "has_text", lambda _self, _book_id: True)
+    monkeypatch.setattr(
+        "gutenbit.cli.Catalog.fetch",
+        staticmethod(lambda **_kwargs: Catalog([record])),
+    )
+    monkeypatch.setattr(
+        Database,
+        "text_states",
+        lambda _self, _book_ids: {888: TextState(has_text=True, has_current_text=True)},
+    )
 
-    def _ingest_should_not_run(_self, _books, *, delay=1.0):
-        raise AssertionError("ingest() should not run for already-downloaded books")
+    def _ingest_should_not_run(_self, _book, *, delay, force, state):
+        raise AssertionError("_ingest_book() should not run for already-downloaded books")
 
-    monkeypatch.setattr(Database, "ingest", _ingest_should_not_run)
+    monkeypatch.setattr(Database, "_ingest_book", _ingest_should_not_run)
 
     code, out, _err = _run_cli(tmp_path / "skip.db", "add", "888", "--delay", "0")
     assert code == 0
@@ -1525,22 +1768,22 @@ def test_ingest_reprocesses_stale_chunker_version(tmp_path, monkeypatch):
         issued="",
         type="Text",
     )
-    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
-    monkeypatch.setattr(Database, "has_text", lambda _self, _book_id: True)
-
+    monkeypatch.setattr(
+        "gutenbit.cli.Catalog.fetch",
+        staticmethod(lambda **_kwargs: Catalog([record])),
+    )
     ingested_ids: list[int] = []
-    current_ids: set[int] = set()
+    monkeypatch.setattr(
+        Database,
+        "text_states",
+        lambda _self, _book_ids: {889: TextState(has_text=True, has_current_text=False)},
+    )
 
-    def _has_current(_self, book_id):
-        return book_id in current_ids
+    def _capture_ingest(_self, book, *, delay, force, state):
+        ingested_ids.append(book.id)
+        return True
 
-    def _capture_ingest(_self, books, *, delay=1.0):
-        for book in books:
-            ingested_ids.append(book.id)
-            current_ids.add(book.id)
-
-    monkeypatch.setattr(Database, "has_current_text", _has_current)
-    monkeypatch.setattr(Database, "ingest", _capture_ingest)
+    monkeypatch.setattr(Database, "_ingest_book", _capture_ingest)
 
     code, out, _err = _run_cli(tmp_path / "stale.db", "add", "889", "--delay", "0")
     assert code == 0
@@ -1561,22 +1804,19 @@ def test_ingest_remaps_to_canonical_catalog_id(tmp_path, monkeypatch):
         type="Text",
     )
     catalog = Catalog([canonical], canonical_id_by_id={100: 100, 101: 100})
-    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: catalog))
-    monkeypatch.setattr(Database, "has_text", lambda _self, _book_id: False)
-
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda **_kwargs: catalog))
     ingested_ids: list[int] = []
-    current_ids: set[int] = set()
+    monkeypatch.setattr(
+        Database,
+        "text_states",
+        lambda _self, _book_ids: {100: TextState(has_text=False, has_current_text=False)},
+    )
 
-    def _has_current(_self, book_id):
-        return book_id in current_ids
+    def _capture_ingest(_self, book, *, delay, force, state):
+        ingested_ids.append(book.id)
+        return True
 
-    def _capture_ingest(_self, books, *, delay=1.0):
-        for book in books:
-            ingested_ids.append(book.id)
-            current_ids.add(book.id)
-
-    monkeypatch.setattr(Database, "has_current_text", _has_current)
-    monkeypatch.setattr(Database, "ingest", _capture_ingest)
+    monkeypatch.setattr(Database, "_ingest_book", _capture_ingest)
 
     code, out, _err = _run_cli(tmp_path / "canonical.db", "add", "101", "--delay", "0")
     assert code == 0
@@ -1627,10 +1867,10 @@ def test_books_update_noop_when_all_current(tmp_path, monkeypatch):
     db_path = db.path
     db.close()
 
-    def _ingest_should_not_run(_self, _books, *, delay=1.0, force=False):
-        raise AssertionError("ingest() should not run when all stored books are current")
+    def _ingest_should_not_run(_self, _book, *, delay, force, state):
+        raise AssertionError("_ingest_book() should not run when all stored books are current")
 
-    monkeypatch.setattr(Database, "ingest", _ingest_should_not_run)
+    monkeypatch.setattr(Database, "_ingest_book", _ingest_should_not_run)
 
     code, out, _err = _run_cli(db_path, "books", "--update")
     assert code == 0
@@ -1692,10 +1932,10 @@ def test_books_update_dry_run_does_not_ingest(tmp_path, monkeypatch):
     db_path = db.path
     db.close()
 
-    def _ingest_should_not_run(_self, _books, *, delay=1.0, force=False):
-        raise AssertionError("ingest() should not run during dry-run")
+    def _ingest_should_not_run(_self, _book, *, delay, force, state):
+        raise AssertionError("_ingest_book() should not run during dry-run")
 
-    monkeypatch.setattr(Database, "ingest", _ingest_should_not_run)
+    monkeypatch.setattr(Database, "_ingest_book", _ingest_should_not_run)
 
     code, out, _err = _run_cli(db_path, "books", "--update", "--dry-run")
     assert code == 0
@@ -1999,7 +2239,10 @@ def test_catalog_json_output(tmp_path, monkeypatch):
         issued="",
         type="Text",
     )
-    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
+    monkeypatch.setattr(
+        "gutenbit.cli.Catalog.fetch",
+        staticmethod(lambda **_kwargs: Catalog([record])),
+    )
 
     code, out, _err = _run_cli(
         tmp_path / "any.db",
@@ -2032,22 +2275,19 @@ def test_add_json_output(tmp_path, monkeypatch):
         type="Text",
     )
     catalog = Catalog([canonical], canonical_id_by_id={100: 100, 101: 100})
-    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: catalog))
-    monkeypatch.setattr(Database, "has_text", lambda _self, _book_id: False)
-
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda **_kwargs: catalog))
     ingested_ids: list[int] = []
-    current_ids: set[int] = set()
+    monkeypatch.setattr(
+        Database,
+        "text_states",
+        lambda _self, _book_ids: {100: TextState(has_text=False, has_current_text=False)},
+    )
 
-    def _has_current(_self, book_id):
-        return book_id in current_ids
+    def _capture_ingest(_self, book, *, delay, force, state):
+        ingested_ids.append(book.id)
+        return True
 
-    def _capture_ingest(_self, books, *, delay=1.0):
-        for book in books:
-            ingested_ids.append(book.id)
-            current_ids.add(book.id)
-
-    monkeypatch.setattr(Database, "has_current_text", _has_current)
-    monkeypatch.setattr(Database, "ingest", _capture_ingest)
+    monkeypatch.setattr(Database, "_ingest_book", _capture_ingest)
 
     code, out, _err = _run_cli(
         tmp_path / "canonical.db",
@@ -2082,7 +2322,10 @@ def test_add_json_failure_reports_failed_and_stays_parseable(tmp_path, monkeypat
         issued="",
         type="Text",
     )
-    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
+    monkeypatch.setattr(
+        "gutenbit.cli.Catalog.fetch",
+        staticmethod(lambda **_kwargs: Catalog([record])),
+    )
 
     def _boom(_book_id):
         raise RuntimeError("boom")
@@ -2118,7 +2361,10 @@ def test_add_non_json_failure_returns_exit_1(tmp_path, monkeypatch):
         issued="",
         type="Text",
     )
-    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(lambda: Catalog([record])))
+    monkeypatch.setattr(
+        "gutenbit.cli.Catalog.fetch",
+        staticmethod(lambda **_kwargs: Catalog([record])),
+    )
 
     def _boom(_book_id):
         raise RuntimeError("boom")

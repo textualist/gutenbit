@@ -200,6 +200,14 @@ class ChunkRecord:
     char_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class TextState:
+    """Presence/currentness snapshot for one stored book."""
+
+    has_text: bool
+    has_current_text: bool
+
+
 def _row_to_chunk_record(row: sqlite3.Row) -> ChunkRecord:
     """Convert a database row to a ChunkRecord."""
     return ChunkRecord(
@@ -280,21 +288,9 @@ class Database:
                     canonical_id,
                 )
 
+        states = self.text_states([book.id for book in canonical_books])
         for book in canonical_books:
-            if self._has_current_text(book.id) and not force:
-                logger.info("Skipping %s (already downloaded)", book.title)
-                continue
-            if self._has_text(book.id):
-                reason = "forced refresh" if force else "chunker version updated"
-                logger.info("Reprocessing %s (%s)", book.title, reason)
-            logger.info("Downloading %s (id=%d)", book.title, book.id)
-            try:
-                html = download_html(book.id)
-                chunks = chunk_html(html)
-                self._store(book, chunks)
-            except Exception:
-                logger.exception("Failed to download %s (id=%d)", book.title, book.id)
-            time.sleep(delay)
+            self._ingest_book(book, delay=delay, force=force, state=states.get(book.id))
 
     def delete_book(self, book_id: int) -> bool:
         """Delete a stored book and all associated rows. Returns False if missing."""
@@ -346,6 +342,28 @@ class Database:
     def has_text(self, book_id: int) -> bool:
         """Return True when a book has already been downloaded and stored."""
         return self._has_text(book_id)
+
+    def text_states(self, book_ids: list[int]) -> dict[int, TextState]:
+        """Return stored text presence/currentness for the requested ids."""
+        if not book_ids:
+            return {}
+
+        states = {
+            book_id: TextState(has_text=False, has_current_text=False) for book_id in book_ids
+        }
+        placeholders = ",".join("?" * len(book_ids))
+        rows = self._conn.execute(
+            "SELECT book_id, chunker_version FROM texts "
+            f"WHERE book_id IN ({placeholders})",
+            book_ids,
+        ).fetchall()
+        for row in rows:
+            chunker_version = int(row["chunker_version"])
+            states[int(row["book_id"])] = TextState(
+                has_text=True,
+                has_current_text=chunker_version == CHUNKER_VERSION,
+            )
+        return states
 
     def chunk_records(
         self,
@@ -750,6 +768,39 @@ class Database:
         ).fetchone()
         return row is not None
 
+    def _ingest_book(
+        self,
+        book: BookRecord,
+        *,
+        delay: float,
+        force: bool,
+        state: TextState | None = None,
+    ) -> bool:
+        if state is None:
+            state = self.text_states([book.id]).get(
+                book.id,
+                TextState(has_text=False, has_current_text=False),
+            )
+
+        if state.has_current_text and not force:
+            logger.info("Skipping %s (already downloaded)", book.title)
+            return True
+
+        if state.has_text:
+            reason = "forced refresh" if force else "chunker version updated"
+            logger.info("Reprocessing %s (%s)", book.title, reason)
+        logger.info("Downloading %s (id=%d)", book.title, book.id)
+        success = False
+        try:
+            html = download_html(book.id)
+            chunks = chunk_html(html)
+            self._store(book, chunks)
+            success = True
+        except Exception:
+            logger.exception("Failed to download %s (id=%d)", book.title, book.id)
+        time.sleep(delay)
+        return success
+
     def _store(self, book: BookRecord, chunks: list[Chunk]) -> None:
         """Store a book and its chunks."""
         text = "\n\n".join(c.content for c in chunks)
@@ -770,7 +821,7 @@ class Database:
                 "INSERT INTO chunks"
                 " (book_id, div1, div2, div3, div4, position, content, kind, char_count)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
+                (
                     (
                         book.id,
                         c.div1,
@@ -783,7 +834,7 @@ class Database:
                         len(c.content),
                     )
                     for c in chunks
-                ],
+                ),
             )
 
     def close(self) -> None:

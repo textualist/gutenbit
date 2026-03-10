@@ -143,7 +143,15 @@ def chunk_html(html: str) -> list[Chunk]:
     """
     soup = BeautifulSoup(html, "html.parser")
     tag_positions = _tag_positions(soup)
-    bounds = _find_gutenberg_bounds(soup, tag_positions)
+    subtree_end_positions = _build_subtree_end_positions(soup, tag_positions)
+    bounds = _find_gutenberg_bounds(soup, tag_positions, subtree_end_positions)
+    paragraphs, paragraph_positions = _build_paragraph_index(soup, tag_positions, bounds)
+    doc_index = _DocumentIndex(
+        tag_positions=tag_positions,
+        subtree_end_positions=subtree_end_positions,
+        paragraphs=paragraphs,
+        paragraph_positions=paragraph_positions,
+    )
 
     # Build section list from TOC links and refine with body headings when the
     # TOC is a coarse but valid subsequence of the body structure.
@@ -151,7 +159,7 @@ def chunk_html(html: str) -> list[Chunk]:
     if toc_sections:
         heading_sections = _parse_heading_sections(
             soup,
-            tag_positions=tag_positions,
+            doc_index=doc_index,
             bounds=bounds,
         )
         sections = _refine_toc_sections(
@@ -161,7 +169,7 @@ def chunk_html(html: str) -> list[Chunk]:
         )
     else:
         # Some Gutenberg editions expose page-number TOC links only.
-        sections = _parse_heading_sections(soup, tag_positions=tag_positions, bounds=bounds)
+        sections = _parse_heading_sections(soup, doc_index=doc_index, bounds=bounds)
     if not sections:
         return []
 
@@ -176,10 +184,6 @@ def chunk_html(html: str) -> list[Chunk]:
             for s in sections
         ]
 
-    # Pre-collect all <p> tags with their document positions for fast range
-    # lookups (avoids O(sections * paragraphs) find_all_next traversal).
-    p_index = _build_paragraph_index(soup, tag_positions, bounds)
-
     chunks: list[Chunk] = []
     pos = 0
     divs = ["", "", "", ""]
@@ -191,7 +195,8 @@ def chunk_html(html: str) -> list[Chunk]:
     stop_pos = tag_positions.get(id(stop_tag))
     if stop_pos is not None:
         for text in _paragraphs_in_range(
-            p_index,
+            doc_index.paragraphs,
+            doc_index.paragraph_positions,
             bounds.start_pos,
             stop_pos,
             heading_texts=heading_texts,
@@ -237,7 +242,12 @@ def chunk_html(html: str) -> list[Chunk]:
             stop_pos_val = tag_positions.get(id(tail_stop))
 
         if start_pos_val is not None:
-            for text in _paragraphs_in_range(p_index, start_pos_val, stop_pos_val):
+            for text in _paragraphs_in_range(
+                doc_index.paragraphs,
+                doc_index.paragraph_positions,
+                start_pos_val,
+                stop_pos_val,
+            ):
                 chunks.append(Chunk(pos, divs[0], divs[1], divs[2], divs[3], text, "text"))
                 pos += 1
 
@@ -418,7 +428,7 @@ def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
 def _parse_heading_sections(
     soup: BeautifulSoup,
     *,
-    tag_positions: dict[int, int],
+    doc_index: _DocumentIndex,
     bounds: _ContentBounds,
 ) -> list[_Section]:
     """Fallback section extraction directly from body headings.
@@ -428,7 +438,7 @@ def _parse_heading_sections(
     """
     heading_rows: list[_HeadingRow] = []
     for heading in soup.find_all(_HEADING_TAGS):
-        if not _tag_within_bounds(heading, tag_positions, bounds):
+        if not _tag_within_bounds(heading, doc_index.tag_positions, bounds):
             continue
         heading_text = _clean_heading_text(_extract_heading_text(heading))
         if not heading_text:
@@ -458,7 +468,7 @@ def _parse_heading_sections(
         if next_row is not None and _is_editorial_placeholder_heading(
             row,
             next_row,
-            tag_positions=tag_positions,
+            doc_index=doc_index,
         ):
             i += 1
             continue
@@ -467,7 +477,7 @@ def _parse_heading_sections(
             subtitle = _normalized_heading_continuation(
                 row,
                 next_row,
-                tag_positions=tag_positions,
+                doc_index=doc_index,
             )
             if subtitle:
                 heading_text = f"{heading_text} {subtitle}"
@@ -683,6 +693,8 @@ def _is_title_like_heading(heading_text: str) -> bool:
         return False
     if _STANDALONE_STRUCTURAL_RE.search(heading_text):
         return False
+    if _is_dialogue_speaker_heading(heading_text):
+        return False
     return not _is_non_structural_heading_text(heading_text)
 
 
@@ -773,13 +785,24 @@ class _IndexedParagraph:
 
     position: int
     text: str
+    is_toc: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _DocumentIndex:
+    """Precomputed tag and paragraph indices for one HTML document."""
+
+    tag_positions: dict[int, int]
+    subtree_end_positions: dict[int, int]
+    paragraphs: list[_IndexedParagraph]
+    paragraph_positions: list[int]
 
 
 def _build_paragraph_index(
     soup: BeautifulSoup,
     tag_positions: dict[int, int],
     bounds: _ContentBounds,
-) -> list[_IndexedParagraph]:
+) -> tuple[list[_IndexedParagraph], list[int]]:
     """Pre-collect all usable paragraphs with positions and text.
 
     Builds a sorted list once so section-range queries use bisect instead of
@@ -787,22 +810,23 @@ def _build_paragraph_index(
     """
     body = soup.find("body")
     if not body:
-        return []
+        return [], []
     result: list[_IndexedParagraph] = []
+    positions: list[int] = []
     for p in body.find_all("p"):
         pos = tag_positions.get(id(p))
         if pos is None or not bounds.contains(pos):
             continue
-        if _is_toc_paragraph(p):
-            continue
         text = _extract_paragraph_text(p)
         if text:
-            result.append(_IndexedParagraph(pos, text))
-    return result
+            result.append(_IndexedParagraph(pos, text, _is_toc_paragraph(p)))
+            positions.append(pos)
+    return result, positions
 
 
 def _paragraphs_in_range(
     p_index: list[_IndexedParagraph],
+    p_positions: list[int],
     start_pos: int | None,
     stop_pos: int | None,
     *,
@@ -814,13 +838,14 @@ def _paragraphs_in_range(
     *start_pos* is exclusive (paragraphs must be strictly after it).
     *stop_pos* is exclusive (paragraphs must be strictly before it).
     """
-    positions = [ip.position for ip in p_index]
-    lo = bisect_right(positions, start_pos) if start_pos is not None else 0
-    hi = bisect_left(positions, stop_pos) if stop_pos is not None else len(p_index)
+    lo = bisect_right(p_positions, start_pos) if start_pos is not None else 0
+    hi = bisect_left(p_positions, stop_pos) if stop_pos is not None else len(p_index)
 
     _heading_texts = heading_texts or set()
     paragraphs: list[str] = []
     for ip in p_index[lo:hi]:
+        if ip.is_toc:
+            continue
         if min_length and len(ip.text) < min_length:
             continue
         if _heading_texts:
@@ -844,23 +869,29 @@ def _extract_paragraph_text(paragraph: Tag) -> str:
     if not has_pagenum and not has_img:
         return " ".join(paragraph.get_text().split()).strip()
 
-    # Slow path: re-parse only the rare paragraphs that need modification.
-    paragraph_copy = BeautifulSoup(str(paragraph), "html.parser").find("p")
-    if paragraph_copy is None:
-        return ""
+    parts: list[str] = []
 
-    for pagenum in paragraph_copy.select("span.pagenum"):
-        pagenum.decompose()
+    def _append_text(node: Tag) -> None:
+        for child in node.children:
+            if isinstance(child, NavigableString):
+                parts.append(str(child))
+                continue
+            if not isinstance(child, Tag):
+                continue
+            if child.name == "span" and "pagenum" in {
+                str(cls).lower() for cls in (child.get("class") or [])
+            }:
+                continue
+            if child.name == "img":
+                alt_value = child.get("alt")
+                alt_text = " ".join(str(alt_value or "").split()).strip()
+                if alt_text:
+                    parts.append(alt_text)
+                continue
+            _append_text(child)
 
-    for img in paragraph_copy.find_all("img"):
-        alt_value = img.get("alt")
-        alt_text = " ".join(str(alt_value or "").split()).strip()
-        if alt_text:
-            img.replace_with(NavigableString(alt_text))
-        else:
-            img.decompose()
-
-    return " ".join(paragraph_copy.get_text().split()).strip()
+    _append_text(paragraph)
+    return " ".join("".join(parts).split()).strip()
 
 
 _NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]+")
@@ -938,36 +969,60 @@ def _fallback_start_index(heading_rows: list[_HeadingRow]) -> int | None:
     return None
 
 
-def _subtree_end_position(tag: Tag, tag_positions: dict[int, int]) -> int | None:
+def _build_subtree_end_positions(
+    soup: BeautifulSoup, tag_positions: dict[int, int]
+) -> dict[int, int]:
+    """Return the last document-order position covered by each tag subtree."""
+    end_positions: dict[int, int] = {}
+    stack: list[tuple[BeautifulSoup | Tag, bool]] = [(soup, False)]
+    while stack:
+        node, visited = stack.pop()
+        if not visited:
+            stack.append((node, True))
+            for child in reversed(node.contents):
+                if isinstance(child, Tag):
+                    stack.append((child, False))
+            continue
+
+        end_pos = tag_positions.get(id(node))
+        for child in node.contents:
+            if not isinstance(child, Tag):
+                continue
+            child_end = end_positions.get(id(child))
+            if child_end is not None and (end_pos is None or child_end > end_pos):
+                end_pos = child_end
+        if end_pos is not None:
+            end_positions[id(node)] = end_pos
+    return end_positions
+
+
+def _subtree_end_position(
+    tag: Tag,
+    tag_positions: dict[int, int],
+    subtree_end_positions: dict[int, int],
+) -> int | None:
     """Return the last document-order position covered by *tag*'s subtree."""
-    end_pos = _tag_position(tag, tag_positions)
-    for child in tag.find_all(True):
-        child_pos = _tag_position(child, tag_positions)
-        if child_pos is not None and (end_pos is None or child_pos > end_pos):
-            end_pos = child_pos
-    return end_pos
+    return subtree_end_positions.get(id(tag), _tag_position(tag, tag_positions))
 
 
 def _headings_have_text_between(
     current: _HeadingRow,
     next_row: _HeadingRow,
     *,
-    tag_positions: dict[int, int],
+    doc_index: _DocumentIndex,
 ) -> bool:
     """Return True when body paragraphs intervene between two heading rows."""
-    start_pos = _subtree_end_position(current.tag, tag_positions)
-    stop_pos = _tag_position(next_row.tag, tag_positions)
+    start_pos = _subtree_end_position(
+        current.tag,
+        doc_index.tag_positions,
+        doc_index.subtree_end_positions,
+    )
+    stop_pos = _tag_position(next_row.tag, doc_index.tag_positions)
     if start_pos is None or stop_pos is None or stop_pos <= start_pos:
         return True
-    for paragraph in current.tag.find_all_next("p"):
-        pos = _tag_position(paragraph, tag_positions)
-        if pos is None:
-            continue
-        if pos >= stop_pos:
-            break
-        if pos > start_pos and _extract_paragraph_text(paragraph):
-            return True
-    return False
+    lo = bisect_right(doc_index.paragraph_positions, start_pos)
+    hi = bisect_left(doc_index.paragraph_positions, stop_pos)
+    return lo < hi
 
 
 def _normalize_heading_subtitle(heading_text: str) -> str:
@@ -996,14 +1051,34 @@ def _is_refinement_heading(heading_text: str) -> bool:
     return _PLAIN_NUMBER_HEADING_RE.fullmatch(heading_text) is not None
 
 
+def _is_dialogue_speaker_heading(heading_text: str) -> bool:
+    """Return True for uppercase speaker attributions like ``SOCRATES - GLAUCON``."""
+    if " - " not in heading_text:
+        return False
+
+    parts = [part.strip(" .,:;!?()[]") for part in heading_text.split(" - ")]
+    if len(parts) < 2:
+        return False
+
+    for part in parts:
+        words = part.split()
+        if not words or len(words) > 5:
+            return False
+        if not any(char.isalpha() for char in part):
+            return False
+        if part != part.upper():
+            return False
+    return True
+
+
 def _normalized_heading_continuation(
     current: _HeadingRow,
     next_row: _HeadingRow,
     *,
-    tag_positions: dict[int, int],
+    doc_index: _DocumentIndex,
 ) -> str | None:
     """Return a normalized continuation subtitle for a bare heading, if present."""
-    if _headings_have_text_between(current, next_row, tag_positions=tag_positions):
+    if _headings_have_text_between(current, next_row, doc_index=doc_index):
         return None
     subtitle = _normalize_heading_subtitle(next_row.heading_text)
     if not subtitle:
@@ -1017,14 +1092,14 @@ def _is_editorial_placeholder_heading(
     current: _HeadingRow,
     next_row: _HeadingRow,
     *,
-    tag_positions: dict[int, int],
+    doc_index: _DocumentIndex,
 ) -> bool:
     """Return True for editorial 'missing chapter' headings that should be skipped."""
     if not _EDITORIAL_PLACEHOLDER_HEADING_RE.search(current.heading_text):
         return False
     if not _HEADING_KEYWORD_RE.match(next_row.heading_text):
         return False
-    return not _headings_have_text_between(current, next_row, tag_positions=tag_positions)
+    return not _headings_have_text_between(current, next_row, doc_index=doc_index)
 
 
 def _style_has_emphasized_font(style: str) -> bool:
@@ -1067,7 +1142,11 @@ def _tag_within_bounds(tag: Tag, tag_positions: dict[int, int], bounds: _Content
     return bounds.contains(position)
 
 
-def _find_gutenberg_bounds(soup: BeautifulSoup, tag_positions: dict[int, int]) -> _ContentBounds:
+def _find_gutenberg_bounds(
+    soup: BeautifulSoup,
+    tag_positions: dict[int, int],
+    subtree_end_positions: dict[int, int],
+) -> _ContentBounds:
     """Locate START/END delimiter bounds in document order."""
 
     def _find_marker_parent(marker_re: re.Pattern[str]) -> Tag | None:
@@ -1083,12 +1162,7 @@ def _find_gutenberg_bounds(soup: BeautifulSoup, tag_positions: dict[int, int]) -
     def _subtree_end_pos(tag: Tag | None) -> int | None:
         if tag is None:
             return None
-        end_pos = _tag_position(tag, tag_positions)
-        for child in tag.find_all(True):
-            child_pos = _tag_position(child, tag_positions)
-            if child_pos is not None and (end_pos is None or child_pos > end_pos):
-                end_pos = child_pos
-        return end_pos
+        return subtree_end_positions.get(id(tag), _tag_position(tag, tag_positions))
 
     start_parent = _find_marker_parent(_START_DELIMITER_RE)
     end_parent = _find_marker_parent(_END_DELIMITER_RE)
