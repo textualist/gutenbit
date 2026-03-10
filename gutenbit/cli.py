@@ -8,6 +8,7 @@ import logging
 import re
 import sqlite3
 import sys
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -726,6 +727,17 @@ def _format_fts_error(exc: sqlite3.Error) -> str:
     return f"Invalid FTS query syntax: {detail}."
 
 
+def _package_version() -> str:
+    try:
+        return package_version("gutenbit")
+    except PackageNotFoundError:
+        try:
+            from gutenbit import __version__
+        except ImportError:
+            return "0+unknown"
+        return __version__
+
+
 def _build_parser() -> argparse.ArgumentParser:
     fmt = argparse.RawDescriptionHelpFormatter
     p = argparse.ArgumentParser(
@@ -747,6 +759,7 @@ section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowes
 all data is stored in a local SQLite database (default: gutenbit.db).""",
     )
     p.add_argument("--db", default=DEFAULT_DB, help="SQLite database path (default: %(default)s)")
+    p.add_argument("--version", action="version", version=f"%(prog)s {_package_version()}")
     p.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
     sub = p.add_subparsers(dest="command")
 
