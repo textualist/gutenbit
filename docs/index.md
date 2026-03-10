@@ -6,9 +6,21 @@ Gutenbit downloads public-domain books, parses their HTML into paragraph-level c
 
 ## Install
 
+Gutenbit is not published on PyPI yet, so the fastest way to sample the CLI is:
+
 ```bash
-uv add gutenbit
+uvx --from git+https://github.com/keinan1/gutenbit gutenbit --help
 ```
+
+Install it persistently when you want the `gutenbit` command on your `PATH`:
+
+```bash
+uv tool install git+https://github.com/keinan1/gutenbit
+```
+
+Then run `gutenbit --help`. Remove it later with `uv tool uninstall gutenbit`.
+
+If `gutenbit` is not found after install, run `uv tool update-shell` once and restart your shell.
 
 ## Python in 30 seconds
 

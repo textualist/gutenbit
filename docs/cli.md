@@ -2,6 +2,24 @@
 
 The `gutenbit` command-line tool provides seven subcommands that follow a natural workflow: find books, add them, explore their structure, read text, and search.
 
+## Installation
+
+Gutenbit is not published on PyPI yet, so start by running the CLI directly from GitHub:
+
+```bash
+uvx --from git+https://github.com/keinan1/gutenbit gutenbit --help
+```
+
+Install it persistently with `uv` once you want the `gutenbit` command available without `uvx`:
+
+```bash
+uv tool install git+https://github.com/keinan1/gutenbit
+```
+
+Then run `gutenbit --help`. Remove it later with `uv tool uninstall gutenbit`.
+
+If `gutenbit` is not found after install, run `uv tool update-shell` once and restart your shell.
+
 All commands store data in a local SQLite file. Use `--db PATH` to specify a non-default location (default: `gutenbit.db`). All commands support `--json` for machine-readable output.
 
 ## catalog

@@ -1,0 +1,32 @@
+name: Package Smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+      - main
+
+jobs:
+  build-and-smoke-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.11"
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Smoke test installed wheel
+        run: |
+          wheel=$(echo dist/*.whl)
+          uvx --refresh --from "$wheel" gutenbit --help
+          uvx --refresh --from "$wheel" gutenbit --version

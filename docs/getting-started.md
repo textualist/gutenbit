@@ -4,8 +4,26 @@ This guide walks through a complete workflow: find a book, download it, explore 
 
 ## Installation
 
+Gutenbit is not published on PyPI yet, so start by trying the CLI directly from GitHub:
+
 ```bash
-uv add gutenbit
+uvx --from git+https://github.com/keinan1/gutenbit gutenbit --help
+```
+
+Install it persistently once you want a normal `gutenbit` command:
+
+```bash
+uv tool install git+https://github.com/keinan1/gutenbit
+```
+
+Then run `gutenbit --help`. Remove it later with `uv tool uninstall gutenbit`.
+
+If this is your first `uv` tool, run `uv tool update-shell` once and restart your shell so `gutenbit` is on your `PATH`.
+
+If you want to use the Python package inside a `uv` project instead of installing the CLI globally:
+
+```bash
+uv add git+https://github.com/keinan1/gutenbit
 ```
 
 ## CLI walkthrough
