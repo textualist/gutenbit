@@ -977,6 +977,43 @@ def test_toc_json_skips_title_like_opening_block(tmp_path):
     )
 
 
+def test_toc_json_preserves_bracketed_numeric_section_labels(tmp_path):
+    book = BookRecord(
+        id=12,
+        title="Bracketed Episodes",
+        authors="Anon.",
+        language="en",
+        subjects="Test fixtures",
+        locc="PR",
+        bookshelves="",
+        issued="2001-06-01",
+        type="Text",
+    )
+    html = _make_html(
+        "Bracketed Episodes",
+        """
+<p class="toc"><a href="#part01" class="pginternal"><b>— I —</b></a></p>
+<p class="toc"><a href="#chap01" class="pginternal">[ 1 ]</a></p>
+<h2><a id="part01"></a>— I —</h2>
+<h3><a id="chap01"></a>[ 1 ]</h3>
+<p>Stately, plump Buck Mulligan came from the stairhead.</p>
+""",
+    )
+
+    db = Database(tmp_path / "bracketed-sections.db")
+    db._store(book, chunk_html(html))
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "toc", "12", "--json")
+    assert code == 0
+
+    payload = json.loads(out)
+    sections = payload["data"]["toc"]["sections"]
+    assert sections[0]["section"] == "— I —"
+    assert sections[1]["section"] == "— I — / [ 1 ]"
+
+
 def test_view_json_all_for_book(tmp_path):
     db = _make_db(tmp_path)
     db_path = db.path

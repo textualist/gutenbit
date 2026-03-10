@@ -82,6 +82,7 @@ _STRUCTURAL_HEADING_TRAILER_RE = re.compile(
     r"(\b(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)\.?\s*[IVXLCDM0-9]+\b.*)$",
     re.IGNORECASE,
 )
+_BRACKETED_NUMERIC_HEADING_RE = re.compile(r"^\[\s*\d+\s*\]$")
 _NUMERIC_LINK_TEXT_RE = re.compile(r"^\[?\d+\]?$")
 _ROMAN_NUMERAL_RE = re.compile(r"^[IVXLCDM]+$")
 _PLAIN_NUMBER_HEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.?$", re.IGNORECASE)
@@ -662,6 +663,8 @@ def _clean_heading_text(heading_text: str) -> str:
     text = " ".join(heading_text.split()).strip()
     text = _HEADING_CITATION_SUFFIX_RE.sub("", text)
     text = _STRUCTURAL_HEADING_SPACING_RE.sub(r"\1\2 \3", text)
+    if _BRACKETED_NUMERIC_HEADING_RE.fullmatch(text):
+        return text
     text = text.rstrip(" .,;:])")
     trailer_match = _STRUCTURAL_HEADING_TRAILER_RE.search(text)
     if trailer_match:

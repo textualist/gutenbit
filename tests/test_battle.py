@@ -827,7 +827,7 @@ class TestArtOfWar:
 
 
 class TestUlysses:
-    """PG 4300 — '— I —' parts with '[ 1' episode numbers."""
+    """PG 4300 — '— I —' parts with '[ 1 ]' episode numbers."""
 
     @pytest.fixture(scope="class")
     def chunks(self) -> list[Chunk]:
@@ -838,7 +838,7 @@ class TestUlysses:
 
     def test_heading_count(self, chunks: list[Chunk]):
         headings = _headings(chunks)
-        # 3 parts (— I —, — II —, — III —) + 18 episodes ([ 1 .. [ 18) = 21
+        # 3 parts (— I —, — II —, — III —) + 18 episodes ([ 1 ] .. [ 18 ]) = 21
         assert len(headings) == 21
 
     def test_three_parts(self, chunks: list[Chunk]):
@@ -850,6 +850,12 @@ class TestUlysses:
         headings = _headings(chunks)
         episode_headings = [h for h in headings if h.content.startswith("[")]
         assert len(episode_headings) == 18
+
+    def test_episode_labels_keep_closing_brackets(self, chunks: list[Chunk]):
+        headings = _headings(chunks)
+        episode_labels = [h.content for h in headings if h.content.startswith("[")]
+        assert episode_labels[:3] == ["[ 1 ]", "[ 2 ]", "[ 3 ]"]
+        assert episode_labels[-1] == "[ 18 ]"
 
     def test_bloom_in_content(self, chunks: list[Chunk]):
         paragraphs = [c for c in chunks if c.kind == "text"]

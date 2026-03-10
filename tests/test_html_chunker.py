@@ -620,6 +620,22 @@ def test_heading_cleanup_does_not_treat_part_inside_word_as_keyword():
     assert headings[0].content == "CHAPTER XXXVII"
 
 
+def test_bracketed_numeric_heading_keeps_closing_bracket():
+    html = _make_html("""
+    <p class="toc"><a href="#part01" class="pginternal"><b>— I —</b></a></p>
+    <p class="toc"><a href="#chap01" class="pginternal">[ 1 ]</a></p>
+    <h2><a id="part01"></a>— I —</h2>
+    <h3><a id="chap01"></a>[ 1 ]</h3>
+    <p>Stately, plump Buck Mulligan came from the stairhead.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert [h.content for h in headings] == ["— I —", "[ 1 ]"]
+    assert headings[1].div1 == "— I —"
+    assert headings[1].div2 == "[ 1 ]"
+
+
 def test_paragraph_from_img_alt_drop_cap():
     html = _make_html("""
     <p><a href="#ch1" class="pginternal">CHAPTER I</a></p>
