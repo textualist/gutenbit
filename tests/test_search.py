@@ -6,6 +6,7 @@ import io
 import json
 import os
 import time
+import zipfile
 
 import httpx
 
@@ -44,6 +45,13 @@ _PG_TEMPLATE = """\
 
 def _make_html(title: str, body: str) -> str:
     return _PG_TEMPLATE.format(title=title, body=body)
+
+
+def _zip_payload(filename: str, html: str) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(filename, html)
+    return buffer.getvalue()
 
 
 # ------------------------------------------------------------------
@@ -1795,7 +1803,7 @@ def test_ingest_reprocesses_stale_chunker_version(tmp_path, monkeypatch):
 
     code, out, _err = _run_cli(tmp_path / "stale.db", "add", "889", "--delay", "0")
     assert code == 0
-    assert "reprocessing 889: Needs Refresh (chunker updated)" in out
+    assert "processing 889: Needs Refresh (chunker updated)" in out
     assert ingested_ids == [889]
 
 
@@ -1905,8 +1913,8 @@ def test_books_update_reprocesses_only_stale_books(tmp_path, monkeypatch):
 
     code, out, _err = _run_cli(db_path, "books", "--update", "--delay", "0")
     assert code == 0
-    assert "reprocessing 1: Moby Dick (chunker updated)" in out
-    assert "reprocessing 2:" not in out
+    assert "processing 1: Moby Dick (chunker updated)" in out
+    assert "processing 2:" not in out
     assert seen_downloads == [1]
 
 
@@ -1925,8 +1933,8 @@ def test_books_update_force_reprocesses_all_books(tmp_path, monkeypatch):
 
     code, out, _err = _run_cli(db_path, "books", "--update", "--force", "--delay", "0")
     assert code == 0
-    assert "reprocessing 1: Moby Dick (forced)" in out
-    assert "reprocessing 2: Pride and Prejudice (forced)" in out
+    assert "processing 1: Moby Dick (forced)" in out
+    assert "processing 2: Pride and Prejudice (forced)" in out
     assert seen_downloads == [1, 2]
 
 
@@ -2390,6 +2398,53 @@ def test_add_non_json_failure_returns_exit_1(tmp_path, monkeypatch):
     assert "adding 555: Broken Download" in out
     assert "failed 555: Broken Download" in out
     assert "Completed with 1 failure(s)." in out
+
+
+def test_add_non_json_reports_download_source(tmp_path, monkeypatch):
+    record = BookRecord(
+        id=15,
+        title="Moby Dick",
+        authors="Melville, Herman",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    monkeypatch.setattr(
+        "gutenbit.cli.Catalog.fetch",
+        staticmethod(lambda **_kwargs: Catalog([record])),
+    )
+
+    class _FakeResponse:
+        def __init__(self, *, text: str = "", content: bytes = b"") -> None:
+            self.text = text
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+    def _fake_get(url: str, **_kwargs):
+        if url == "https://aleph.pglaf.org/cache/epub/15/pg15-images.html":
+            return _FakeResponse(
+                text=_make_html("Moby Dick", "<h2>CHAPTER 1</h2><p>Call me Ishmael.</p>")
+            )
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr("gutenbit.download.httpx.get", _fake_get)
+
+    code, out, _err = _run_cli(
+        tmp_path / "source.db",
+        "add",
+        "15",
+        "--delay",
+        "0",
+    )
+
+    assert code == 0
+    assert "adding 15: Moby Dick" in out
+    assert "finished 15: Moby Dick (official mirror: aleph.pglaf.org)" in out
 
 
 def test_delete_json_output(tmp_path):

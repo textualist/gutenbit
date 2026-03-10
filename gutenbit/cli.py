@@ -22,10 +22,12 @@ from gutenbit.db import (
     _normalize_div_segment,
 )
 from gutenbit.display import CliDisplay, format_summary_stats
+from gutenbit.download import describe_download_source, get_last_download_source
 
 STATE_DIR_NAME = ".gutenbit"
 DEFAULT_DB_NAME = "gutenbit.db"
 DEFAULT_DB = f"{STATE_DIR_NAME}/{DEFAULT_DB_NAME}"
+DEFAULT_DOWNLOAD_DELAY = 2.0
 JSON_OPENING_LINE_PREVIEW_CHARS = 140
 DEFAULT_OPENING_CHUNK_COUNT = 3
 DEFAULT_VIEW_FORWARD = 1
@@ -819,8 +821,8 @@ examples:
     add.add_argument(
         "--delay",
         type=float,
-        default=1.0,
-        help="seconds between downloads (default: 1.0)",
+        default=DEFAULT_DOWNLOAD_DELAY,
+        help="seconds between downloads (default: %(default)s)",
     )
     add.add_argument("--json", action="store_true", help="output as JSON")
     _add_catalog_cache_args(add)
@@ -874,8 +876,8 @@ output columns:  ID  AUTHORS  TITLE""",
     bk.add_argument(
         "--delay",
         type=float,
-        default=1.0,
-        help="seconds between downloads in update mode (default: 1.0)",
+        default=DEFAULT_DOWNLOAD_DELAY,
+        help="seconds between downloads in update mode (default: %(default)s)",
     )
     bk.add_argument(
         "--force",
@@ -1171,7 +1173,7 @@ def _process_books_for_ingest(
         if not as_json:
             if state.has_text:
                 reason = "forced" if force else "chunker updated"
-                display.status(f"  reprocessing {book.id}: {title} ({reason})...")
+                display.status(f"  processing {book.id}: {title} ({reason})...")
             else:
                 display.status(f"  adding {book.id}: {title}...")
 
@@ -1186,6 +1188,18 @@ def _process_books_for_ingest(
 
         if success:
             statuses[book.id] = target_status
+            if not as_json:
+                source = get_last_download_source()
+                source_description = describe_download_source(source)
+                if source:
+                    if source_description:
+                        display.success(
+                            f"  finished {book.id}: {title} ({source_description}: {source})"
+                        )
+                    else:
+                        display.success(f"  finished {book.id}: {title} ({source})")
+                else:
+                    display.success(f"  finished {book.id}: {title}")
         else:
             statuses[book.id] = "failed"
             failure = f"Failed to {failure_action} {book.id}: {title}"
@@ -1341,7 +1355,7 @@ def _cmd_books(args: argparse.Namespace) -> int:
     as_json = getattr(args, "json", False)
     display = _display()
     if not args.update:
-        if args.delay != 1.0:
+        if args.delay != DEFAULT_DOWNLOAD_DELAY:
             return _command_error(
                 "books",
                 "--delay can only be used with --update.",
