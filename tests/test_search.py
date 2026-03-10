@@ -1496,7 +1496,7 @@ def test_catalog_fetch_refresh_bypasses_fresh_cache(tmp_path, monkeypatch):
     assert calls["count"] == 2
 
 
-def test_catalog_cli_uses_db_local_cache_dir_and_reports_cache_hit(tmp_path, monkeypatch):
+def test_catalog_cli_uses_project_local_cache_dir_and_reports_cache_hit(tmp_path, monkeypatch):
     record = BookRecord(
         id=777,
         title="Cached Catalog Title",
@@ -1522,8 +1522,14 @@ def test_catalog_cli_uses_db_local_cache_dir_and_reports_cache_hit(tmp_path, mon
         )
 
     monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(_fake_fetch))
+    monkeypatch.chdir(tmp_path)
 
-    code, out, _err = _run_cli(tmp_path / "library.db", "catalog", "--author", "Example")
+    code, out, _err = _run_cli(
+        tmp_path / "nested" / "library.db",
+        "catalog",
+        "--author",
+        "Example",
+    )
     assert code == 0
     assert "Using cached catalog (English text corpus)." in out
     assert seen["refresh"] is False
@@ -1556,9 +1562,10 @@ def test_catalog_cli_refresh_flag_forces_redownload_message(tmp_path, monkeypatc
         )
 
     monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(_fake_fetch))
+    monkeypatch.chdir(tmp_path)
 
     code, out, _err = _run_cli(
-        tmp_path / "library.db",
+        tmp_path / "nested" / "library.db",
         "catalog",
         "--author",
         "Example",
@@ -1567,6 +1574,7 @@ def test_catalog_cli_refresh_flag_forces_redownload_message(tmp_path, monkeypatc
     assert code == 0
     assert "Refreshed catalog from Project Gutenberg (English text corpus)." in out
     assert seen["refresh"] is True
+    assert str(seen["cache_dir"]) == str(tmp_path / ".gutenbit" / "cache")
 
 
 def test_catalog_policy_dedupes_by_primary_author_and_title():

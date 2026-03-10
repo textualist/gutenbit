@@ -8,15 +8,24 @@ import logging
 import re
 import sqlite3
 import sys
-from importlib.metadata import PackageNotFoundError, version as package_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any, TypedDict
 
 from gutenbit.catalog import BookRecord, Catalog, CatalogFetchInfo
-from gutenbit.db import ChunkRecord, Database, TextState, _div_parts_match, _normalize_div_segment
+from gutenbit.db import (
+    ChunkRecord,
+    Database,
+    TextState,
+    _div_parts_match,
+    _normalize_div_segment,
+)
 from gutenbit.display import CliDisplay, format_summary_stats
 
-DEFAULT_DB = "gutenbit.db"
+STATE_DIR_NAME = ".gutenbit"
+DEFAULT_DB_NAME = "gutenbit.db"
+DEFAULT_DB = f"{STATE_DIR_NAME}/{DEFAULT_DB_NAME}"
 JSON_OPENING_LINE_PREVIEW_CHARS = 140
 DEFAULT_OPENING_CHUNK_COUNT = 3
 DEFAULT_VIEW_FORWARD = 1
@@ -74,11 +83,12 @@ def _display() -> CliDisplay:
     return _DISPLAY_CACHE[2]
 
 
-def _catalog_cache_dir_for_db(db_path: str | Path) -> Path:
-    resolved_db = Path(db_path).expanduser()
-    if not resolved_db.is_absolute():
-        resolved_db = (Path.cwd() / resolved_db).resolve()
-    return resolved_db.parent / ".gutenbit" / "cache"
+def _cli_state_dir() -> Path:
+    return (Path.cwd() / STATE_DIR_NAME).resolve()
+
+
+def _catalog_cache_dir() -> Path:
+    return _cli_state_dir() / "cache"
 
 
 def _catalog_status_message(fetch_info: CatalogFetchInfo | None, *, refresh: bool) -> str:
@@ -96,7 +106,7 @@ def _catalog_status_message(fetch_info: CatalogFetchInfo | None, *, refresh: boo
 
 def _load_catalog(args: argparse.Namespace, *, display: CliDisplay, as_json: bool) -> Catalog:
     catalog = Catalog.fetch(
-        cache_dir=_catalog_cache_dir_for_db(args.db),
+        cache_dir=_catalog_cache_dir(),
         refresh=getattr(args, "refresh", False),
     )
     if not as_json:
@@ -756,7 +766,7 @@ typical workflow:
 chunk kinds:  heading, text
 section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowest heading)
 
-all data is stored in a local SQLite database (default: gutenbit.db).""",
+CLI-managed data is stored under .gutenbit/ (default database: .gutenbit/gutenbit.db).""",
     )
     p.add_argument("--db", default=DEFAULT_DB, help="SQLite database path (default: %(default)s)")
     p.add_argument("--version", action="version", version=f"%(prog)s {_package_version()}")
