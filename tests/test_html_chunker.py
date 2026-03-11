@@ -1052,6 +1052,36 @@ def test_paragraph_play_headings_split_act_and_scene_and_ignore_finis():
     assert paragraphs[1].div2 == "Scena Secunda"
 
 
+def test_paragraph_play_headings_reset_scene_hierarchy_on_new_act():
+    html = _make_html("""
+    <h1>The Tragedie of Macbeth</h1>
+    <p>Actus Primus. Scoena Prima.</p>
+    <p>Thunder and Lightning. Enter three Witches.</p>
+    <p>Scena Secunda.</p>
+    <p>Alarum within.</p>
+    <p>Actus Secundus. Scena Prima.</p>
+    <p>Enter Banquo, and Fleance with a Torch before him.</p>
+    <h4>FINIS.</h4>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == [
+        "Actus Primus",
+        "Scoena Prima",
+        "Scena Secunda",
+        "Actus Secundus",
+        "Scena Prima",
+    ]
+    assert headings[3].div1 == "Actus Secundus"
+    assert headings[3].div2 == ""
+    assert headings[4].div1 == "Actus Secundus"
+    assert headings[4].div2 == "Scena Prima"
+    assert paragraphs[2].div1 == "Actus Secundus"
+    assert paragraphs[2].div2 == "Scena Prima"
+
+
 # ------------------------------------------------------------------
 # Chunk kind coverage
 # ------------------------------------------------------------------
