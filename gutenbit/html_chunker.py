@@ -644,11 +644,9 @@ def _refine_toc_sections(
             if _same_heading_text(candidate.heading_text, toc_section.heading_text):
                 scan_idx += 1
                 continue
-            if not _is_refinement_heading(candidate.heading_text):
-                scan_idx += 1
-                continue
-            if _candidate_refines_toc(candidate, toc_section):
-                refined.append(candidate)
+            refined_candidate = _refined_candidate_section(candidate, toc_section)
+            if refined_candidate is not None:
+                refined.append(refined_candidate)
                 added += 1
             scan_idx += 1
 
@@ -847,10 +845,25 @@ def _classify_level(heading_text: str, is_emphasized_in_toc: bool) -> int:
     return 2
 
 
-def _candidate_refines_toc(candidate: _Section, toc_section: _Section) -> bool:
+def _refined_candidate_section(candidate: _Section, toc_section: _Section) -> _Section | None:
+    if _is_title_like_heading(candidate.heading_text):
+        if candidate.heading_rank is None or toc_section.heading_rank is None:
+            return None
+        if candidate.heading_rank != toc_section.heading_rank + 1:
+            return None
+        return _Section(
+            candidate.anchor_id,
+            candidate.heading_text,
+            min(4, toc_section.level + 1),
+            candidate.body_anchor,
+            candidate.heading_rank,
+        )
+
+    if not _is_refinement_heading(candidate.heading_text):
+        return None
     if _is_title_like_heading(toc_section.heading_text):
-        return True
-    return candidate.level > toc_section.level
+        return candidate
+    return candidate if candidate.level > toc_section.level else None
 
 
 def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
@@ -858,18 +871,23 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
     if len(sections) < 3:
         return sections
 
+    def _is_collection_title(section: _Section) -> bool:
+        return _is_title_like_heading(section.heading_text) and (
+            section.heading_rank is None or section.heading_rank <= 2
+        )
+
     title_indices_by_level: dict[int, list[int]] = defaultdict(list)
     container_title_indices_by_level: dict[int, list[int]] = defaultdict(list)
 
     for idx, section in enumerate(sections):
-        if not _is_title_like_heading(section.heading_text):
+        if not _is_collection_title(section):
             continue
         title_indices_by_level[section.level].append(idx)
 
         for next_idx in range(idx + 1, len(sections)):
             next_section = sections[next_idx]
             if (
-                _is_title_like_heading(next_section.heading_text)
+                _is_collection_title(next_section)
                 and next_section.level == section.level
             ):
                 break

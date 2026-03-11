@@ -985,7 +985,7 @@ def test_dense_chapter_index_paragraph_falls_back_to_heading_scan():
     assert headings == ["PREFACE", "CHAPTER I", "CHAPTER II", "CHAPTER III"]
 
 
-def test_toc_ignores_title_like_h3_subheads_inside_chapters():
+def test_toc_refines_title_like_h3_subheads_inside_chapters():
     html = _make_html("""
     <table><tbody>
       <tr><td><a href="#intro" class="pginternal">THE INTRODUCTION</a></td></tr>
@@ -1015,16 +1015,28 @@ def test_toc_ignores_title_like_h3_subheads_inside_chapters():
         "THE INTRODUCTION",
         "PART I. OF MAN",
         "CHAPTER I. OF SENSE",
+        "Memory",
+        "Dreams",
         "CHAPTER II. OF IMAGINATION",
     ]
-    assert all(h.content not in {"Memory", "Dreams"} for h in headings)
+
+    memory_heading = next(h for h in headings if h.content == "Memory")
+    dreams_heading = next(h for h in headings if h.content == "Dreams")
+    assert memory_heading.div1 == "PART I. OF MAN"
+    assert memory_heading.div2 == "CHAPTER I. OF SENSE"
+    assert memory_heading.div3 == "Memory"
+    assert dreams_heading.div1 == "PART I. OF MAN"
+    assert dreams_heading.div2 == "CHAPTER I. OF SENSE"
+    assert dreams_heading.div3 == "Dreams"
 
     memory_paragraph = next(p for p in paragraphs if p.content == "Memory paragraph.")
     dreams_paragraph = next(p for p in paragraphs if p.content == "Dreams paragraph.")
     assert memory_paragraph.div1 == "PART I. OF MAN"
     assert memory_paragraph.div2 == "CHAPTER I. OF SENSE"
+    assert memory_paragraph.div3 == "Memory"
     assert dreams_paragraph.div1 == "PART I. OF MAN"
     assert dreams_paragraph.div2 == "CHAPTER I. OF SENSE"
+    assert dreams_paragraph.div3 == "Dreams"
 
 
 # ------------------------------------------------------------------
