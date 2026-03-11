@@ -719,6 +719,35 @@ def test_heading_scan_skips_front_contents_cluster_and_merges_split_headings():
     assert headings[1].div2 == "CHAPTER I OF WORDS OR LANGUAGE IN GENERAL"
 
 
+def test_heading_scan_keeps_part_headings_separate_from_numbered_child_sections():
+    html = _make_html("""
+    <h1>Black Beauty</h1>
+    <h2>Part I</h2>
+    <h3>01 My Early Home</h3>
+    <p>First chapter paragraph.</p>
+    <h3>02 The Hunt</h3>
+    <p>Second chapter paragraph.</p>
+    <h2>Part II</h2>
+    <h3>22 Earlshall</h3>
+    <p>Third chapter paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert [h.content for h in headings] == [
+        "Part I",
+        "01 My Early Home",
+        "02 The Hunt",
+        "Part II",
+        "22 Earlshall",
+    ]
+    assert headings[0].div1 == "Part I"
+    assert headings[1].div1 == "Part I"
+    assert headings[1].div2 == "01 My Early Home"
+    assert headings[4].div1 == "Part II"
+    assert headings[4].div2 == "22 Earlshall"
+
+
 def test_heading_scan_strips_synopsis_from_book_heading():
     html = _make_html("""
     <h2>BOOK IV</h2>

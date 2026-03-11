@@ -56,7 +56,7 @@ _STRUCTURAL_KEYWORD_ALIASES = {
     "scena": "scene",
     "scoena": "scene",
 }
-CHUNKER_VERSION = 17
+CHUNKER_VERSION = 18
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
@@ -423,6 +423,10 @@ _EDITORIAL_PLACEHOLDER_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 _ENUMERATED_SUBHEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.\s+\S", re.IGNORECASE)
+_ENUMERATED_HEADING_PREFIX_RE = re.compile(
+    r"^(?:[IVXLCDM]+|[0-9]+)(?:[.)])?\s+\S",
+    re.IGNORECASE,
+)
 _LIST_ITEM_MARKER_RE = re.compile(r"(?:^|\s)(?:[IVXLCDM]+|[0-9]+)\.\s+\S", re.IGNORECASE)
 _STANDALONE_APPARATUS_HEADING_RE = re.compile(r"^SYNOPSIS OF\b", re.IGNORECASE)
 _FONT_SIZE_STYLE_RE = re.compile(
@@ -486,6 +490,10 @@ def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
         if (
             i + 1 < len(sections)
             and _BARE_HEADING_NUMBER_RE.fullmatch(sec.heading_text)
+            and not _broad_heading_with_enumerated_child(
+                sec.heading_text,
+                sections[i + 1].heading_text,
+            )
             and _next_heading_is_subtitle(sections[i + 1].heading_text)
         ):
             # Merge: keep anchor and level from the chapter-number heading,
@@ -1438,6 +1446,20 @@ def _normalize_heading_subtitle(heading_text: str) -> str:
     return " ".join(text.split()).strip()
 
 
+def _starts_with_enumerated_heading_prefix(heading_text: str) -> bool:
+    return _ENUMERATED_HEADING_PREFIX_RE.match(heading_text) is not None
+
+
+def _broad_heading_with_enumerated_child(
+    current_heading_text: str,
+    next_heading_text: str,
+) -> bool:
+    return (
+        _heading_keyword(current_heading_text) in _BROAD_KEYWORDS
+        and _starts_with_enumerated_heading_prefix(next_heading_text)
+    )
+
+
 def _is_ignorable_fallback_heading(heading_text: str) -> bool:
     """Return True for heading-scan rows that are likely contents or inline subheads."""
     if _NON_SUBTITLE_HEADING_RE.fullmatch(heading_text):
@@ -1592,6 +1614,8 @@ def _normalized_heading_continuation(
         return None
     subtitle = _normalize_heading_subtitle(next_row.heading_text)
     if not subtitle:
+        return None
+    if _broad_heading_with_enumerated_child(current.heading_text, subtitle):
         return None
     if not _next_heading_is_subtitle(subtitle):
         return None
