@@ -170,3 +170,29 @@ def test_hamlet_uses_paragraph_fallback_for_act_and_scene_structure():
     first_scene = next(heading for heading in headings if heading.content == "Scoena Prima")
     assert first_scene.div1 == "Actus Primus"
     assert first_scene.div2 == "Scoena Prima"
+
+
+def test_macbeth_uses_paragraph_fallback_for_full_play_structure():
+    headings = _headings(1129)
+    heading_texts = [heading.content for heading in headings]
+
+    assert heading_texts[:8] == [
+        "Actus Primus",
+        "Scoena Prima",
+        "Scena Secunda",
+        "Scena Tertia",
+        "Scena Quarta",
+        "Scena Quinta",
+        "Scena Sexta",
+        "Scena Septima",
+    ]
+    assert len(headings) == 28
+    assert "Actus Quintus" in heading_texts
+    assert "FINIS" not in heading_texts
+
+    act_two_scene_one = next(
+        heading
+        for heading in headings
+        if heading.content == "Scena Prima" and heading.div1 == "Actus Secundus"
+    )
+    assert act_two_scene_one.div2 == "Scena Prima"
