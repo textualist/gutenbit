@@ -1,0 +1,1651 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Fast local search across Project Gutenberg's literary works.">
+      
+      
+      
+        <link rel="canonical" href="https://keinan1.github.io/gutenbit/python-api/">
+      
+      
+        <link rel="prev" href="../getting-started/">
+      
+      
+        <link rel="next" href="../cli/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>Python API - Gutenbit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#python-api" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Gutenbit" class="md-header__button md-logo" aria-label="Gutenbit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Gutenbit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Python API
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/keinan1/gutenbit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Gutenbit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Gutenbit" class="md-nav__button md-logo" aria-label="Gutenbit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Gutenbit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/keinan1/gutenbit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Gutenbit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python API
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catalog
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Catalog">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fetch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fetch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bookrecord" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BookRecord
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#catalog-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catalog policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Database">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ingest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#search_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#searchresult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SearchResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reading-chunks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading chunks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#chunkrecord" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ChunkRecord
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full-text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full text
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#book-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Book management
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chunking-html-directly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chunking HTML directly
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Chunking HTML directly">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#chunk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chunk
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../reference/gutenbit/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    gutenbit
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    gutenbit
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/_cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    _cache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    cli
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/db/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    db
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/display/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    display
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/download/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    download
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/html_chunker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    html_chunker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catalog
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Catalog">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fetch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fetch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bookrecord" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BookRecord
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#catalog-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catalog policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Database">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ingest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#search_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#searchresult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SearchResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reading-chunks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading chunks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#chunkrecord" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ChunkRecord
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full-text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full text
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#book-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Book management
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chunking-html-directly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chunking HTML directly
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Chunking HTML directly">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#chunk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chunk
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="python-api">Python API</h1>
+<p>Gutenbit exposes four public classes and one function from its top-level package.</p>
+<p>Because the project is not published on PyPI yet, add it from GitHub when using it as a library:</p>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>add<span class="w"> </span>git+https://github.com/keinan1/gutenbit
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gutenbit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Catalog</span><span class="p">,</span> <span class="n">BookRecord</span><span class="p">,</span> <span class="n">Database</span><span class="p">,</span> <span class="n">SearchResult</span><span class="p">,</span> <span class="n">Chunk</span><span class="p">,</span> <span class="n">chunk_html</span>
+</code></pre></div>
+<h2 id="catalog">Catalog</h2>
+<p><code>Catalog</code> fetches and searches the Project Gutenberg metadata catalog.</p>
+<h3 id="fetch">Fetch</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gutenbit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Catalog</span>
+
+<span class="n">catalog</span> <span class="o">=</span> <span class="n">Catalog</span><span class="o">.</span><span class="n">fetch</span><span class="p">()</span>
+</code></pre></div>
+<p><code>fetch()</code> downloads the CSV catalog from Project Gutenberg, filters it to English text records, and deduplicates entries so each work maps to a single canonical ID (the lowest Gutenberg ID for that title/author pair). The result is a <code>Catalog</code> instance held in memory.</p>
+<h3 id="search">Search</h3>
+<div class="highlight"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="n">catalog</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">author</span><span class="o">=</span><span class="s2">&quot;Dickens&quot;</span><span class="p">)</span>
+<span class="n">results</span> <span class="o">=</span> <span class="n">catalog</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">&quot;Christmas&quot;</span><span class="p">,</span> <span class="n">author</span><span class="o">=</span><span class="s2">&quot;Dickens&quot;</span><span class="p">)</span>
+<span class="n">results</span> <span class="o">=</span> <span class="n">catalog</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">subject</span><span class="o">=</span><span class="s2">&quot;Philosophy&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>All filters use case-insensitive substring matching. When multiple filters are given, they combine with AND logic. Returns a list of <code>BookRecord</code> objects.</p>
+<h3 id="lookup">Lookup</h3>
+<div class="highlight"><pre><span></span><code><span class="n">book</span> <span class="o">=</span> <span class="n">catalog</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="mi">1342</span><span class="p">)</span>           <span class="c1"># BookRecord or None</span>
+<span class="n">cid</span> <span class="o">=</span> <span class="n">catalog</span><span class="o">.</span><span class="n">canonical_id</span><span class="p">(</span><span class="mi">1342</span><span class="p">)</span>   <span class="c1"># canonical ID or None</span>
+</code></pre></div>
+<p><code>canonical_id</code> resolves alternate edition IDs to the canonical one.</p>
+<h3 id="bookrecord">BookRecord</h3>
+<p>A frozen dataclass with these fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td><code>int</code></td>
+<td>Project Gutenberg ID</td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td><code>str</code></td>
+<td>Book title</td>
+</tr>
+<tr>
+<td><code>authors</code></td>
+<td><code>str</code></td>
+<td>Semicolon-separated author names</td>
+</tr>
+<tr>
+<td><code>language</code></td>
+<td><code>str</code></td>
+<td>Language code (e.g. <code>"en"</code>)</td>
+</tr>
+<tr>
+<td><code>subjects</code></td>
+<td><code>str</code></td>
+<td>Semicolon-separated subjects</td>
+</tr>
+<tr>
+<td><code>locc</code></td>
+<td><code>str</code></td>
+<td>Library of Congress Classification</td>
+</tr>
+<tr>
+<td><code>bookshelves</code></td>
+<td><code>str</code></td>
+<td>Gutenberg bookshelves</td>
+</tr>
+<tr>
+<td><code>issued</code></td>
+<td><code>str</code></td>
+<td>Publication date</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td><code>str</code></td>
+<td>Media type (e.g. <code>"Text"</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="catalog-policy">Catalog policy</h3>
+<p>By default, <code>fetch()</code> applies a policy that keeps only English text and deduplicates by lowest ID per work. To customize:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gutenbit.catalog</span><span class="w"> </span><span class="kn">import</span> <span class="n">CatalogPolicy</span>
+
+<span class="n">policy</span> <span class="o">=</span> <span class="n">CatalogPolicy</span><span class="p">(</span>
+    <span class="n">allowed_language_codes</span><span class="o">=</span><span class="nb">frozenset</span><span class="p">({</span><span class="s2">&quot;en&quot;</span><span class="p">,</span> <span class="s2">&quot;fr&quot;</span><span class="p">}),</span>
+    <span class="n">dedupe_strategy</span><span class="o">=</span><span class="s2">&quot;none&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">catalog</span> <span class="o">=</span> <span class="n">Catalog</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="n">policy</span><span class="o">=</span><span class="n">policy</span><span class="p">)</span>
+</code></pre></div>
+<p>See the <a href="../reference/gutenbit/catalog/">API Reference</a> for full details on <code>CatalogPolicy</code>.</p>
+<h2 id="database">Database</h2>
+<p><code>Database</code> wraps a SQLite file. Use it as a context manager:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gutenbit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Database</span>
+
+<span class="k">with</span> <span class="n">Database</span><span class="p">(</span><span class="s2">&quot;.gutenbit/gutenbit.db&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">db</span><span class="p">:</span>
+    <span class="c1"># all operations here</span>
+    <span class="o">...</span>
+</code></pre></div>
+<p>Or manage the connection manually with <code>db.close()</code>.</p>
+<h3 id="ingest">Ingest</h3>
+<div class="highlight"><pre><span></span><code><span class="n">catalog</span> <span class="o">=</span> <span class="n">Catalog</span><span class="o">.</span><span class="n">fetch</span><span class="p">()</span>
+<span class="n">books</span> <span class="o">=</span> <span class="n">catalog</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">author</span><span class="o">=</span><span class="s2">&quot;Tolstoy&quot;</span><span class="p">)</span>
+
+<span class="k">with</span> <span class="n">Database</span><span class="p">(</span><span class="s2">&quot;.gutenbit/gutenbit.db&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">db</span><span class="p">:</span>
+    <span class="n">db</span><span class="o">.</span><span class="n">ingest</span><span class="p">(</span><span class="n">books</span><span class="p">)</span>
+</code></pre></div>
+<p><code>ingest</code> downloads each book's HTML from Project Gutenberg, parses it into chunks, and stores everything in the database. Books already present (at the current chunker version) are skipped unless you pass <code>force=True</code>.</p>
+<p>The <code>delay</code> parameter controls the pause between downloads. The default is 1 second, which is polite to Gutenberg's servers:</p>
+<div class="highlight"><pre><span></span><code><span class="n">db</span><span class="o">.</span><span class="n">ingest</span><span class="p">(</span><span class="n">books</span><span class="p">,</span> <span class="n">delay</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span>
+<span class="n">db</span><span class="o">.</span><span class="n">ingest</span><span class="p">(</span><span class="n">books</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># reprocess even if already current</span>
+</code></pre></div>
+<h3 id="search_1">Search</h3>
+<div class="highlight"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;battle&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>Returns a list of <code>SearchResult</code> objects ordered by BM25 rank by default.</p>
+<p><strong>Filters</strong> narrow the result set:</p>
+<div class="highlight"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;battle&quot;</span><span class="p">,</span> <span class="n">author</span><span class="o">=</span><span class="s2">&quot;Tolstoy&quot;</span><span class="p">)</span>
+<span class="n">results</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;battle&quot;</span><span class="p">,</span> <span class="n">book_id</span><span class="o">=</span><span class="mi">2600</span><span class="p">)</span>
+<span class="n">results</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;battle&quot;</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;text&quot;</span><span class="p">)</span>
+<span class="n">results</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;battle&quot;</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="s2">&quot;War&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>Metadata filters (<code>author</code>, <code>title</code>, <code>language</code>, <code>subject</code>) use substring matching. <code>book_id</code> and <code>kind</code> are exact.</p>
+<p><strong>Order</strong> controls result ordering:</p>
+<div class="highlight"><pre><span></span><code><span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;battle&quot;</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="s2">&quot;rank&quot;</span><span class="p">)</span>    <span class="c1"># BM25 score (default)</span>
+<span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;battle&quot;</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="s2">&quot;first&quot;</span><span class="p">)</span>   <span class="c1"># book_id asc, position asc</span>
+<span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;battle&quot;</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="s2">&quot;last&quot;</span><span class="p">)</span>    <span class="c1"># book_id desc, position desc</span>
+</code></pre></div>
+<p><strong>Limit</strong> controls the maximum number of results:</p>
+<div class="highlight"><pre><span></span><code><span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;battle&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>  <span class="c1"># default is 20</span>
+</code></pre></div>
+<p><strong>FTS5 query syntax</strong> is supported directly:</p>
+<div class="highlight"><pre><span></span><code><span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;&quot;to be or not to be&quot;&#39;</span><span class="p">)</span>         <span class="c1"># exact phrase</span>
+<span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;war AND peace&quot;</span><span class="p">)</span>                 <span class="c1"># boolean</span>
+<span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;war NOT peace&quot;</span><span class="p">)</span>                 <span class="c1"># exclusion</span>
+<span class="n">db</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">&quot;philos*&quot;</span><span class="p">)</span>                       <span class="c1"># prefix match</span>
+</code></pre></div>
+<h3 id="searchresult">SearchResult</h3>
+<p>A frozen dataclass with these fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>chunk_id</code></td>
+<td><code>int</code></td>
+<td>Internal row ID</td>
+</tr>
+<tr>
+<td><code>book_id</code></td>
+<td><code>int</code></td>
+<td>Project Gutenberg ID</td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td><code>str</code></td>
+<td>Book title</td>
+</tr>
+<tr>
+<td><code>authors</code></td>
+<td><code>str</code></td>
+<td>Author names</td>
+</tr>
+<tr>
+<td><code>language</code></td>
+<td><code>str</code></td>
+<td>Language code</td>
+</tr>
+<tr>
+<td><code>subjects</code></td>
+<td><code>str</code></td>
+<td>Subjects</td>
+</tr>
+<tr>
+<td><code>div1</code></td>
+<td><code>str</code></td>
+<td>Broadest structural division</td>
+</tr>
+<tr>
+<td><code>div2</code></td>
+<td><code>str</code></td>
+<td>Second level</td>
+</tr>
+<tr>
+<td><code>div3</code></td>
+<td><code>str</code></td>
+<td>Third level</td>
+</tr>
+<tr>
+<td><code>div4</code></td>
+<td><code>str</code></td>
+<td>Deepest level</td>
+</tr>
+<tr>
+<td><code>position</code></td>
+<td><code>int</code></td>
+<td>Chunk index in document order</td>
+</tr>
+<tr>
+<td><code>content</code></td>
+<td><code>str</code></td>
+<td>Full text of the matching chunk</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td><code>str</code></td>
+<td><code>"heading"</code> or <code>"text"</code></td>
+</tr>
+<tr>
+<td><code>char_count</code></td>
+<td><code>int</code></td>
+<td>Character length of content</td>
+</tr>
+<tr>
+<td><code>score</code></td>
+<td><code>float</code></td>
+<td>BM25 relevance score (higher is better)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reading-chunks">Reading chunks</h3>
+<p>Several methods retrieve chunks without a search query.</p>
+<p><strong>All chunks for a book:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="n">records</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">chunk_records</span><span class="p">(</span><span class="mi">1342</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">records</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">chunk</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="n">chunk</span><span class="o">.</span><span class="n">div1</span><span class="p">,</span> <span class="n">chunk</span><span class="o">.</span><span class="n">kind</span><span class="p">,</span> <span class="n">chunk</span><span class="o">.</span><span class="n">content</span><span class="p">[:</span><span class="mi">60</span><span class="p">])</span>
+</code></pre></div>
+<p><strong>Filter by kind:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="n">headings</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">chunk_records</span><span class="p">(</span><span class="mi">1342</span><span class="p">,</span> <span class="n">kinds</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;heading&quot;</span><span class="p">])</span>
+</code></pre></div>
+<p><strong>By position:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="n">chunk</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">chunk_by_position</span><span class="p">(</span><span class="mi">1342</span><span class="p">,</span> <span class="n">position</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>A window around a position:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="n">window</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">chunk_window</span><span class="p">(</span><span class="mi">1342</span><span class="p">,</span> <span class="n">position</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">around</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="c1"># Returns chunks at positions 47, 48, 49, 50, 51, 52, 53</span>
+</code></pre></div>
+<p>The CLI <code>view --radius</code> and <code>search --radius</code> options use this same centered-window concept, but present it as a simple surrounding passage in reading order.</p>
+<p><strong>By section path:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="n">section</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">chunks_by_div</span><span class="p">(</span><span class="mi">1342</span><span class="p">,</span> <span class="s2">&quot;Chapter 1&quot;</span><span class="p">)</span>
+<span class="n">section</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">chunks_by_div</span><span class="p">(</span><span class="mi">1342</span><span class="p">,</span> <span class="s2">&quot;BOOK ONE/CHAPTER I&quot;</span><span class="p">,</span> <span class="n">kinds</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">],</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+</code></pre></div>
+<p><code>chunks_by_div</code> matches by prefix on the div hierarchy. Matching ignores trailing punctuation and is case-insensitive.</p>
+<h3 id="chunkrecord">ChunkRecord</h3>
+<p>A frozen dataclass with these fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>chunk_id</code></td>
+<td><code>int</code></td>
+<td>Internal row ID</td>
+</tr>
+<tr>
+<td><code>book_id</code></td>
+<td><code>int</code></td>
+<td>Project Gutenberg ID</td>
+</tr>
+<tr>
+<td><code>div1</code></td>
+<td><code>str</code></td>
+<td>Broadest structural division</td>
+</tr>
+<tr>
+<td><code>div2</code></td>
+<td><code>str</code></td>
+<td>Second level</td>
+</tr>
+<tr>
+<td><code>div3</code></td>
+<td><code>str</code></td>
+<td>Third level</td>
+</tr>
+<tr>
+<td><code>div4</code></td>
+<td><code>str</code></td>
+<td>Deepest level</td>
+</tr>
+<tr>
+<td><code>position</code></td>
+<td><code>int</code></td>
+<td>Chunk index in document order</td>
+</tr>
+<tr>
+<td><code>content</code></td>
+<td><code>str</code></td>
+<td>Full text</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td><code>str</code></td>
+<td>Chunk kind</td>
+</tr>
+<tr>
+<td><code>char_count</code></td>
+<td><code>int</code></td>
+<td>Character length of content</td>
+</tr>
+</tbody>
+</table>
+<h3 id="full-text">Full text</h3>
+<div class="highlight"><pre><span></span><code><span class="n">text</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">text</span><span class="p">(</span><span class="mi">1342</span><span class="p">)</span>
+</code></pre></div>
+<p>Returns the full reconstructed text (all chunks joined with double newlines), or <code>None</code> if the book is not stored.</p>
+<h3 id="book-management">Book management</h3>
+<div class="highlight"><pre><span></span><code><span class="n">all_books</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">books</span><span class="p">()</span>             <span class="c1"># list of BookRecord</span>
+<span class="n">stale_books</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">stale_books</span><span class="p">()</span>     <span class="c1"># stored books that need reprocessing</span>
+<span class="n">book</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">book</span><span class="p">(</span><span class="mi">1342</span><span class="p">)</span>               <span class="c1"># BookRecord or None</span>
+<span class="n">db</span><span class="o">.</span><span class="n">has_text</span><span class="p">(</span><span class="mi">1342</span><span class="p">)</span>                  <span class="c1"># True if stored</span>
+<span class="n">db</span><span class="o">.</span><span class="n">has_current_text</span><span class="p">(</span><span class="mi">1342</span><span class="p">)</span>          <span class="c1"># True if stored at current chunker version</span>
+<span class="n">db</span><span class="o">.</span><span class="n">delete_book</span><span class="p">(</span><span class="mi">1342</span><span class="p">)</span>               <span class="c1"># returns True if deleted, False if not found</span>
+</code></pre></div>
+<h2 id="chunking-html-directly">Chunking HTML directly</h2>
+<p>For advanced use, you can chunk HTML without the database:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gutenbit</span><span class="w"> </span><span class="kn">import</span> <span class="n">chunk_html</span>
+
+<span class="n">html</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;book.html&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+<span class="n">chunks</span> <span class="o">=</span> <span class="n">chunk_html</span><span class="p">(</span><span class="n">html</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">chunks</span><span class="p">[:</span><span class="mi">10</span><span class="p">]:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">chunk</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="n">chunk</span><span class="o">.</span><span class="n">div1</span><span class="p">,</span> <span class="n">chunk</span><span class="o">.</span><span class="n">kind</span><span class="p">,</span> <span class="n">chunk</span><span class="o">.</span><span class="n">content</span><span class="p">[:</span><span class="mi">60</span><span class="p">])</span>
+</code></pre></div>
+<h3 id="chunk">Chunk</h3>
+<p>A frozen dataclass with these fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>position</code></td>
+<td><code>int</code></td>
+<td>Chunk index in document order</td>
+</tr>
+<tr>
+<td><code>div1</code></td>
+<td><code>str</code></td>
+<td>Broadest structural division</td>
+</tr>
+<tr>
+<td><code>div2</code></td>
+<td><code>str</code></td>
+<td>Second level</td>
+</tr>
+<tr>
+<td><code>div3</code></td>
+<td><code>str</code></td>
+<td>Third level</td>
+</tr>
+<tr>
+<td><code>div4</code></td>
+<td><code>str</code></td>
+<td>Deepest level</td>
+</tr>
+<tr>
+<td><code>content</code></td>
+<td><code>str</code></td>
+<td>Text content</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td><code>str</code></td>
+<td><code>"heading"</code> or <code>"text"</code></td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="../concepts/">Concepts</a> for how divisions and chunk kinds work.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

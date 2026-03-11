@@ -1,0 +1,1623 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Fast local search across Project Gutenberg's literary works.">
+      
+      
+      
+        <link rel="canonical" href="https://keinan1.github.io/gutenbit/cli/">
+      
+      
+        <link rel="prev" href="../python-api/">
+      
+      
+        <link rel="next" href="../concepts/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>CLI - Gutenbit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cli" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Gutenbit" class="md-header__button md-logo" aria-label="Gutenbit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Gutenbit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              CLI
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/keinan1/gutenbit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Gutenbit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Gutenbit" class="md-nav__button md-logo" aria-label="Gutenbit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Gutenbit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/keinan1/gutenbit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Gutenbit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#project-gutenberg-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Project Gutenberg Access
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        catalog
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#books" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        books
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        delete
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="search">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#query-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Query modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#search-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#result-shaping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Result shaping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fts5-query-syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FTS5 query syntax
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#toc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        toc
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        view
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#json-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JSON output
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#global-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Global flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../reference/gutenbit/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    gutenbit
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    gutenbit
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/_cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    _cache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    cli
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/db/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    db
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/display/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    display
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/download/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    download
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/gutenbit/html_chunker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    html_chunker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#project-gutenberg-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Project Gutenberg Access
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        catalog
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#books" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        books
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        delete
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="search">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#query-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Query modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#search-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#result-shaping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Result shaping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fts5-query-syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FTS5 query syntax
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#toc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        toc
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        view
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#json-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JSON output
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#global-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Global flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="cli">CLI</h1>
+<p>The <code>gutenbit</code> command-line tool provides seven subcommands that follow a natural workflow: find books, add them, explore their structure, read text, and search.</p>
+<h2 id="installation">Installation</h2>
+<p>Gutenbit is not published on PyPI yet, so start by running the CLI directly from GitHub:</p>
+<div class="highlight"><pre><span></span><code>uvx<span class="w"> </span>--from<span class="w"> </span>git+https://github.com/keinan1/gutenbit<span class="w"> </span>gutenbit<span class="w"> </span>--help
+</code></pre></div>
+<p>Install it persistently with <code>uv</code> once you want the <code>gutenbit</code> command available without <code>uvx</code>:</p>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>git+https://github.com/keinan1/gutenbit
+</code></pre></div>
+<p>Then run <code>gutenbit --help</code>. Remove it later with <code>uv tool uninstall gutenbit</code>.
+Gutenbit stores its database and catalog cache in a <code>.gutenbit/</code> folder.</p>
+<p>All CLI-managed state lives under <code>.gutenbit/</code> by default: the database is <code>.gutenbit/gutenbit.db</code>, and the catalog cache is stored under <code>.gutenbit/cache/</code>. Use <code>--db PATH</code> to store the database elsewhere. All commands support <code>--json</code> for machine-readable output.</p>
+<h2 id="project-gutenberg-access">Project Gutenberg Access</h2>
+<p>Use gutenbit for individual downloads, not bulk downloading. It prefers official mirrors and uses the main site only as a zip fallback, with a default <code>2.0</code> second delay between downloads. Review the <a href="https://www.gutenberg.org/policy/robot_access.html">Robot Access Policy</a> and <a href="https://www.gutenberg.org/policy/terms_of_use.html">Terms of Use</a>.</p>
+<h2 id="catalog">catalog</h2>
+<p>Search the Project Gutenberg catalog for books by metadata.</p>
+<div class="highlight"><pre><span></span><code>gutenbit<span class="w"> </span>catalog<span class="w"> </span>--author<span class="w"> </span><span class="s2">&quot;Dickens&quot;</span>
+gutenbit<span class="w"> </span>catalog<span class="w"> </span>--title<span class="w"> </span><span class="s2">&quot;Christmas&quot;</span><span class="w"> </span>--author<span class="w"> </span><span class="s2">&quot;Dickens&quot;</span>
+gutenbit<span class="w"> </span>catalog<span class="w"> </span>--author<span class="w"> </span><span class="s2">&quot;Dickens&quot;</span><span class="w"> </span>--refresh
+gutenbit<span class="w"> </span>catalog<span class="w"> </span>--subject<span class="w"> </span><span class="s2">&quot;Philosophy&quot;</span><span class="w"> </span>--limit<span class="w"> </span><span class="m">50</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--author TEXT</code></td>
+<td>Filter by author (substring match)</td>
+</tr>
+<tr>
+<td><code>--title TEXT</code></td>
+<td>Filter by title (substring match)</td>
+</tr>
+<tr>
+<td><code>--subject TEXT</code></td>
+<td>Filter by subject (substring match)</td>
+</tr>
+<tr>
+<td><code>--language CODE</code></td>
+<td>Filter by language code (e.g. <code>en</code>)</td>
+</tr>
+<tr>
+<td><code>--limit N</code></td>
+<td>Maximum results (default: 20)</td>
+</tr>
+<tr>
+<td><code>--refresh</code></td>
+<td>Ignore the local catalog cache and redownload it now</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>Output as JSON</td>
+</tr>
+</tbody>
+</table>
+<p>Filters combine with AND logic. All matching is case-insensitive. The catalog is cached locally for two hours, filtered to English text records, and can be forced to redownload with <code>--refresh</code>.</p>
+<h2 id="add">add</h2>
+<p>Download books from Project Gutenberg and store them in the database.</p>
+<div class="highlight"><pre><span></span><code>gutenbit<span class="w"> </span>add<span class="w"> </span><span class="m">1342</span>
+gutenbit<span class="w"> </span>add<span class="w"> </span><span class="m">46</span><span class="w"> </span><span class="m">730</span><span class="w"> </span><span class="m">967</span>
+gutenbit<span class="w"> </span>add<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--refresh
+gutenbit<span class="w"> </span>add<span class="w"> </span><span class="m">2600</span><span class="w"> </span>--delay<span class="w"> </span><span class="m">2</span>.0
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BOOK_IDS</code></td>
+<td>One or more Project Gutenberg IDs (positional)</td>
+</tr>
+<tr>
+<td><code>--delay SECONDS</code></td>
+<td>Pause between downloads (default: 2.0)</td>
+</tr>
+<tr>
+<td><code>--refresh</code></td>
+<td>Ignore the local catalog cache and redownload it now</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>Output as JSON</td>
+</tr>
+</tbody>
+</table>
+<p>Books already stored at the current chunker version are skipped. IDs that map to a different canonical edition are remapped automatically.</p>
+<h2 id="books">books</h2>
+<p>List all books stored in the database, or update stored books whose parser version is stale.</p>
+<div class="highlight"><pre><span></span><code>gutenbit<span class="w"> </span>books
+gutenbit<span class="w"> </span>books<span class="w"> </span>--json
+gutenbit<span class="w"> </span>books<span class="w"> </span>--update
+gutenbit<span class="w"> </span>books<span class="w"> </span>--update<span class="w"> </span>--force
+gutenbit<span class="w"> </span>books<span class="w"> </span>--update<span class="w"> </span>--dry-run
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--update</code></td>
+<td>Reprocess stored books whose parser version is stale</td>
+</tr>
+<tr>
+<td><code>--delay SECONDS</code></td>
+<td>Pause between downloads in update mode (default: 2.0)</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td>Reprocess all stored books in update mode, even if already current</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Show which stored books would be updated without downloading</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>Output as JSON</td>
+</tr>
+</tbody>
+</table>
+<p>Without <code>--update</code>, <code>books</code> behaves exactly as before and just lists stored books.
+With <code>--update</code>, gutenbit checks the local database and reprocesses only books whose
+stored text is out of date for the current chunker version. <code>--force</code> refreshes every
+stored book, and <code>--dry-run</code> reports what would be refreshed without doing any work.</p>
+<h2 id="delete">delete</h2>
+<p>Remove books and their chunks from the database.</p>
+<div class="highlight"><pre><span></span><code>gutenbit<span class="w"> </span>delete<span class="w"> </span><span class="m">1342</span>
+gutenbit<span class="w"> </span>delete<span class="w"> </span><span class="m">46</span><span class="w"> </span><span class="m">730</span><span class="w"> </span><span class="m">967</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BOOK_IDS</code></td>
+<td>One or more Project Gutenberg IDs (positional)</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>Output as JSON</td>
+</tr>
+</tbody>
+</table>
+<p>Exits with code 1 if any requested ID was not found.</p>
+<h2 id="search">search</h2>
+<p>Full-text search across stored books using SQLite FTS5 with BM25 ranking. Search
+targets text chunks by default.</p>
+<div class="highlight"><pre><span></span><code>gutenbit<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;bennet&quot;</span>
+gutenbit<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;don&#39;t stop&quot;</span><span class="w">                              </span><span class="c1"># punctuation is ok</span>
+gutenbit<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;truth universally acknowledged&quot;</span><span class="w"> </span>--phrase
+gutenbit<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;ghost OR spirit&quot;</span><span class="w"> </span>--raw<span class="w">                   </span><span class="c1"># FTS5 boolean query</span>
+gutenbit<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;bennet&quot;</span><span class="w"> </span>--book<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--order<span class="w"> </span>first
+gutenbit<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;truth universally acknowledged&quot;</span><span class="w"> </span>--book<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--section<span class="w"> </span><span class="m">1</span><span class="w"> </span>--phrase
+gutenbit<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;chapter&quot;</span><span class="w"> </span>--book<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--kind<span class="w"> </span>heading
+gutenbit<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;bennet&quot;</span><span class="w"> </span>--book<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--radius<span class="w"> </span><span class="m">1</span><span class="w">           </span><span class="c1"># include surrounding passage</span>
+gutenbit<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;bennet&quot;</span><span class="w"> </span>--book<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--limit<span class="w"> </span><span class="m">3</span>
+gutenbit<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;bennet&quot;</span><span class="w"> </span>--book<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--count
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>QUERY</code></td>
+<td>Search query (positional)</td>
+</tr>
+<tr>
+<td><code>--phrase</code></td>
+<td>Treat query as an exact phrase (mutually exclusive with <code>--raw</code>)</td>
+</tr>
+<tr>
+<td><code>--raw</code></td>
+<td>Pass query directly to FTS5 for advanced syntax (mutually exclusive with <code>--phrase</code>)</td>
+</tr>
+<tr>
+<td><code>--order ORDER</code></td>
+<td><code>rank</code> (default), <code>first</code>, or <code>last</code></td>
+</tr>
+<tr>
+<td><code>--author TEXT</code></td>
+<td>Filter by author (substring match)</td>
+</tr>
+<tr>
+<td><code>--title TEXT</code></td>
+<td>Filter by title (substring match)</td>
+</tr>
+<tr>
+<td><code>--book ID</code></td>
+<td>Restrict to a single book</td>
+</tr>
+<tr>
+<td><code>--kind KIND</code></td>
+<td>Chunk kind to search: <code>text</code> (default), <code>heading</code>, or <code>all</code></td>
+</tr>
+<tr>
+<td><code>--section SELECTOR</code></td>
+<td>Restrict to a section by path prefix or number from <code>toc</code> (number requires <code>--book</code>)</td>
+</tr>
+<tr>
+<td><code>--limit N</code></td>
+<td>Maximum results (default: 10)</td>
+</tr>
+<tr>
+<td><code>--radius N</code></td>
+<td>Surrounding passage to include on each side of each hit</td>
+</tr>
+<tr>
+<td><code>--count</code></td>
+<td>Just print the number of matches</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>Output as JSON</td>
+</tr>
+</tbody>
+</table>
+<h3 id="query-modes">Query modes</h3>
+<p>By default, punctuation in the query is auto-escaped so apostrophes, hyphens, and other punctuation just work. Tokens are implicitly AND'd.</p>
+<ul>
+<li><strong>(default)</strong>: Plain text — punctuation is auto-escaped, words are AND'd.</li>
+<li><strong>--phrase</strong>: Exact phrase — word order and adjacency must match exactly.</li>
+<li><strong>--raw</strong>: FTS5 syntax — AND, OR, NOT, NEAR(), prefix*, "phrases", (groups).</li>
+</ul>
+<h3 id="search-order">Search order</h3>
+<ul>
+<li><strong>rank</strong>: Results ordered by BM25 relevance score, then book, then position.</li>
+<li><strong>first</strong>: Earliest matches. Ordered by book ascending, then position ascending.</li>
+<li><strong>last</strong>: Latest matches. Ordered by book descending, then position descending.</li>
+</ul>
+<h3 id="result-shaping">Result shaping</h3>
+<ul>
+<li>Use <code>--limit</code> to control how many hits are returned. The default is 10.</li>
+<li>Use <code>--radius</code> to read surrounding passage around each hit in normal reading order.</li>
+<li><code>--count</code> cannot be combined with <code>--radius</code>.</li>
+<li>Use <code>--kind heading</code> to search structural headings, or <code>--kind all</code> to include both headings and text.</li>
+</ul>
+<h3 id="fts5-query-syntax">FTS5 query syntax</h3>
+<p>When using <code>--raw</code>, the query is passed directly to SQLite FTS5. Supported syntax:</p>
+<table>
+<thead>
+<tr>
+<th>Syntax</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>war peace</code></td>
+<td>Both terms (implicit AND)</td>
+</tr>
+<tr>
+<td><code>war OR peace</code></td>
+<td>Either term</td>
+</tr>
+<tr>
+<td><code>war NOT peace</code></td>
+<td>First term, excluding second</td>
+</tr>
+<tr>
+<td><code>"to be or not"</code></td>
+<td>Exact phrase</td>
+</tr>
+<tr>
+<td><code>philos*</code></td>
+<td>Prefix match</td>
+</tr>
+<tr>
+<td><code>NEAR(war peace, 5)</code></td>
+<td>Terms within 5 tokens of each other</td>
+</tr>
+<tr>
+<td><code>(war OR battle) AND peace</code></td>
+<td>Grouped boolean logic</td>
+</tr>
+</tbody>
+</table>
+<p>Use <code>--phrase</code> to auto-wrap the entire query as an exact phrase without manual quoting.</p>
+<h2 id="toc">toc</h2>
+<p>Show the structural table of contents for a stored book, with numbered sections.</p>
+<div class="highlight"><pre><span></span><code>gutenbit<span class="w"> </span>toc<span class="w"> </span><span class="m">1342</span>
+gutenbit<span class="w"> </span>toc<span class="w"> </span><span class="m">2600</span><span class="w"> </span>--json
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BOOK_ID</code></td>
+<td>Project Gutenberg book ID (positional)</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>Output as JSON</td>
+</tr>
+</tbody>
+</table>
+<p>Section numbers in the output can be passed to <code>view --section</code> or <code>search --section</code>.</p>
+<h2 id="view">view</h2>
+<p>Read stored book text. Starts at the first structural section by default. Use selectors to focus on a specific part.</p>
+<div class="highlight"><pre><span></span><code>gutenbit<span class="w"> </span>view<span class="w"> </span><span class="m">1342</span><span class="w">                              </span><span class="c1"># first structural section</span>
+gutenbit<span class="w"> </span>view<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--all<span class="w">                        </span><span class="c1"># full book</span>
+gutenbit<span class="w"> </span>view<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--section<span class="w"> </span><span class="m">1</span><span class="w">                  </span><span class="c1"># section by number</span>
+gutenbit<span class="w"> </span>view<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--section<span class="w"> </span><span class="m">1</span><span class="w"> </span>--all<span class="w">            </span><span class="c1"># full section</span>
+gutenbit<span class="w"> </span>view<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--section<span class="w"> </span><span class="s2">&quot;Chapter 1&quot;</span><span class="w"> </span>--forward<span class="w"> </span><span class="m">10</span><span class="w">  </span><span class="c1"># section by path</span>
+gutenbit<span class="w"> </span>view<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--position<span class="w"> </span><span class="m">1</span><span class="w"> </span>--forward<span class="w"> </span><span class="m">5</span><span class="w">           </span><span class="c1"># from exact position</span>
+gutenbit<span class="w"> </span>view<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--position<span class="w"> </span><span class="m">1</span><span class="w"> </span>--radius<span class="w"> </span><span class="m">2</span><span class="w">     </span><span class="c1"># surrounding passage around position</span>
+gutenbit<span class="w"> </span>view<span class="w"> </span><span class="m">1342</span><span class="w"> </span>--section<span class="w"> </span><span class="m">1</span><span class="w"> </span>--radius<span class="w"> </span><span class="m">2</span><span class="w">       </span><span class="c1"># surrounding passage around section start</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BOOK_ID</code></td>
+<td>Project Gutenberg book ID (positional)</td>
+</tr>
+<tr>
+<td><code>--section SELECTOR</code></td>
+<td>Section number (from <code>toc</code>) or path prefix (e.g. <code>"BOOK I/CHAPTER I"</code>)</td>
+</tr>
+<tr>
+<td><code>--position N</code></td>
+<td>Exact chunk position</td>
+</tr>
+<tr>
+<td><code>--all</code></td>
+<td>Read the full selected scope (whole book or whole section)</td>
+</tr>
+<tr>
+<td><code>--forward N</code></td>
+<td>Passages to read forward (default: 3 for opening, 1 for section/position)</td>
+</tr>
+<tr>
+<td><code>--radius N</code></td>
+<td>Surrounding passage to include on each side of the selected center passage</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>Output as JSON</td>
+</tr>
+</tbody>
+</table>
+<p>Use <code>--section</code> or <code>--position</code>, not both. <code>--forward</code>, <code>--radius</code>, and <code>--all</code> are mutually exclusive in <code>view</code>. Use <code>--all</code> for a whole book or whole section; it does not apply to <code>--position</code>. Run <code>toc</code> first to see available section numbers.</p>
+<h2 id="json-output">JSON output</h2>
+<p>Every command accepts <code>--json</code> and returns a unified envelope:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;search&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;warnings&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nt">&quot;errors&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>When <code>ok</code> is <code>false</code>, the <code>errors</code> list contains error messages. The <code>data</code> field holds command-specific results. The <code>warnings</code> list captures non-fatal issues (e.g. a requested ID not found during bulk delete).</p>
+<p>For <code>view</code>, the response body is content-first. Successful responses include a shared passage shape: <code>book</code>, <code>title</code>, <code>author</code>, <code>section</code>, <code>section_number</code>, <code>position</code>, <code>forward</code>, <code>radius</code>, <code>all</code>, and <code>content</code>.</p>
+<p>For <code>search</code>, <code>data["order"]</code> records the selected result order, <code>data["filters"]</code> includes the resolved <code>kind</code>, and <code>data["items"]</code> remains the hit list. Each hit uses that same passage shape, with search-specific fields such as <code>kind</code>, <code>rank</code>, and <code>score</code> appended after the shared fields. When <code>--radius</code> is used, <code>content</code> is the joined surrounding passage in reading order.</p>
+<h2 id="global-flags">Global flags</h2>
+<p>These flags apply to all subcommands:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--db PATH</code></td>
+<td>SQLite database path (default: <code>.gutenbit/gutenbit.db</code>)</td>
+</tr>
+<tr>
+<td><code>-v</code>, <code>--verbose</code></td>
+<td>Enable debug logging</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
