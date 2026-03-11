@@ -104,7 +104,7 @@ _STRUCTURAL_INDEX_TOKEN_RE = re.compile(
 )
 _PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
 _NON_STRUCTURAL_HEADING_RE = re.compile(
-    r"^(?:notes?|footnotes?|endnotes?|transcriber's note|transcribers note|"
+    r"^(?:notes|footnotes?|endnotes?|transcriber's note|transcribers note|"
     r"editor's note|editors note|finis)\b",
     re.IGNORECASE,
 )
@@ -435,6 +435,10 @@ _FALLBACK_START_HEADING_RE = re.compile(
     r"before the curtain\b|etymology\b|extracts\b|some commendatory verses\b)",
     re.IGNORECASE,
 )
+_TAIL_SECTION_HEADING_RE = re.compile(
+    r"^(?:note\b|note to\b|letter\b|a letter from\b|finale\b|the conclusion\b)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -672,7 +676,11 @@ def _refine_toc_sections(
             if _same_heading_text(candidate.heading_text, toc_section.heading_text):
                 scan_idx += 1
                 continue
-            refined_candidate = _refined_candidate_section(candidate, toc_section)
+            refined_candidate = _refined_candidate_section(
+                candidate,
+                toc_section,
+                allow_tail_title_like=next_pos is None,
+            )
             if refined_candidate is not None:
                 refined.append(refined_candidate)
                 added += 1
@@ -873,16 +881,33 @@ def _classify_level(heading_text: str, is_emphasized_in_toc: bool) -> int:
     return 2
 
 
-def _refined_candidate_section(candidate: _Section, toc_section: _Section) -> _Section | None:
+def _rank_relative_level(candidate: _Section, toc_section: _Section) -> int:
+    if candidate.heading_rank is None or toc_section.heading_rank is None:
+        return candidate.level
+    return max(1, min(4, toc_section.level + candidate.heading_rank - toc_section.heading_rank))
+
+
+def _refined_candidate_section(
+    candidate: _Section,
+    toc_section: _Section,
+    *,
+    allow_tail_title_like: bool,
+) -> _Section | None:
     if _is_title_like_heading(candidate.heading_text):
         if candidate.heading_rank is None or toc_section.heading_rank is None:
             return None
-        if candidate.heading_rank != toc_section.heading_rank + 1:
+        if (
+            candidate.heading_rank != toc_section.heading_rank + 1
+            and not (
+                allow_tail_title_like
+                and _TAIL_SECTION_HEADING_RE.match(candidate.heading_text)
+            )
+        ):
             return None
         return _Section(
             candidate.anchor_id,
             candidate.heading_text,
-            min(4, toc_section.level + 1),
+            _rank_relative_level(candidate, toc_section),
             candidate.body_anchor,
             candidate.heading_rank,
         )
