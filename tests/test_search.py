@@ -5,6 +5,7 @@ import gzip
 import io
 import json
 import os
+import shlex
 import time
 import zipfile
 
@@ -157,6 +158,12 @@ def _run_cli(db_path, *args):
         except SystemExit as exc:
             code = exc.code if isinstance(exc.code, int) else 1
     return code, out.getvalue(), err.getvalue()
+
+
+def _run_documented_command(db_path, command: str):
+    argv = shlex.split(command)
+    assert argv[0] == "gutenbit"
+    return _run_cli(db_path, *argv[1:])
 
 
 # ------------------------------------------------------------------
@@ -889,6 +896,9 @@ def test_view_default_json(tmp_path):
     assert "Call me Ishmael" in data["content"]
     assert data["action_hints"]["toc"] == "gutenbit toc 1"
     assert data["action_hints"]["view_first_section"] == "gutenbit view 1 --section 1 --forward 20"
+    assert data["action_hints"]["search"].startswith('gutenbit search "')
+    assert data["action_hints"]["search"].endswith('" --book 1')
+    assert "<query>" not in data["action_hints"]["search"]
 
 
 def test_toc_default_json(tmp_path):
@@ -927,7 +937,9 @@ def test_toc_default_json(tmp_path):
     assert summary["sections"][0]["est_words"] > 0
     assert summary["sections"][0]["opening_line"].endswith("…")
     assert len(summary["sections"][0]["opening_line"]) <= 141
-    assert summary["quick_actions"]["search"] == "gutenbit search <query> --book 1"
+    assert summary["quick_actions"]["search"].startswith('gutenbit search "')
+    assert summary["quick_actions"]["search"].endswith('" --book 1')
+    assert "<query>" not in summary["quick_actions"]["search"]
     assert (
         summary["quick_actions"]["view_first_section"]
         == "gutenbit view 1 --section 1 --forward 20"
@@ -937,6 +949,14 @@ def test_toc_default_json(tmp_path):
         == "gutenbit view 1 --position 0 --forward 20"
     )
     assert summary["quick_actions"]["view_all"] == "gutenbit view 1 --all"
+
+    search_code, search_out, search_err = _run_documented_command(
+        db_path,
+        summary["quick_actions"]["search"],
+    )
+    assert search_code == 0
+    assert search_err == ""
+    assert "Moby Dick" in search_out
 
 
 def test_select_section_opening_line_skips_opening_title_block():

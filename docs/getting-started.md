@@ -19,8 +19,6 @@ uv tool install git+https://github.com/keinan1/gutenbit
 Then run `gutenbit --help`. Remove it later with `uv tool uninstall gutenbit`.
 Gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
 
-If this is your first `uv` tool, run `uv tool update-shell` once and restart your shell so `gutenbit` is on your `PATH`.
-
 If you want to use the Python package inside a `uv` project instead of installing the CLI globally:
 
 ```bash
@@ -90,13 +88,13 @@ gutenbit view 1342 --section 1 --all
 Read from an exact chunk position:
 
 ```bash
-gutenbit view 1342 --position 50 --forward 5
+gutenbit view 1342 --position 1 --forward 5
 ```
 
 Read surrounding passage around a position or section start:
 
 ```bash
-gutenbit view 1342 --position 50 --radius 2
+gutenbit view 1342 --position 1 --radius 2
 gutenbit view 1342 --section 1 --radius 2
 ```
 

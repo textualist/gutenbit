@@ -19,13 +19,11 @@ uv tool install git+https://github.com/keinan1/gutenbit
 Then run `gutenbit --help`. Remove it later with `uv tool uninstall gutenbit`.
 Gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
 
-If `gutenbit` is not found after install, run `uv tool update-shell` once and restart your shell.
-
 All CLI-managed state lives under `.gutenbit/` by default: the database is `.gutenbit/gutenbit.db`, and the catalog cache is stored under `.gutenbit/cache/`. Use `--db PATH` to store the database elsewhere. All commands support `--json` for machine-readable output.
 
 ## Project Gutenberg Access
 
-Use gutenbit for individual downloads, not bulk harvesting. It prefers official mirrors and uses the main site only as a zip fallback, with a default `2.0` second delay between downloads. Review the [Robot Access Policy](https://www.gutenberg.org/policy/robot_access.html) and [Terms of Use](https://www.gutenberg.org/policy/terms_of_use.html).
+Use gutenbit for individual downloads, not bulk downloading. It prefers official mirrors and uses the main site only as a zip fallback, with a default `2.0` second delay between downloads. Review the [Robot Access Policy](https://www.gutenberg.org/policy/robot_access.html) and [Terms of Use](https://www.gutenberg.org/policy/terms_of_use.html).
 
 ## catalog
 
@@ -117,16 +115,16 @@ Full-text search across stored books using SQLite FTS5 with BM25 ranking. Search
 targets text chunks by default.
 
 ```bash
-gutenbit search "battle"
-gutenbit search "don't stop"                              # punctuation just works
+gutenbit search "bennet"
+gutenbit search "don't stop"                              # punctuation is ok
 gutenbit search "truth universally acknowledged" --phrase
 gutenbit search "ghost OR spirit" --raw                   # FTS5 boolean query
-gutenbit search "Levin" --book 1399 --order first
-gutenbit search "battle" --section "BOOK ONE" --book 2600
-gutenbit search "STAVE" --book 46 --kind heading
-gutenbit search "ghost" --radius 2                        # include surrounding passage
-gutenbit search "ghost" --limit 3
-gutenbit search "battle" --count
+gutenbit search "bennet" --book 1342 --order first
+gutenbit search "truth universally acknowledged" --book 1342 --section 1 --phrase
+gutenbit search "chapter" --book 1342 --kind heading
+gutenbit search "bennet" --book 1342 --radius 1           # include surrounding passage
+gutenbit search "bennet" --book 1342 --limit 3
+gutenbit search "bennet" --book 1342 --count
 ```
 
 | Flag | Description |
@@ -205,12 +203,12 @@ Read stored book text. Starts at the first structural section by default. Use se
 ```bash
 gutenbit view 1342                              # first structural section
 gutenbit view 1342 --all                        # full book
-gutenbit view 1342 --section 3                  # section by number
-gutenbit view 1342 --section 3 --all            # full section
+gutenbit view 1342 --section 1                  # section by number
+gutenbit view 1342 --section 1 --all            # full section
 gutenbit view 1342 --section "Chapter 1" --forward 10  # section by path
-gutenbit view 1342 --position 50 --forward 5           # from exact position
-gutenbit view 1342 --position 50 --radius 2     # surrounding passage around position
-gutenbit view 1342 --section 3 --radius 2       # surrounding passage around section start
+gutenbit view 1342 --position 1 --forward 5           # from exact position
+gutenbit view 1342 --position 1 --radius 2     # surrounding passage around position
+gutenbit view 1342 --section 1 --radius 2       # surrounding passage around section start
 ```
 
 | Flag | Description |

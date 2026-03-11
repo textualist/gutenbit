@@ -80,6 +80,27 @@ def test_help_shows_project_local_default_db():
     assert ".gutenbit/gutenbit.db" in out.getvalue()
 
 
+def test_help_shows_pride_and_prejudice_workflow():
+    out = io.StringIO()
+    err = io.StringIO()
+
+    with (
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(err),
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        cli_main(["--help"])
+
+    assert excinfo.value.code == 0
+    assert err.getvalue() == ""
+    rendered = out.getvalue()
+    assert 'gutenbit catalog --author "Austen, Jane"' in rendered
+    assert "gutenbit add 1342" in rendered
+    assert "gutenbit toc 1342" in rendered
+    assert "gutenbit view 1342" in rendered
+    assert 'gutenbit search "truth universally acknowledged" --book 1342 --phrase' in rendered
+
+
 def test_books_creates_default_db_under_project_state_dir(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 

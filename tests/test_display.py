@@ -148,7 +148,7 @@ def test_rich_passage_separates_title_from_metadata(tmp_path):
             "toc": "gutenbit toc 1",
             "view_first_section": "gutenbit view 1 --section 1 --forward 20",
             "view_all": "gutenbit view 1 --all",
-            "search": "gutenbit search <query> --book 1",
+            "search": 'gutenbit search "Ishmael" --book 1',
         },
     )
 
@@ -160,6 +160,7 @@ def test_rich_passage_separates_title_from_metadata(tmp_path):
     assert "Forward 3\n\nCHAPTER 1" in rendered
     assert "\nNext\n" in rendered
     assert "gutenbit toc 1" in rendered
+    assert 'gutenbit search "Ishmael" --book 1' in rendered
 
 
 def test_plain_passage_shows_footer_stats(tmp_path):
@@ -202,7 +203,7 @@ def test_rich_section_summary_uses_simple_section_layout(tmp_path):
     assert "Words" in rendered
     assert "2 sections · 3 paragraphs · 151 words · 756 chars · 1m read" in rendered
     assert "\nNext\n" in rendered
-    assert "gutenbit search <query> --book 1" in rendered
+    assert 'gutenbit search "Ishmael" --book 1' in rendered
     assert "gutenbit view 1 --position 0 --forward 20" in rendered
     assert "gutenbit view 1 --all" in rendered
 

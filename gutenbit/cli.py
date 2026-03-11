@@ -349,6 +349,43 @@ _FTS_OPERATOR_RE = re.compile(
     """,
     re.VERBOSE,
 )
+_SEARCH_QUERY_TOKEN_RE = re.compile(r"[A-Za-z]+(?:['\u2019][A-Za-z]+)*")
+_SEARCH_QUERY_STOPWORDS = frozenset(
+    {
+        "about",
+        "after",
+        "before",
+        "being",
+        "call",
+        "could",
+        "first",
+        "from",
+        "have",
+        "having",
+        "however",
+        "into",
+        "little",
+        "never",
+        "ought",
+        "shall",
+        "should",
+        "since",
+        "some",
+        "there",
+        "these",
+        "those",
+        "through",
+        "under",
+        "until",
+        "upon",
+        "when",
+        "where",
+        "which",
+        "while",
+        "would",
+        "years",
+    }
+)
 
 
 def _has_fts_operators(query: str) -> bool:
@@ -369,6 +406,21 @@ def _safe_fts_query(query: str) -> str:
         return query
     quoted = [_fts_phrase_query(t) for t in tokens]
     return " ".join(quoted)
+
+
+def _quick_action_search_query(rows: list[ChunkRecord]) -> str:
+    """Choose a real in-book token for quick-action search examples."""
+    text_rows = [row.content for row in rows if row.kind == "text"]
+    for content in text_rows:
+        tokens = _SEARCH_QUERY_TOKEN_RE.findall(content)
+        for token in tokens:
+            if len(token) >= 4 and token.casefold() not in _SEARCH_QUERY_STOPWORDS:
+                return token
+    for content in text_rows:
+        tokens = _SEARCH_QUERY_TOKEN_RE.findall(content)
+        if tokens:
+            return tokens[0]
+    return "chapter"
 
 
 def _format_int(value: int) -> str:
@@ -758,12 +810,12 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Project Gutenberg ETL — download, chunk, and search public-domain books.",
         epilog="""\
 typical workflow:
-  1. gutenbit catalog --author Dickens         # find book IDs
-  2. gutenbit add 46 730                       # download & store
-  3. gutenbit books                            # list stored books
-  4. gutenbit toc 46                           # inspect structure / sections
-  5. gutenbit view 46 --section 3 --forward 20  # read part of a book
-  6. gutenbit search "Marley's ghost" --book 46 # find relevant passages
+  1. gutenbit catalog --author "Austen, Jane"                       # find Pride and Prejudice
+  2. gutenbit add 1342                                              # download & store it
+  3. gutenbit toc 1342                                              # inspect numbered sections
+  4. gutenbit view 1342                                             # read the opening
+  5. gutenbit view 1342 --section 1 --forward 5                     # jump into chapter 1
+  6. gutenbit search "truth universally acknowledged" --book 1342 --phrase
 
 chunk kinds:  heading, text
 section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowest heading)
@@ -900,26 +952,26 @@ output columns:  ID  AUTHORS  TITLE""",
         description=(
             "Full-text search using SQLite FTS5 with BM25 ranking. "
             "Plain-text queries are auto-escaped so apostrophes, hyphens, "
-            "and other punctuation just work. Use --raw for advanced FTS5 "
+            "and other punctuation are ok. Use --raw for advanced FTS5 "
             "syntax (AND/OR/NOT, prefix*, NEAR, parentheses)."
         ),
         epilog="""\
 examples:
-  gutenbit search "ghost"                                   # simple search
-  gutenbit search "don't stop"                              # punctuation just works
+  gutenbit search "bennet"                                  # simple search
+  gutenbit search "don't stop"                              # punctuation is ok
   gutenbit search "half-hour"                               # hyphens just work
-  gutenbit search "may it be" --phrase                      # exact phrase match
+  gutenbit search "truth universally acknowledged" --phrase # exact phrase match
   gutenbit search "ghost OR spirit" --raw                   # FTS5 boolean query
   gutenbit search "(ghost OR spirit) AND NOT haunt*" --raw  # advanced FTS5
-  gutenbit search "battle" --book 2600                      # restrict to one book
-  gutenbit search "battle" --section "BOOK ONE"             # restrict to a section
-  gutenbit search "STAVE" --book 46 --kind heading          # search headings only
-  gutenbit search "door" --order first                      # reading order (earliest)
-  gutenbit search "door" --order last                       # reverse reading order
-  gutenbit search "ghost" --radius 2                        # show surrounding passage
-  gutenbit search "ghost" --limit 3                         # limit the result set
-  gutenbit search "battle" --count                          # just show match count
-  gutenbit search "battle" --json                           # JSON output
+  gutenbit search "bennet" --book 1342                      # restrict to one book
+  gutenbit search "truth universally acknowledged" --book 1342 --section 1 --phrase
+  gutenbit search "chapter" --book 1342 --kind heading      # search headings only
+  gutenbit search "bennet" --book 1342 --order first        # reading order (earliest)
+  gutenbit search "bennet" --book 1342 --order last         # reverse reading order
+  gutenbit search "bennet" --book 1342 --radius 1           # show surrounding passage
+  gutenbit search "bennet" --book 1342 --limit 3            # limit the result set
+  gutenbit search "bennet" --book 1342 --count              # just show match count
+  gutenbit search "bennet" --book 1342 --json               # JSON output
 
 query modes:
   (default)  plain text — punctuation is auto-escaped, words are AND'd
@@ -1026,17 +1078,17 @@ section numbers in this output can be passed to:
         ),
         epilog="""\
 examples:
-  gutenbit toc 2600                                  # inspect structure first
-  gutenbit view 2600                                 # first structural section + quick actions
-  gutenbit view 2600 --all                           # full reconstructed text
-  gutenbit view 2600 --section 3                     # first passage in section 3
-  gutenbit view 2600 --section 3 --all               # full section
-  gutenbit view 2600 --section 3 --forward 20        # first 20 passages in section 3
-  gutenbit view 2600 --section 3 --radius 2          # surrounding passage around the section start
-  gutenbit view 2600 --position 12345                # passage at position 12345
-  gutenbit view 2600 --position 12345 --forward 20   # continue reading from position
-  gutenbit view 2600 --position 12345 --radius 2     # surrounding passage around position
-  gutenbit view 2600 --section "BOOK I/CHAPTER I" --forward 10 --json
+  gutenbit toc 1342                                  # inspect structure first
+  gutenbit view 1342                                 # first structural section + quick actions
+  gutenbit view 1342 --all                           # full reconstructed text
+  gutenbit view 1342 --section 1                     # first passage in section 1
+  gutenbit view 1342 --section 1 --all               # full section
+  gutenbit view 1342 --section 1 --forward 5         # first 5 passages in section 1
+  gutenbit view 1342 --section 1 --radius 1          # surrounding passage around the section start
+  gutenbit view 1342 --position 1                    # passage at position 1
+  gutenbit view 1342 --position 1 --forward 5        # continue reading from position
+  gutenbit view 1342 --position 1 --radius 1         # surrounding passage around position
+  gutenbit view 1342 --section "Chapter 1" --forward 5 --json
 
 selectors (choose at most one):
   --position <n> | --section <SECTION_SELECTOR>
@@ -1624,7 +1676,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
         return _command_error("search", "Search query must not be empty.", as_json=as_json)
 
     # Query mode: --phrase wraps as exact phrase, --raw passes through to FTS5,
-    # default auto-escapes plain text so punctuation just works.
+    # default auto-escapes plain text so punctuation is ok.
     if args.phrase:
         search_query = _fts_phrase_query(query_text)
         query_mode = "phrase"
@@ -1909,7 +1961,6 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
     est_words = round(total_chars / 5) if total_chars else 0
     read_time = _estimate_read_time(est_words)
 
-    search_cmd = f"gutenbit search <query> --book {book_id}"
     section_rows: list[_SectionRow] = []
     for idx, sec in enumerate(sections, start=1):
         chars = int(sec["chars"])
@@ -1947,6 +1998,10 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
             if section["section"] == opening_section:
                 opening_section_num = section["section_number"]
                 break
+
+    opening_example_rows = opening_rows or chunk_records
+    search_query = _quick_action_search_query(opening_example_rows)
+    search_cmd = f'gutenbit search "{search_query}" --book {book_id}'
 
     first_section_cmd = ""
     if opening_section_num is not None:
