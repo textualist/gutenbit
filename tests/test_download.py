@@ -45,7 +45,10 @@ def _zip_payload(filename: str, html: str) -> bytes:
 
 
 def test_mirror_html_url_construction_examples():
-    assert _mirror_html_url(ALEPH_PGLAF_HOST, 10) == "https://aleph.pglaf.org/cache/epub/10/pg10-images.html"
+    assert (
+        _mirror_html_url(ALEPH_PGLAF_HOST, 10)
+        == "https://aleph.pglaf.org/cache/epub/10/pg10-images.html"
+    )
     assert _mirror_html_url(GUTENBERG_PGLAF_HOST, 84) == (
         "https://gutenberg.pglaf.org/cache/epub/84/pg84-images.html"
     )

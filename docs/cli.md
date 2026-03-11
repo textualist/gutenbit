@@ -182,19 +182,22 @@ Use `--phrase` to auto-wrap the entire query as an exact phrase without manual q
 
 ## toc
 
-Show the structural table of contents for a stored book, with numbered sections.
+Show the structural table of contents for a stored book, with numbered sections. By default the table shows two heading levels; use `--expand` to collapse further or reveal all nested levels.
 
 ```bash
 gutenbit toc 1342
+gutenbit toc 100 --expand 1
+gutenbit toc 100 --expand all
 gutenbit toc 2600 --json
 ```
 
 | Flag | Description |
 |------|-------------|
 | `BOOK_ID` | Project Gutenberg book ID (positional) |
+| `--expand {1,2,3,4,all}` | Show heading levels up to this depth (default: `2`; `all` shows every stored level) |
 | `--json` | Output as JSON |
 
-Section numbers in the output can be passed to `view --section` or `search --section`.
+Collapsed rows roll hidden descendants into the lowest shown level. For example, with `--expand 2`, visible act rows include the stats for their hidden scenes. Section numbers remain stable and can be passed to `view --section` or `search --section`.
 
 ## view
 
@@ -204,8 +207,9 @@ Read stored book text. Starts at the first structural section by default. Use se
 gutenbit view 1342                              # first structural section
 gutenbit view 1342 --all                        # full book
 gutenbit view 1342 --section 1                  # section by number
-gutenbit view 1342 --section 1 --all            # full section
+gutenbit view 1342 --section 1 --all            # full section, including nested subsections
 gutenbit view 1342 --section "Chapter 1" --forward 10  # section by path
+gutenbit view 100 --section "ALL’S WELL THAT ENDS WELL / ACT I" --all  # full act incl. scenes
 gutenbit view 1342 --position 1 --forward 5           # from exact position
 gutenbit view 1342 --position 1 --radius 2     # surrounding passage around position
 gutenbit view 1342 --section 1 --radius 2       # surrounding passage around section start
@@ -216,12 +220,12 @@ gutenbit view 1342 --section 1 --radius 2       # surrounding passage around sec
 | `BOOK_ID` | Project Gutenberg book ID (positional) |
 | `--section SELECTOR` | Section number (from `toc`) or path prefix (e.g. `"BOOK I/CHAPTER I"`) |
 | `--position N` | Exact chunk position |
-| `--all` | Read the full selected scope (whole book or whole section) |
+| `--all` | Read the full selected scope (whole book or selected section, including nested subsections) |
 | `--forward N` | Passages to read forward (default: 3 for opening, 1 for section/position) |
 | `--radius N` | Surrounding passage to include on each side of the selected center passage |
 | `--json` | Output as JSON |
 
-Use `--section` or `--position`, not both. `--forward`, `--radius`, and `--all` are mutually exclusive in `view`. Use `--all` for a whole book or whole section; it does not apply to `--position`. Run `toc` first to see available section numbers.
+Use `--section` or `--position`, not both. `--forward`, `--radius`, and `--all` are mutually exclusive in `view`. Use `--all` for a whole book or selected section subtree; choosing a parent section such as a play or act includes its nested descendants. `--all` does not apply to `--position`. Run `toc` first to see available section numbers.
 
 ## JSON output
 

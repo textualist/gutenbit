@@ -72,6 +72,7 @@ class CatalogFetchInfo:
     cache_path: Path
     cache_age_seconds: float | None = None
 
+
 def _policy_cache_key(policy: CatalogPolicy) -> str:
     langs = "-".join(sorted(policy.allowed_language_codes)) or "none"
     media_types = "-".join(sorted(policy.allowed_media_types)) or "none"

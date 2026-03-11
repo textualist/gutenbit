@@ -6,6 +6,7 @@ import sys
 from collections.abc import Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass, field
+from types import TracebackType
 from typing import Any, TextIO
 
 from rich import box
@@ -39,6 +40,7 @@ _THEME = Theme(
 TOC_OPENING_PREVIEW_CHARS = 56
 TOC_SECTION_MAX_CHARS = 72
 TOC_OVERVIEW_LIST_MAX_ITEMS = 7
+FOOTER_TITLE_MAX_CHARS = 32
 EMPTY_DISPLAY = "-"
 BOOK_ID_LABEL = "Book ID"
 BOOK_ID_KEY = "book_id"
@@ -184,14 +186,69 @@ def format_search_footer_stats(
     return stats
 
 
-def _section_summary_stats(overview: dict[str, Any]) -> list[str]:
-    return format_summary_stats(
-        sections=int(overview["sections_total"]),
-        paragraphs=int(overview["paragraphs_total"]),
-        words=int(overview["est_words"]),
-        chars=int(overview["chars_total"]),
-        read=str(overview["est_read_time"]),
+def _footer_title(title: Any) -> str:
+    return _truncate_single_line(_single_line(str(title)), FOOTER_TITLE_MAX_CHARS)
+
+
+def _footer_book_id(book_id: Any) -> str:
+    return f"id {book_id}"
+
+
+def _ratio_summary(
+    shown: int,
+    total: int,
+    *,
+    singular: str,
+    plural: str | None = None,
+) -> str:
+    label = singular if total == 1 else plural or singular + "s"
+    return f"{_format_int(shown)}/{_format_int(total)} {label}"
+
+
+def _section_visibility_summary(overview: dict[str, Any]) -> list[str]:
+    sections_total = int(overview["sections_total"])
+    sections_shown = int(overview.get("sections_shown", sections_total))
+    stats = [f"{_ratio_summary(sections_shown, sections_total, singular='section')} shown"]
+
+    levels_total = int(overview.get("levels_total", 0))
+    if levels_total <= 0:
+        return stats
+
+    levels_shown = int(overview.get("levels_shown", levels_total))
+    stats.append(_ratio_summary(levels_shown, levels_total, singular="level"))
+    return stats
+
+
+def _section_summary_stats(summary: Mapping[str, Any]) -> list[str]:
+    book = summary["book"]
+    overview = summary["overview"]
+    stats = [
+        _footer_title(book["title"]),
+        _footer_book_id(book["id"]),
+    ]
+    stats.extend(_section_visibility_summary(overview))
+    stats.extend(
+        format_summary_stats(
+            paragraphs=int(overview["paragraphs_total"]),
+            words=int(overview["est_words"]),
+            read=str(overview["est_read_time"]),
+        )
     )
+    return stats
+
+
+def _passage_footer_stats(
+    payload: dict[str, Any],
+    footer_stats: list[str] | None,
+) -> list[str]:
+    stats = [
+        _footer_title(payload["title"]),
+        _footer_book_id(payload[BOOK_ID_KEY]),
+    ]
+    if payload.get("section"):
+        stats.append(f"section {_section_label(payload['section'])}")
+    stats.extend(item for item in (footer_stats or []) if item)
+    return stats
 
 
 def _section_meta_bits(payload: dict[str, Any]) -> list[tuple[str, Any]]:
@@ -199,7 +256,7 @@ def _section_meta_bits(payload: dict[str, Any]) -> list[tuple[str, Any]]:
     if payload.get("section"):
         bits.append(("Section", payload["section"]))
     if payload.get("section_number") is not None:
-        bits.append(("No.", payload["section_number"]))
+        bits.append(("Section No.", payload["section_number"]))
     if payload.get("position") is not None:
         bits.append(("Position", payload["position"]))
     if payload.get("forward") is not None:
@@ -390,8 +447,13 @@ class _IngestProgressSession:
         self._progress.__enter__()
         return self
 
-    def __exit__(self, *exc: object) -> None:
-        self._progress.__exit__(*exc)
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self._progress.__exit__(exc_type, exc_val, exc_tb)
 
     def start_book(
         self,
@@ -690,7 +752,6 @@ class CliDisplay:
 
         self._begin_output()
         book = summary["book"]
-        overview = summary["overview"]
         sections = summary["sections"]
         quick_actions = summary["quick_actions"]
 
@@ -741,8 +802,9 @@ class CliDisplay:
         else:
             self._out.print(Text("(no headings found)", style="muted"))
         self._footer(
-            stats=_section_summary_stats(overview),
+            stats=_section_summary_stats(summary),
             commands=[
+                quick_actions["toc_expand_all"],
                 quick_actions["search"],
                 quick_actions["view_first_section"],
                 quick_actions["view_by_position"],
@@ -753,7 +815,6 @@ class CliDisplay:
     def _section_summary_plain(self, summary: Mapping[str, Any]) -> None:
         self._begin_output()
         book = summary["book"]
-        overview = summary["overview"]
         sections = summary["sections"]
         quick_actions = summary["quick_actions"]
 
@@ -821,11 +882,13 @@ class CliDisplay:
                 )
 
         print(
-            "\n" + " · ".join(_section_summary_stats(overview)),
+            "\n" + " · ".join(_section_summary_stats(summary)),
             file=self.stdout,
         )
 
         print("\nQuick actions", file=self.stdout)
+        if quick_actions["toc_expand_all"]:
+            print(f"  {quick_actions['toc_expand_all']}", file=self.stdout)
         if quick_actions["search"]:
             print(f"  {quick_actions['search']}", file=self.stdout)
         if quick_actions["view_first_section"]:
@@ -949,7 +1012,7 @@ class CliDisplay:
         self._out.print(self._passage_text(str(payload["content"])))
         if action_hints or footer_stats:
             self._footer(
-                stats=footer_stats or [],
+                stats=_passage_footer_stats(payload, footer_stats),
                 commands=[
                     action_hints.get("toc", "") if action_hints else "",
                     action_hints.get("view_first_section", "") if action_hints else "",
@@ -970,8 +1033,11 @@ class CliDisplay:
         print(_passage_header(payload), file=self.stdout)
         print(file=self.stdout)
         print(str(payload["content"]), file=self.stdout)
-        if footer_stats:
-            print("\n" + " · ".join(item for item in footer_stats if item), file=self.stdout)
+        if footer_stats or action_hints:
+            print(
+                "\n" + " · ".join(_passage_footer_stats(payload, footer_stats)),
+                file=self.stdout,
+            )
         if action_hints:
             print("\nQuick actions", file=self.stdout)
             for key in [

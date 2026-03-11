@@ -21,7 +21,7 @@ from gutenbit.catalog import (
 from gutenbit.cli import _select_section_opening_line
 from gutenbit.cli import main as cli_main
 from gutenbit.db import Database, SearchResult, TextState
-from gutenbit.html_chunker import CHUNKER_VERSION, chunk_html
+from gutenbit.html_chunker import CHUNKER_VERSION, Chunk, chunk_html
 
 # ------------------------------------------------------------------
 # Minimal PG-style HTML builder
@@ -140,12 +140,50 @@ _BOOK3_HTML = _make_html(
 """,
 )
 
+_NESTED_BOOK = BookRecord(
+    id=13,
+    title="Nested Sections Play",
+    authors="Playwright, Test",
+    language="en",
+    subjects="Drama",
+    locc="PR",
+    bookshelves="",
+    issued="2001-06-01",
+    type="Text",
+)
+
 
 def _make_db(tmp_path):
     """Create a Database with test data (bypassing download)."""
     db = Database(tmp_path / "test.db")
     db._store(_BOOK, chunk_html(_BOOK_HTML))
     db._store(_BOOK2, chunk_html(_BOOK2_HTML))
+    return db
+
+
+def _make_nested_sections_db(tmp_path):
+    """Create a Database with explicit nested section chunks for CLI scope tests."""
+    db = Database(tmp_path / "nested-sections.db")
+    db._store(
+        _NESTED_BOOK,
+        [
+            Chunk(0, "PLAY ONE", "", "", "", "PLAY ONE", "heading"),
+            Chunk(1, "PLAY ONE", "", "", "", "Play intro.", "text"),
+            Chunk(2, "PLAY ONE", "ACT I", "", "", "ACT I", "heading"),
+            Chunk(3, "PLAY ONE", "ACT I", "SCENE I", "", "SCENE I", "heading"),
+            Chunk(4, "PLAY ONE", "ACT I", "SCENE I", "", "Scene one first.", "text"),
+            Chunk(5, "PLAY ONE", "ACT I", "SCENE I", "", "Scene one second.", "text"),
+            Chunk(6, "PLAY ONE", "ACT I", "SCENE II", "", "SCENE II", "heading"),
+            Chunk(7, "PLAY ONE", "ACT I", "SCENE II", "", "Scene two only.", "text"),
+            Chunk(8, "PLAY ONE", "ACT II", "", "", "ACT II", "heading"),
+            Chunk(9, "PLAY ONE", "ACT II", "SCENE I", "", "SCENE I", "heading"),
+            Chunk(10, "PLAY ONE", "ACT II", "SCENE I", "", "Act two scene one.", "text"),
+            Chunk(11, "PLAY TWO", "", "", "", "PLAY TWO", "heading"),
+            Chunk(12, "PLAY TWO", "ACT I", "", "", "ACT I", "heading"),
+            Chunk(13, "PLAY TWO", "ACT I", "SCENE I", "", "SCENE I", "heading"),
+            Chunk(14, "PLAY TWO", "ACT I", "SCENE I", "", "Second play scene one.", "text"),
+        ],
+    )
     return db
 
 
@@ -862,9 +900,16 @@ def test_toc_default_shows_structure(tmp_path):
     assert "Words" in out
     assert "Read" in out
     assert "Opening" in out
-    assert "2 sections · 3 paragraphs · 151 words · 756 chars · 1m read" in out
+    assert (
+        "Moby Dick · id 1 · 2/2 sections shown · 1/1 level "
+        "· 3 paragraphs · 151 words · 1m read" in out
+    )
+    assert "gutenbit toc 1 --expand all" in out
     assert "gutenbit view 1 --section 1 --forward 20" in out
     assert "gutenbit view 1 --all" in out
+    assert out.index("gutenbit toc 1 --expand all") < out.index(
+        'gutenbit search "Ishmael" --book 1'
+    )
 
 
 def test_view_default_json(tmp_path):
@@ -917,12 +962,14 @@ def test_toc_default_json(tmp_path):
 
     data = payload["data"]
     assert data["book_id"] == 1
+    assert data["expand"] == "2"
     assert "book" not in data
     summary = data["toc"]
     assert summary["book"]["id"] == 1
     assert summary["book"]["title"] == "Moby Dick"
     assert summary["book"]["authors"] == "Melville, Herman"
     assert summary["overview"]["sections_total"] == 2
+    assert summary["overview"]["sections_shown"] == 2
     assert summary["overview"]["chunk_counts"]["heading"] == 2
     assert summary["sections"][0]["section"] == "CHAPTER 1"
     assert list(summary["sections"][0].keys()) == [
@@ -940,13 +987,13 @@ def test_toc_default_json(tmp_path):
     assert summary["quick_actions"]["search"].startswith('gutenbit search "')
     assert summary["quick_actions"]["search"].endswith('" --book 1')
     assert "<query>" not in summary["quick_actions"]["search"]
+    assert summary["quick_actions"]["toc_expand_all"] == "gutenbit toc 1 --expand all"
     assert (
         summary["quick_actions"]["view_first_section"]
         == "gutenbit view 1 --section 1 --forward 20"
     )
     assert (
-        summary["quick_actions"]["view_by_position"]
-        == "gutenbit view 1 --position 0 --forward 20"
+        summary["quick_actions"]["view_by_position"] == "gutenbit view 1 --position 0 --forward 20"
     )
     assert summary["quick_actions"]["view_all"] == "gutenbit view 1 --all"
 
@@ -957,6 +1004,104 @@ def test_toc_default_json(tmp_path):
     assert search_code == 0
     assert search_err == ""
     assert "Moby Dick" in search_out
+
+
+def test_toc_default_expand_collapses_nested_sections_and_rolls_up_hidden_stats(tmp_path):
+    db = _make_nested_sections_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "toc", "13", "--json")
+    assert code == 0
+
+    payload = json.loads(out)
+    assert payload["data"]["expand"] == "2"
+    summary = payload["data"]["toc"]
+    assert summary["overview"]["sections_total"] == 9
+    assert summary["overview"]["sections_shown"] == 5
+    assert summary["quick_actions"]["toc_expand_all"] == "gutenbit toc 13 --expand all"
+    assert [section["section_number"] for section in summary["sections"]] == [1, 2, 5, 7, 8]
+    assert [section["section"] for section in summary["sections"]] == [
+        "PLAY ONE",
+        "PLAY ONE / ACT I",
+        "PLAY ONE / ACT II",
+        "PLAY TWO",
+        "PLAY TWO / ACT I",
+    ]
+
+    play_one = summary["sections"][0]
+    act_one = summary["sections"][1]
+    act_two = summary["sections"][2]
+    play_two = summary["sections"][3]
+    play_two_act_one = summary["sections"][4]
+
+    assert play_one["paras"] == 1
+    assert play_one["opening_line"] == "Play intro."
+
+    assert act_one["paras"] == 3
+    assert act_one["est_words"] > 0
+    assert act_one["opening_line"] == "Scene one first."
+
+    assert act_two["paras"] == 1
+    assert act_two["opening_line"] == "Act two scene one."
+
+    assert play_two["paras"] == 0
+    assert play_two["opening_line"] == ""
+
+    assert play_two_act_one["paras"] == 1
+    assert play_two_act_one["opening_line"] == "Second play scene one."
+
+
+def test_toc_expand_one_rolls_entire_subtree_to_top_level_rows(tmp_path):
+    db = _make_nested_sections_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "toc", "13", "--expand", "1", "--json")
+    assert code == 0
+
+    payload = json.loads(out)
+    assert payload["data"]["expand"] == "1"
+    summary = payload["data"]["toc"]
+    assert summary["overview"]["sections_total"] == 9
+    assert summary["overview"]["sections_shown"] == 2
+    assert [section["section_number"] for section in summary["sections"]] == [1, 7]
+    assert [section["section"] for section in summary["sections"]] == ["PLAY ONE", "PLAY TWO"]
+    assert summary["sections"][0]["paras"] == 5
+    assert summary["sections"][0]["opening_line"] == "Play intro."
+    assert summary["sections"][1]["paras"] == 1
+    assert summary["sections"][1]["opening_line"] == "Second play scene one."
+
+
+def test_toc_expand_all_keeps_full_nested_rows_and_direct_stats(tmp_path):
+    db = _make_nested_sections_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "toc", "13", "--expand", "all", "--json")
+    assert code == 0
+
+    payload = json.loads(out)
+    assert payload["data"]["expand"] == "all"
+    summary = payload["data"]["toc"]
+    assert summary["overview"]["sections_total"] == 9
+    assert summary["overview"]["sections_shown"] == 9
+    assert summary["quick_actions"]["toc_expand_all"] == ""
+    assert [section["section_number"] for section in summary["sections"]] == list(range(1, 10))
+
+    play_one = summary["sections"][0]
+    act_one = summary["sections"][1]
+    scene_one = summary["sections"][2]
+    scene_two = summary["sections"][3]
+
+    assert play_one["paras"] == 1
+    assert play_one["opening_line"] == "Play intro."
+    assert act_one["paras"] == 0
+    assert act_one["opening_line"] == ""
+    assert scene_one["paras"] == 2
+    assert scene_one["opening_line"] == "Scene one first."
+    assert scene_two["paras"] == 1
+    assert scene_two["opening_line"] == "Scene two only."
 
 
 def test_select_section_opening_line_skips_opening_title_block():
@@ -1081,6 +1226,93 @@ def test_view_json_all_for_book(tmp_path):
     assert "Call me Ishmael" in payload["data"]["content"]
 
 
+def test_view_section_all_by_number_includes_nested_descendants(tmp_path):
+    db = _make_nested_sections_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    toc_code, toc_out, _toc_err = _run_cli(db_path, "toc", "13", "--json")
+    assert toc_code == 0
+    toc_payload = json.loads(toc_out)
+    section_numbers = {
+        row["section"]: row["section_number"] for row in toc_payload["data"]["toc"]["sections"]
+    }
+
+    play_code, play_out, _play_err = _run_cli(
+        db_path,
+        "view",
+        "13",
+        "--section",
+        str(section_numbers["PLAY ONE"]),
+        "--all",
+        "--json",
+    )
+    assert play_code == 0
+    play_payload = json.loads(play_out)
+    play = play_payload["data"]
+    assert play["section"] == "PLAY ONE"
+    assert play["section_number"] == section_numbers["PLAY ONE"]
+    assert play["all"] is True
+    assert "Play intro." in play["content"]
+    assert "ACT I" in play["content"]
+    assert "SCENE II" in play["content"]
+    assert "Act two scene one." in play["content"]
+    assert "PLAY TWO" not in play["content"]
+    assert "Second play scene one." not in play["content"]
+
+    act_code, act_out, _act_err = _run_cli(
+        db_path,
+        "view",
+        "13",
+        "--section",
+        str(section_numbers["PLAY ONE / ACT I"]),
+        "--all",
+        "--json",
+    )
+    assert act_code == 0
+    act_payload = json.loads(act_out)
+    act = act_payload["data"]
+    assert act["section"] == "PLAY ONE / ACT I"
+    assert act["section_number"] == section_numbers["PLAY ONE / ACT I"]
+    assert act["all"] is True
+    assert "ACT I" in act["content"]
+    assert "SCENE I" in act["content"]
+    assert "SCENE II" in act["content"]
+    assert "Scene one first." in act["content"]
+    assert "Scene two only." in act["content"]
+    assert "Play intro." not in act["content"]
+    assert "ACT II" not in act["content"]
+    assert "PLAY TWO" not in act["content"]
+
+
+def test_view_section_all_by_path_keeps_scene_scope(tmp_path):
+    db = _make_nested_sections_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(
+        db_path,
+        "view",
+        "13",
+        "--section",
+        "PLAY ONE / ACT I / SCENE I",
+        "--all",
+        "--json",
+    )
+    assert code == 0
+    payload = json.loads(out)
+    data = payload["data"]
+    assert data["section"] == "PLAY ONE / ACT I / SCENE I"
+    assert data["all"] is True
+    assert data["content"].startswith("SCENE I")
+    assert "Scene one first." in data["content"]
+    assert "Scene one second." in data["content"]
+    assert "SCENE II" not in data["content"]
+    assert "Scene two only." not in data["content"]
+    assert "ACT II" not in data["content"]
+    assert "PLAY TWO" not in data["content"]
+
+
 def test_view_all_with_missing_book(tmp_path):
     db = _make_db(tmp_path)
     db_path = db.path
@@ -1108,9 +1340,7 @@ def test_view_position_with_forward(tmp_path):
     position = row["position"]
     db.close()
 
-    code, out, _err = _run_cli(
-        db_path, "view", "1", "--position", str(position), "--forward", "2"
-    )
+    code, out, _err = _run_cli(db_path, "view", "1", "--position", str(position), "--forward", "2")
     assert code == 0
     assert f"position={position}" in out
     assert "forward=2" in out
@@ -1126,7 +1356,7 @@ def test_view_position_heading_only_shows_dash_footer_stats(tmp_path):
     code, out, _err = _run_cli(db_path, "view", "1", "--position", "0", "--forward", "1")
     assert code == 0
     assert "CHAPTER 1" in out
-    assert "0 paragraphs · - words · - read" in out
+    assert "Moby Dick · id 1 · section CHAPTER 1 · 0 paragraphs · - words · - read" in out
 
 
 def test_view_position_with_radius_header(tmp_path):
@@ -1209,8 +1439,7 @@ def test_view_section_miss_shows_examples(tmp_path):
     )
     assert code == 1
     assert (
-        "No chunks found for book ID 1 under section 'BOOK THIRTEEN: 1812 / CHAPTER XII'."
-        in out
+        "No chunks found for book ID 1 under section 'BOOK THIRTEEN: 1812 / CHAPTER XII'." in out
     )
     assert "Available sections include:" in out
     assert "1. CHAPTER 1" in out
@@ -2701,6 +2930,7 @@ def test_view_section_json_radius_error_keeps_radius(tmp_path):
     assert payload["data"]["section_number"] == 999
     assert payload["data"]["radius"] == 2
     assert payload["data"]["all"] is None
+
 
 def test_view_json_validation_error_uses_envelope(tmp_path):
     db = _make_db(tmp_path)
