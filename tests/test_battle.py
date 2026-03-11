@@ -288,3 +288,9 @@ def test_moby_dick_keeps_etymology_and_extracts_before_chapter_one():
     heading_texts = [heading.content for heading in _headings(15)]
 
     assert heading_texts[:4] == ["ETYMOLOGY", "EXTRACTS", "CHAPTER I", "CHAPTER II"]
+
+
+def test_dracula_keeps_the_final_note_section():
+    heading_texts = [heading.content for heading in _headings(345)]
+
+    assert heading_texts[-2:] == ["CHAPTER XXVII MINA HARKER’S JOURNAL", "NOTE"]
