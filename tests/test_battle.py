@@ -325,3 +325,13 @@ def test_tom_sawyer_keeps_preface_before_chapter_one():
     heading_texts = [heading.content for heading in _headings(74)]
 
     assert heading_texts[:3] == ["PREFACE", "CHAPTER I", "CHAPTER II"]
+
+
+def test_gulliver_keeps_both_prefatory_sections_before_part_one():
+    heading_texts = [heading.content for heading in _headings(829)]
+
+    assert heading_texts[:3] == [
+        "THE PUBLISHER TO THE READER",
+        "A LETTER FROM CAPTAIN GULLIVER TO HIS COUSIN SYMPSON",
+        "PART I. A VOYAGE TO LILLIPUT",
+    ]
