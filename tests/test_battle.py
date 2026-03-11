@@ -379,3 +379,16 @@ def test_black_beauty_keeps_part_headings_as_independent_sections():
         "Part IV",
     ]
     assert heading_texts[heading_texts.index("Part II") + 1] == "22 Earlshall"
+
+
+def test_candide_keeps_front_matter_headings_and_skips_attribution_noise():
+    heading_texts = [heading.content for heading in _headings(19942)]
+
+    assert heading_texts[:5] == [
+        "THE MODERN LIBRARY",
+        "CANDIDE BY VOLTAIRE",
+        "INTRODUCTION",
+        "CANDIDE",
+        "I",
+    ]
+    assert "INTRODUCTION BY PHILIP LITTELL" not in heading_texts
