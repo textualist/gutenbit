@@ -56,7 +56,7 @@ _STRUCTURAL_KEYWORD_ALIASES = {
     "scena": "scene",
     "scoena": "scene",
 }
-CHUNKER_VERSION = 18
+CHUNKER_VERSION = 20
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
@@ -110,6 +110,10 @@ _NON_STRUCTURAL_HEADING_RE = re.compile(
 )
 _FRONT_MATTER_ATTRIBUTION_RE = re.compile(
     r"^(?:by|translated\s+by|edited\s+by|illustrated\s+by)\s",
+    re.IGNORECASE,
+)
+_FRONT_MATTER_ATTRIBUTION_HEADING_RE = re.compile(
+    r"^(?:introduction|preface|foreword|afterword)\s+by\b",
     re.IGNORECASE,
 )
 _FRONT_MATTER_HEADINGS = frozenset(
@@ -584,6 +588,7 @@ def _parse_heading_sections(
         return []
 
     sections: list[_Section] = []
+    previous_kept_row: _HeadingRow | None = None
     i = start_idx
     while i < len(heading_rows):
         row = heading_rows[i]
@@ -606,10 +611,22 @@ def _parse_heading_sections(
             i += 1
             continue
 
+        if _is_title_page_subtitle(row, previous_kept_row=previous_kept_row):
+            i += 1
+            continue
+
         if next_row is not None and _is_editorial_placeholder_heading(
             row,
             next_row,
             doc_index=doc_index,
+        ):
+            i += 1
+            continue
+
+        if (
+            previous_row is previous_kept_row
+            and previous_row is not None
+            and _is_shorter_adjacent_title_repeat(row, previous_row, doc_index=doc_index)
         ):
             i += 1
             continue
@@ -631,9 +648,10 @@ def _parse_heading_sections(
         level = _classify_level(heading_text, False)
         anchor_id = str(row.anchor.get("id", ""))
         sections.append(_Section(anchor_id, heading_text, level, row.anchor, row.rank))
+        previous_kept_row = row
         i += 1
 
-    return sections
+    return _drop_leading_repeated_title_sections(sections)
 
 
 def _refine_toc_sections(
@@ -1012,6 +1030,38 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
     ]
 
 
+def _drop_leading_repeated_title_sections(sections: list[_Section]) -> list[_Section]:
+    """Drop title-page duplicates when the same title reappears after front matter."""
+    first_front_matter_idx = next(
+        (
+            idx
+            for idx, section in enumerate(sections)
+            if _FALLBACK_START_HEADING_RE.match(section.heading_text)
+        ),
+        None,
+    )
+    if first_front_matter_idx is None:
+        return sections
+
+    later_title_keys = {
+        _heading_key(section.heading_text)
+        for section in sections[first_front_matter_idx + 1 :]
+        if _is_title_like_heading(section.heading_text)
+    }
+    if not later_title_keys:
+        return sections
+
+    return [
+        section
+        for idx, section in enumerate(sections)
+        if not (
+            idx < first_front_matter_idx
+            and _is_title_like_heading(section.heading_text)
+            and _heading_key(section.heading_text) in later_title_keys
+        )
+    ]
+
+
 @dataclass(frozen=True, slots=True)
 class _IndexedParagraph:
     """A paragraph tag with its pre-computed position and extracted text."""
@@ -1305,7 +1355,10 @@ def _fallback_start_index(heading_rows: list[_HeadingRow]) -> int | None:
     if first_front_matter_idx is not None and (
         not structural_rows or first_front_matter_idx < structural_rows[0][0]
     ):
-        return first_front_matter_idx
+        start_idx = first_front_matter_idx
+        while start_idx > 0 and _is_title_like_heading(heading_rows[start_idx - 1].heading_text):
+            start_idx -= 1
+        return start_idx
 
     start_rows = structural_rows or list(enumerate(heading_rows))
     start_rank = min(row.rank for _, row in start_rows)
@@ -1332,6 +1385,8 @@ def _filter_fallback_heading_rows(heading_rows: list[_HeadingRow]) -> list[_Head
         if _is_single_letter_subheading(row):
             continue
         if _is_deep_rank_bare_numeral_heading(row):
+            continue
+        if _is_front_matter_attribution_heading(row):
             continue
         if _is_short_uppercase_stage_heading(row):
             continue
@@ -1562,6 +1617,12 @@ def _is_short_uppercase_stage_heading(row: _HeadingRow) -> bool:
     return bool(letters) and letters == letters.upper()
 
 
+def _is_front_matter_attribution_heading(row: _HeadingRow) -> bool:
+    if row.rank < 4:
+        return False
+    return _FRONT_MATTER_ATTRIBUTION_HEADING_RE.match(row.heading_text) is not None
+
+
 def _is_single_letter_subheading(row: _HeadingRow) -> bool:
     """Return True for deep-rank alphabet markers like ``C.`` in acrostic sections."""
     if row.rank < 4:
@@ -1580,6 +1641,37 @@ def _is_deep_rank_bare_numeral_heading(row: _HeadingRow) -> bool:
     if _heading_keyword(row.heading_text):
         return False
     return _PLAIN_NUMBER_HEADING_RE.fullmatch(row.heading_text) is not None
+
+
+def _is_title_page_subtitle(
+    row: _HeadingRow,
+    *,
+    previous_kept_row: _HeadingRow | None,
+) -> bool:
+    if previous_kept_row is None:
+        return False
+    if row.rank < 4 or row.rank <= previous_kept_row.rank:
+        return False
+    if not _is_title_like_heading(previous_kept_row.heading_text):
+        return False
+    if not _is_title_like_heading(row.heading_text):
+        return False
+    return row.heading_text.upper().startswith("OF ")
+
+
+def _is_shorter_adjacent_title_repeat(
+    row: _HeadingRow,
+    previous_row: _HeadingRow,
+    *,
+    doc_index: _DocumentIndex,
+) -> bool:
+    if not _is_title_like_heading(previous_row.heading_text):
+        return False
+    if not _is_title_like_heading(row.heading_text):
+        return False
+    if _headings_have_text_between(previous_row, row, doc_index=doc_index):
+        return False
+    return previous_row.heading_text.startswith(row.heading_text + " ")
 
 
 def _is_rank5_subheading_under_nonchapter_section(

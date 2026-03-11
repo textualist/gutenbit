@@ -748,6 +748,36 @@ def test_heading_scan_keeps_part_headings_separate_from_numbered_child_sections(
     assert headings[4].div2 == "22 Earlshall"
 
 
+def test_heading_scan_keeps_leading_title_page_headings_and_skips_attributions():
+    html = _make_html("""
+    <h3>THE MODERN LIBRARY</h3>
+    <h4>OF THE WORLD'S BEST BOOKS</h4>
+    <h3>CANDIDE BY VOLTAIRE</h3>
+    <h1>CANDIDE</h1>
+    <h4>INTRODUCTION BY PHILIP LITTELL</h4>
+    <h5>BONI AND LIVERIGHT, INC. PUBLISHERS NEW YORK</h5>
+    <h2>INTRODUCTION</h2>
+    <p>Intro paragraph.</p>
+    <h2>CANDIDE</h2>
+    <h2>I</h2>
+    <h3>HOW CANDIDE WAS BROUGHT UP IN A MAGNIFICENT CASTLE</h3>
+    <p>First chapter paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts[:5] == [
+        "THE MODERN LIBRARY",
+        "CANDIDE BY VOLTAIRE",
+        "INTRODUCTION",
+        "CANDIDE",
+        "I",
+    ]
+    assert "INTRODUCTION BY PHILIP LITTELL" not in heading_texts
+    assert "BONI AND LIVERIGHT, INC. PUBLISHERS NEW YORK" not in heading_texts
+
+
 def test_heading_scan_strips_synopsis_from_book_heading():
     html = _make_html("""
     <h2>BOOK IV</h2>
