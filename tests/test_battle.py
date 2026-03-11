@@ -264,3 +264,21 @@ def test_inferno_skips_stray_front_matter_numeral_sections():
         "CANTO IV",
     ]
     assert not any(text in {"II", "III", "IV", "V", "VI"} for text in heading_texts[:10])
+
+
+def test_leviathan_refines_toc_subsections_within_chapters():
+    headings = _headings(3207)
+
+    assert len(headings) > 500
+
+    memory = next(heading for heading in headings if heading.content == "Memory")
+    dreams = next(heading for heading in headings if heading.content == "Dreams")
+    prudence = next(heading for heading in headings if heading.content == "Prudence")
+
+    assert memory.div1 == "PART I. OF MAN"
+    assert memory.div2 == "CHAPTER II. OF IMAGINATION"
+    assert memory.div3 == "Memory"
+    assert dreams.div2 == "CHAPTER II. OF IMAGINATION"
+    assert dreams.div3 == "Dreams"
+    assert prudence.div2 == "CHAPTER III. OF THE CONSEQUENCE OR TRAYNE OF IMAGINATIONS"
+    assert prudence.div3 == "Prudence"
