@@ -249,7 +249,7 @@ stale_books = db.stale_books()     # stored books that need reprocessing
 book = db.book(1342)               # BookRecord or None
 db.has_text(1342)                  # True if stored
 db.has_current_text(1342)          # True if stored at current chunker version
-db.delete_book(1342)               # returns True if deleted, False if not found
+db.remove_book(1342)               # returns True if removed, False if not found
 ```
 
 ## Chunking HTML directly

@@ -306,13 +306,13 @@ def test_chunks_method_prose_only(tmp_path):
 
 
 # ------------------------------------------------------------------
-# Database.delete_book() method
+# Database.remove_book() method
 # ------------------------------------------------------------------
 
 
-def test_delete_book_removes_book_text_chunks_and_search_hits(tmp_path):
+def test_remove_book_removes_book_text_chunks_and_search_hits(tmp_path):
     db = _make_db(tmp_path)
-    assert db.delete_book(1) is True
+    assert db.remove_book(1) is True
 
     ids = {b.id for b in db.books()}
     assert 1 not in ids
@@ -326,11 +326,11 @@ def test_delete_book_removes_book_text_chunks_and_search_hits(tmp_path):
     assert all(r.book_id == 2 for r in other)
 
 
-def test_delete_book_missing_id_is_noop(tmp_path):
+def test_remove_book_missing_id_is_noop(tmp_path):
     db = _make_db(tmp_path)
     before = {b.id for b in db.books()}
 
-    assert db.delete_book(99999) is False
+    assert db.remove_book(99999) is False
 
     after = {b.id for b in db.books()}
     assert after == before
@@ -2795,20 +2795,20 @@ def test_add_non_json_reports_download_source(tmp_path, monkeypatch):
     assert "added 15: Moby Dick (official mirror: aleph.pglaf.org)" in out
 
 
-def test_delete_json_output(tmp_path):
+def test_remove_json_output(tmp_path):
     db = _make_db(tmp_path)
     db_path = db.path
     db.close()
 
-    code, out, _err = _run_cli(db_path, "delete", "1", "999", "--json")
+    code, out, _err = _run_cli(db_path, "remove", "1", "999", "--json")
     assert code == 1
     payload = json.loads(out)
     assert payload["ok"] is False
-    assert payload["command"] == "delete"
-    assert payload["data"]["deleted_count"] == 1
+    assert payload["command"] == "remove"
+    assert payload["data"]["removed_count"] == 1
     assert payload["data"]["missing_count"] == 1
     assert any(
-        row["book_id"] == 1 and row["status"] == "deleted" for row in payload["data"]["results"]
+        row["book_id"] == 1 and row["status"] == "removed" for row in payload["data"]["results"]
     )
     assert any(
         row["book_id"] == 999 and row["status"] == "missing" for row in payload["data"]["results"]

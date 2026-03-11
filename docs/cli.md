@@ -93,13 +93,13 @@ With `--update`, gutenbit checks the local database and reprocesses only books w
 stored text is out of date for the current chunker version. `--force` refreshes every
 stored book, and `--dry-run` reports what would be refreshed without doing any work.
 
-## delete
+## remove
 
 Remove books and their chunks from the database.
 
 ```bash
-gutenbit delete 1342
-gutenbit delete 46 730 967
+gutenbit remove 1342
+gutenbit remove 46 730 967
 ```
 
 | Flag | Description |
@@ -241,7 +241,7 @@ Every command accepts `--json` and returns a unified envelope:
 }
 ```
 
-When `ok` is `false`, the `errors` list contains error messages. The `data` field holds command-specific results. The `warnings` list captures non-fatal issues (e.g. a requested ID not found during bulk delete).
+When `ok` is `false`, the `errors` list contains error messages. The `data` field holds command-specific results. The `warnings` list captures non-fatal issues (e.g. a requested ID not found during bulk remove).
 
 For `view`, the response body is content-first. Successful responses include a shared passage shape: `book`, `title`, `author`, `section`, `section_number`, `position`, `forward`, `radius`, `all`, and `content`.
 

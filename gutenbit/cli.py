@@ -898,20 +898,20 @@ examples:
     _add_catalog_cache_args(add)
     _add_global_args(add)
 
-    # --- delete ---
+    # --- remove ---
     de = sub.add_parser(
-        "delete",
+        "remove",
         formatter_class=fmt,
-        help="delete stored books by PG id",
+        help="remove stored books by PG id",
         description=(
-            "Delete previously added books from the SQLite database, including "
+            "Remove previously added books from the SQLite database, including "
             "their reconstructed text and all chunks."
         ),
         epilog="""\
 examples:
-  gutenbit delete 46
-  gutenbit delete 46 730 967
-  gutenbit delete 2600 --db my.db
+  gutenbit remove 46
+  gutenbit remove 46 730 967
+  gutenbit remove 2600 --db my.db
 
 if a book ID is not present, a warning is printed and exit code is 1.""",
     )
@@ -1680,17 +1680,17 @@ def _cmd_books(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_delete(args: argparse.Namespace) -> int:
+def _cmd_remove(args: argparse.Namespace) -> int:
     as_json = getattr(args, "json", False)
     display = _display()
     any_missing = False
-    deleted_count = 0
+    removed_count = 0
     results: list[dict[str, Any]] = []
     errors: list[str] = []
     with Database(args.db) as db:
         for book_id in args.book_ids:
-            deleted = db.delete_book(book_id)
-            if not deleted:
+            removed = db.remove_book(book_id)
+            if not removed:
                 message = f"No book found for id {book_id}."
                 errors.append(message)
                 results.append({"book_id": book_id, "status": "missing"})
@@ -1698,20 +1698,20 @@ def _cmd_delete(args: argparse.Namespace) -> int:
                     display.error(f"No book found for {_book_id_ref(book_id, capitalize=False)}.")
                 any_missing = True
             else:
-                deleted_count += 1
-                results.append({"book_id": book_id, "status": "deleted"})
+                removed_count += 1
+                results.append({"book_id": book_id, "status": "removed"})
                 if not as_json:
                     display.success(
-                        f"Deleted {_book_id_ref(book_id, capitalize=False)} from {args.db}."
+                        f"Removed {_book_id_ref(book_id, capitalize=False)} from {args.db}."
                     )
     if as_json:
         _print_json_envelope(
-            "delete",
+            "remove",
             ok=not any_missing,
             data={
                 "db": str(Path(args.db).resolve()),
-                "deleted_count": deleted_count,
-                "missing_count": len(args.book_ids) - deleted_count,
+                "removed_count": removed_count,
+                "missing_count": len(args.book_ids) - removed_count,
                 "results": results,
             },
             errors=errors,
@@ -2724,7 +2724,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
 _COMMANDS = {
     "catalog": _cmd_catalog,
     "add": _cmd_add,
-    "delete": _cmd_delete,
+    "remove": _cmd_remove,
     "books": _cmd_books,
     "search": _cmd_search,
     "toc": _cmd_toc,

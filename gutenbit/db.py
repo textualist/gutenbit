@@ -295,8 +295,8 @@ class Database:
         for book in canonical_books:
             self._ingest_book(book, delay=delay, force=force, state=states.get(book.id))
 
-    def delete_book(self, book_id: int) -> bool:
-        """Delete a stored book and all associated rows. Returns False if missing."""
+    def remove_book(self, book_id: int) -> bool:
+        """Remove a stored book and all associated rows. Returns False if missing."""
         row = self._conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone()
         if row is None:
             return False
