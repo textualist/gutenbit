@@ -762,6 +762,7 @@ class CliDisplay:
         self._footer(
             stats=_section_summary_stats(overview),
             commands=[
+                quick_actions["toc_expand_all"],
                 quick_actions["search"],
                 quick_actions["view_first_section"],
                 quick_actions["view_by_position"],
@@ -845,6 +846,8 @@ class CliDisplay:
         )
 
         print("\nQuick actions", file=self.stdout)
+        if quick_actions["toc_expand_all"]:
+            print(f"  {quick_actions['toc_expand_all']}", file=self.stdout)
         if quick_actions["search"]:
             print(f"  {quick_actions['search']}", file=self.stdout)
         if quick_actions["view_first_section"]:

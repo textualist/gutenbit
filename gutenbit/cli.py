@@ -178,6 +178,7 @@ class _SectionRow(TypedDict):
 
 
 class _QuickActions(TypedDict):
+    toc_expand_all: str
     search: str
     view_first_section: str
     view_by_position: str
@@ -2137,6 +2138,10 @@ def _build_section_summary(
     if opening_position is not None:
         view_position_cmd = f"gutenbit view {book_id} --position {opening_position} --forward 20"
 
+    toc_expand_all_cmd = ""
+    if expand_depth is not None and expand_depth < 4:
+        toc_expand_all_cmd = f"gutenbit toc {book_id} --expand all"
+
     view_all_cmd = f"gutenbit view {book_id} --all"
 
     summary: _SectionSummary = {
@@ -2163,6 +2168,7 @@ def _build_section_summary(
         },
         "sections": visible_section_rows,
         "quick_actions": {
+            "toc_expand_all": toc_expand_all_cmd,
             "search": search_cmd,
             "view_first_section": first_section_cmd,
             "view_by_position": view_position_cmd,
@@ -2214,6 +2220,7 @@ def _view_action_hints(book_id: int, summary: _SectionSummary | None) -> dict[st
         summary["quick_actions"]
         if summary is not None
         else {
+            "toc_expand_all": "",
             "search": "",
             "view_first_section": "",
             "view_by_position": "",

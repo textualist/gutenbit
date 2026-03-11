@@ -189,7 +189,7 @@ def test_plain_passage_shows_footer_stats(tmp_path):
 
 def test_rich_section_summary_uses_simple_section_layout(tmp_path):
     db = _make_db(tmp_path)
-    summary = _build_section_summary(db, 1)
+    summary = _build_section_summary(db, 1, expand_depth=2)
     assert summary is not None
     out = StringIO()
 
@@ -203,9 +203,13 @@ def test_rich_section_summary_uses_simple_section_layout(tmp_path):
     assert "Words" in rendered
     assert "2 sections · 3 paragraphs · 151 words · 756 chars · 1m read" in rendered
     assert "\nNext\n" in rendered
+    assert "gutenbit toc 1 --expand all" in rendered
     assert 'gutenbit search "Ishmael" --book 1' in rendered
     assert "gutenbit view 1 --position 0 --forward 20" in rendered
     assert "gutenbit view 1 --all" in rendered
+    assert rendered.index("gutenbit toc 1 --expand all") < rendered.index(
+        'gutenbit search "Ishmael" --book 1'
+    )
 
 
 def test_rich_section_summary_shows_visible_section_count_when_collapsed(tmp_path):

@@ -901,8 +901,12 @@ def test_toc_default_shows_structure(tmp_path):
     assert "Read" in out
     assert "Opening" in out
     assert "2 sections · 3 paragraphs · 151 words · 756 chars · 1m read" in out
+    assert "gutenbit toc 1 --expand all" in out
     assert "gutenbit view 1 --section 1 --forward 20" in out
     assert "gutenbit view 1 --all" in out
+    assert out.index("gutenbit toc 1 --expand all") < out.index(
+        'gutenbit search "Ishmael" --book 1'
+    )
 
 
 def test_view_default_json(tmp_path):
@@ -980,6 +984,7 @@ def test_toc_default_json(tmp_path):
     assert summary["quick_actions"]["search"].startswith('gutenbit search "')
     assert summary["quick_actions"]["search"].endswith('" --book 1')
     assert "<query>" not in summary["quick_actions"]["search"]
+    assert summary["quick_actions"]["toc_expand_all"] == "gutenbit toc 1 --expand all"
     assert (
         summary["quick_actions"]["view_first_section"]
         == "gutenbit view 1 --section 1 --forward 20"
@@ -1011,6 +1016,7 @@ def test_toc_default_expand_collapses_nested_sections_and_rolls_up_hidden_stats(
     summary = payload["data"]["toc"]
     assert summary["overview"]["sections_total"] == 9
     assert summary["overview"]["sections_shown"] == 5
+    assert summary["quick_actions"]["toc_expand_all"] == "gutenbit toc 13 --expand all"
     assert [section["section_number"] for section in summary["sections"]] == [1, 2, 5, 7, 8]
     assert [section["section"] for section in summary["sections"]] == [
         "PLAY ONE",
@@ -1077,6 +1083,7 @@ def test_toc_expand_all_keeps_full_nested_rows_and_direct_stats(tmp_path):
     summary = payload["data"]["toc"]
     assert summary["overview"]["sections_total"] == 9
     assert summary["overview"]["sections_shown"] == 9
+    assert summary["quick_actions"]["toc_expand_all"] == ""
     assert [section["section_number"] for section in summary["sections"]] == list(range(1, 10))
 
     play_one = summary["sections"][0]
