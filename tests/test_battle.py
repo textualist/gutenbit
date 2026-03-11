@@ -216,3 +216,17 @@ def test_republic_preserves_book_headings_over_dialogue_speakers():
     ]
     assert all("-" not in heading.content for heading in headings)
     assert all(heading.div2 == "" for heading in headings)
+
+
+def test_faust_keeps_only_top_level_dramatic_sections():
+    headings = _headings(3023)
+    heading_texts = [heading.content for heading in headings]
+
+    assert heading_texts == [
+        "PROLOGUE FOR THE THEATRE",
+        "PROLOGUE IN HEAVEN",
+        "THE TRAGEDY OF FAUST",
+        "PART I",
+    ]
+    excluded = {"MANAGER", "POET", "MERRYMAN", "NIGHT", "FAUST"}
+    assert all(text not in excluded for text in heading_texts)

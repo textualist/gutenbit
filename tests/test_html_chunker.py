@@ -982,7 +982,7 @@ def test_dense_chapter_index_paragraph_falls_back_to_heading_scan():
     chunks = chunk_html(html)
     headings = [c.content for c in chunks if c.kind == "heading"]
 
-    assert headings == ["CHAPTER I", "CHAPTER II", "CHAPTER III"]
+    assert headings == ["PREFACE", "CHAPTER I", "CHAPTER II", "CHAPTER III"]
 
 
 def test_toc_ignores_title_like_h3_subheads_inside_chapters():
@@ -1113,6 +1113,38 @@ def test_dialogue_speaker_headings_do_not_replace_book_structure():
     assert paragraphs[1].div2 == ""
     assert paragraphs[2].div1 == "BOOK II"
     assert paragraphs[2].div2 == ""
+
+
+def test_heading_scan_starts_from_prologues_and_skips_short_dramatic_cues():
+    html = _make_html("""
+    <h5>INTRODUCTORY NOTE</h5>
+    <h1>PROLOGUE FOR THE THEATRE</h1>
+    <h5>MANAGER</h5>
+    <p>Manager paragraph.</p>
+    <h1>PROLOGUE IN HEAVEN</h1>
+    <h5>RAPHAEL</h5>
+    <p>Raphael paragraph.</p>
+    <h1>THE TRAGEDY OF FAUST</h1>
+    <h5>DRAMATIS PERSONAE</h5>
+    <h1>PART I</h1>
+    <h5>NIGHT</h5>
+    <h5>FAUST</h5>
+    <p>Faust paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == [
+        "PROLOGUE FOR THE THEATRE",
+        "PROLOGUE IN HEAVEN",
+        "THE TRAGEDY OF FAUST",
+        "PART I",
+    ]
+    excluded = {"MANAGER", "RAPHAEL", "DRAMATIS PERSONAE", "NIGHT", "FAUST"}
+    assert all(h.content not in excluded for h in headings)
+    assert paragraphs[-1].div1 == "PART I"
+    assert paragraphs[-1].div2 == ""
 
 
 # ------------------------------------------------------------------

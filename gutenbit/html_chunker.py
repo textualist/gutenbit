@@ -91,6 +91,17 @@ _BRACKETED_NUMERIC_HEADING_RE = re.compile(r"^\[\s*\d+\s*\]$")
 _NUMERIC_LINK_TEXT_RE = re.compile(r"^\[?\d+\]?$")
 _ROMAN_NUMERAL_RE = re.compile(r"^[IVXLCDM]+$")
 _PLAIN_NUMBER_HEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.?$", re.IGNORECASE)
+_STRUCTURAL_INDEX_TOKEN_RE = re.compile(
+    r"^(?:[IVXLCDM]+|[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
+    r"nineteen|twenty|first|second|third|fourth|fifth|sixth|seventh|eighth|"
+    r"ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|"
+    r"sixteenth|seventeenth|eighteenth|nineteenth|twentieth|"
+    r"primus|prima|secundus|secunda|tertius|tertia|quartus|quarta|"
+    r"quintus|quinta|sextus|sexta|septimus|septima|octavus|octava|"
+    r"nonus|nona|decimus|decima)$",
+    re.IGNORECASE,
+)
 _PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
 _NON_STRUCTURAL_HEADING_RE = re.compile(
     r"^(?:notes?|footnotes?|endnotes?|transcriber's note|transcribers note|"
@@ -399,6 +410,12 @@ _FONT_SIZE_STYLE_RE = re.compile(
     r"font-size\s*:\s*([0-9.]+)\s*(%|em|rem|px)",
     re.IGNORECASE,
 )
+_FALLBACK_START_HEADING_RE = re.compile(
+    r"^(?:preface|introduction|introductory note|prelude|prologue\b|"
+    r"note\b|note to\b|letter\b|a letter from\b|the publisher to the reader\b|"
+    r"before the curtain\b|etymology\b|extracts\b|some commendatory verses\b)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -501,6 +518,9 @@ def _parse_heading_sections(
     heading_rows.sort(
         key=lambda row: _tag_position(row.tag, doc_index.tag_positions) or float("inf")
     )
+    heading_rows = _filter_fallback_heading_rows(heading_rows)
+    if not heading_rows:
+        return []
 
     start_idx = _fallback_start_index(heading_rows)
     if start_idx is None:
@@ -511,13 +531,11 @@ def _parse_heading_sections(
     while i < len(heading_rows):
         row = heading_rows[i]
         heading_text = row.heading_text
-        previous_row = heading_rows[i - 1] if i > 0 else None
         next_row = heading_rows[i + 1] if i + 1 < len(heading_rows) else None
 
-        if _is_dialogue_speaker_heading(heading_text) or _is_single_speaker_dialogue_heading(
-            heading_text,
-            previous_heading=previous_row.heading_text if previous_row else None,
-            next_heading=next_row.heading_text if next_row else None,
+        if _is_rank5_subheading_under_nonchapter_section(
+            row,
+            previous_kept_heading=sections[-1].heading_text if sections else None,
         ):
             i += 1
             continue
@@ -737,7 +755,16 @@ def _heading_keyword(heading_text: str) -> str:
     if not match:
         return ""
     keyword = heading_text.split()[0].rstrip(".,:]").lower()
-    return _STRUCTURAL_KEYWORD_ALIASES.get(keyword, keyword)
+    canonical = _STRUCTURAL_KEYWORD_ALIASES.get(keyword, keyword)
+
+    remainder = heading_text[len(heading_text.split()[0]) :].lstrip(" .,:;!?-—–")
+    tokens = [token.lower() for token in re.split(r"[^A-Za-z0-9]+", remainder) if token]
+    if not tokens:
+        return canonical
+    index_token = tokens[1] if len(tokens) > 1 and tokens[0] == "the" else tokens[0]
+    if _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(index_token):
+        return canonical
+    return ""
 
 
 def _heading_key(heading_text: str) -> str:
@@ -1120,7 +1147,7 @@ def _fallback_start_index(heading_rows: list[_HeadingRow]) -> int | None:
     structural_rows = [
         (idx, row)
         for idx, row in enumerate(heading_rows)
-        if _heading_keyword(row.heading_text)
+        if _is_fallback_start_heading_text(row.heading_text)
     ]
     start_rows = structural_rows or list(enumerate(heading_rows))
     start_rank = min(row.rank for _, row in start_rows)
@@ -1128,6 +1155,26 @@ def _fallback_start_index(heading_rows: list[_HeadingRow]) -> int | None:
         if row.rank == start_rank:
             return idx
     return None
+
+
+def _filter_fallback_heading_rows(heading_rows: list[_HeadingRow]) -> list[_HeadingRow]:
+    """Drop heading-scan rows that are clearly non-navigational subheads."""
+    filtered: list[_HeadingRow] = []
+    for idx, row in enumerate(heading_rows):
+        previous_row = heading_rows[idx - 1] if idx > 0 else None
+        next_row = heading_rows[idx + 1] if idx + 1 < len(heading_rows) else None
+        if _is_dialogue_speaker_heading(row.heading_text):
+            continue
+        if _is_single_speaker_dialogue_heading(
+            row.heading_text,
+            previous_heading=previous_row.heading_text if previous_row else None,
+            next_heading=next_row.heading_text if next_row else None,
+        ):
+            continue
+        if _is_short_uppercase_stage_heading(row):
+            continue
+        filtered.append(row)
+    return filtered
 
 
 def _paragraph_heading_rows(
@@ -1165,6 +1212,15 @@ def _split_play_heading_paragraph(paragraph_text: str) -> list[str]:
     if scene:
         parts.append(_clean_heading_text(scene))
     return parts
+
+
+def _is_fallback_start_heading_text(heading_text: str) -> bool:
+    """Return True when a heading is strong enough to start fallback scanning."""
+    if _heading_keyword(heading_text):
+        return True
+    if _STANDALONE_STRUCTURAL_RE.search(heading_text):
+        return True
+    return _FALLBACK_START_HEADING_RE.match(heading_text) is not None
 
 
 def _build_subtree_end_positions(
@@ -1310,6 +1366,46 @@ def _is_single_speaker_dialogue_heading(
 
     adjacent_headings = [text for text in (previous_heading, next_heading) if text]
     return any(_is_dialogue_speaker_heading(text) for text in adjacent_headings)
+
+
+def _is_short_uppercase_stage_heading(row: _HeadingRow) -> bool:
+    """Return True for short all-caps dramatic cues like ``FAUST`` or ``NIGHT``."""
+    if row.rank < 5:
+        return False
+    if _heading_keyword(row.heading_text):
+        return False
+    if _STANDALONE_STRUCTURAL_RE.search(row.heading_text):
+        return False
+    if row.heading_text.upper().startswith("OF "):
+        return False
+
+    words = [word for word in row.heading_text.split() if any(char.isalpha() for char in word)]
+    if not words or len(words) > 4:
+        return False
+
+    letters = "".join(char for char in row.heading_text if char.isalpha())
+    return bool(letters) and letters == letters.upper()
+
+
+def _is_rank5_subheading_under_nonchapter_section(
+    row: _HeadingRow,
+    *,
+    previous_kept_heading: str | None,
+) -> bool:
+    """Return True for h5 dramatic cues nested under non-chapter parent sections."""
+    if row.rank < 5:
+        return False
+    if previous_kept_heading is None:
+        return False
+    if _heading_keyword(row.heading_text):
+        return False
+    if _STANDALONE_STRUCTURAL_RE.search(row.heading_text):
+        return False
+    if row.heading_text.upper().startswith("OF "):
+        return False
+
+    parent_keyword = _heading_keyword(previous_kept_heading)
+    return parent_keyword not in {"chapter", "stave", "section", "adventure"}
 
 
 def _normalized_heading_continuation(
