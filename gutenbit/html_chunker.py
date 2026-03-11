@@ -128,6 +128,12 @@ _PLAY_HEADING_PARAGRAPH_RE = re.compile(
     r"|(?P<scene_only>(?:SC(?:OE|E)NA|SCENE)\s+[A-Z0-9IVXLCDM]+\.?))$",
     re.IGNORECASE,
 )
+_TRAILING_STRUCTURAL_HEADING_RE = re.compile(
+    r"^(?:THE\s+)?(?P<index>[A-Z0-9]+)\s+"
+    r"(?P<keyword>BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|"
+    r"SCOENA|SECTION|ADVENTURE)\.?\s*$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +144,7 @@ class _Section:
     heading_text: str
     level: int  # 1 = broad (BOOK/PART), 2 = chapter, 3 = sub-chapter
     body_anchor: Tag
+    heading_rank: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,7 +210,13 @@ def chunk_html(html: str) -> list[Chunk]:
     min_level = min(s.level for s in sections)
     if min_level > 1:
         sections = [
-            _Section(s.anchor_id, s.heading_text, s.level - min_level + 1, s.body_anchor)
+            _Section(
+                s.anchor_id,
+                s.heading_text,
+                s.level - min_level + 1,
+                s.body_anchor,
+                s.heading_rank,
+            )
             for s in sections
         ]
 
@@ -361,18 +374,23 @@ def _parse_toc_sections(
 
         heading_level = _classify_level(heading_text, is_emphasized)
         if _toc_link_refines_body_heading(link_text, heading_text):
-            sections.append(_Section(anchor_id, heading_text, heading_level, body_anchor))
+            sections.append(
+                _Section(anchor_id, heading_text, heading_level, body_anchor, heading_rank)
+            )
             sections.append(
                 _Section(
                     anchor_id,
                     link_text,
                     _classify_level(link_text, False),
                     body_anchor,
+                    heading_rank,
                 )
             )
             continue
 
-        sections.append(_Section(anchor_id, heading_text, heading_level, body_anchor))
+        sections.append(
+            _Section(anchor_id, heading_text, heading_level, body_anchor, heading_rank)
+        )
 
     sections.sort(key=lambda section: tag_positions.get(id(section.body_anchor), float("inf")))
     # Remove a leading title section whose heading is a prefix of the next section's
@@ -470,7 +488,15 @@ def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
             next_sec = sections[i + 1]
             combined_text = f"{sec.heading_text} {next_sec.heading_text}"
             combined_level = _classify_level(combined_text, False)
-            merged.append(_Section(sec.anchor_id, combined_text, combined_level, sec.body_anchor))
+            merged.append(
+                _Section(
+                    sec.anchor_id,
+                    combined_text,
+                    combined_level,
+                    sec.body_anchor,
+                    sec.heading_rank,
+                )
+            )
             i += 2
         else:
             merged.append(sec)
@@ -564,7 +590,7 @@ def _parse_heading_sections(
 
         level = _classify_level(heading_text, False)
         anchor_id = str(row.anchor.get("id", ""))
-        sections.append(_Section(anchor_id, heading_text, level, row.anchor))
+        sections.append(_Section(anchor_id, heading_text, level, row.anchor, row.rank))
         i += 1
 
     return sections
@@ -752,19 +778,29 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
 
 def _heading_keyword(heading_text: str) -> str:
     match = _HEADING_KEYWORD_RE.match(heading_text)
-    if not match:
-        return ""
-    keyword = heading_text.split()[0].rstrip(".,:]").lower()
-    canonical = _STRUCTURAL_KEYWORD_ALIASES.get(keyword, keyword)
+    if match:
+        keyword = heading_text.split()[0].rstrip(".,:]").lower()
+        canonical = _STRUCTURAL_KEYWORD_ALIASES.get(keyword, keyword)
 
-    remainder = heading_text[len(heading_text.split()[0]) :].lstrip(" .,:;!?-—–")
-    tokens = [token.lower() for token in re.split(r"[^A-Za-z0-9]+", remainder) if token]
-    if not tokens:
-        return canonical
-    index_token = tokens[1] if len(tokens) > 1 and tokens[0] == "the" else tokens[0]
-    if _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(index_token):
-        return canonical
-    return ""
+        remainder = heading_text[len(heading_text.split()[0]) :].lstrip(" .,:;!?-—–")
+        tokens = [token.lower() for token in re.split(r"[^A-Za-z0-9]+", remainder) if token]
+        if not tokens:
+            return canonical
+        index_token = tokens[1] if len(tokens) > 1 and tokens[0] == "the" else tokens[0]
+        if _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(index_token):
+            return canonical
+        return ""
+
+    trailing_match = _TRAILING_STRUCTURAL_HEADING_RE.fullmatch(heading_text)
+    if not trailing_match:
+        return ""
+
+    index_token = trailing_match.group("index").lower()
+    if not _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(index_token):
+        return ""
+
+    keyword = trailing_match.group("keyword").lower()
+    return _STRUCTURAL_KEYWORD_ALIASES.get(keyword, keyword)
 
 
 def _heading_key(heading_text: str) -> str:
@@ -862,7 +898,13 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
                 new_levels[section_idx] += 1
 
     return [
-        _Section(section.anchor_id, section.heading_text, new_levels[idx], section.body_anchor)
+        _Section(
+            section.anchor_id,
+            section.heading_text,
+            new_levels[idx],
+            section.body_anchor,
+            section.heading_rank,
+        )
         for idx, section in enumerate(sections)
     ]
 
@@ -1171,6 +1213,8 @@ def _filter_fallback_heading_rows(heading_rows: list[_HeadingRow]) -> list[_Head
             next_heading=next_row.heading_text if next_row else None,
         ):
             continue
+        if _is_single_letter_subheading(row):
+            continue
         if _is_short_uppercase_stage_heading(row):
             continue
         filtered.append(row)
@@ -1190,16 +1234,15 @@ def _paragraph_heading_rows(
             continue
         if _is_toc_paragraph(paragraph):
             continue
-        for heading_text in _split_play_heading_paragraph(
-            _clean_heading_text(_extract_paragraph_text(paragraph))
-        ):
+        for heading_text in _split_play_heading_paragraph(_extract_paragraph_text(paragraph)):
             rows.append(_HeadingRow(paragraph, paragraph, heading_text, 7))
     return rows
 
 
 def _split_play_heading_paragraph(paragraph_text: str) -> list[str]:
     """Split strict play-heading paragraphs into act/scene section labels."""
-    match = _PLAY_HEADING_PARAGRAPH_RE.fullmatch(paragraph_text)
+    text = " ".join(paragraph_text.split()).strip()
+    match = _PLAY_HEADING_PARAGRAPH_RE.fullmatch(text)
     if not match:
         return []
 
@@ -1298,7 +1341,7 @@ def _is_ignorable_fallback_heading(heading_text: str) -> bool:
 
 def _is_refinement_heading(heading_text: str) -> bool:
     """Return True when a body heading is strong enough to refine a TOC."""
-    if _HEADING_KEYWORD_RE.match(heading_text):
+    if _heading_keyword(heading_text):
         return True
     if _STANDALONE_STRUCTURAL_RE.search(heading_text):
         return True
@@ -1385,6 +1428,17 @@ def _is_short_uppercase_stage_heading(row: _HeadingRow) -> bool:
 
     letters = "".join(char for char in row.heading_text if char.isalpha())
     return bool(letters) and letters == letters.upper()
+
+
+def _is_single_letter_subheading(row: _HeadingRow) -> bool:
+    """Return True for deep-rank alphabet markers like ``C.`` in acrostic sections."""
+    if row.rank < 4:
+        return False
+    if _heading_keyword(row.heading_text):
+        return False
+
+    normalized = row.heading_text.strip(" .,:;!?()[]'\"")
+    return len(normalized) == 1 and normalized.isalpha()
 
 
 def _is_rank5_subheading_under_nonchapter_section(

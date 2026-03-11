@@ -230,3 +230,21 @@ def test_faust_keeps_only_top_level_dramatic_sections():
     ]
     excluded = {"MANAGER", "POET", "MERRYMAN", "NIGHT", "FAUST"}
     assert all(text not in excluded for text in heading_texts)
+
+
+def test_canterbury_keeps_troilus_books_and_skips_garbage_headings():
+    headings = _headings(2383)
+    heading_texts = [heading.content for heading in headings]
+
+    troilus_index = heading_texts.index("TROILUS AND CRESSIDA")
+    assert heading_texts[troilus_index : troilus_index + 6] == [
+        "TROILUS AND CRESSIDA",
+        "THE FIRST BOOK",
+        "THE SECOND BOOK",
+        "THE THIRD BOOK",
+        "THE FOURTH BOOK",
+        "THE FIFTH BOOK",
+    ]
+    assert "act iv" not in heading_texts
+    assert "scene v" not in heading_texts
+    assert not any(text in {"C", "D", "I", "L", "M", "V", "X"} for text in heading_texts)

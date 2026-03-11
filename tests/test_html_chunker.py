@@ -1088,6 +1088,58 @@ def test_paragraph_play_headings_reset_scene_hierarchy_on_new_act():
     assert paragraphs[2].div2 == "Scena Prima"
 
 
+def test_paragraph_play_headings_do_not_extract_act_scene_from_prose():
+    html = _make_html("""
+    <h2>THE ASSEMBLY OF FOWLS</h2>
+    <p>
+      Quoted in Terence, "Eunuchus," act iv. scene v., but this is body prose,
+      not a structural heading.
+    </p>
+    <h2>TROILUS AND CRESSIDA</h2>
+    <p>Story paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == ["THE ASSEMBLY OF FOWLS", "TROILUS AND CRESSIDA"]
+
+
+def test_title_like_toc_sections_keep_trailing_book_headings_and_skip_letter_markers():
+    html = _make_html("""
+    <table><tbody>
+      <tr><td><a href="#assembly" class="pginternal">THE ASSEMBLY OF FOWLS</a></td></tr>
+      <tr><td><a href="#troilus" class="pginternal">TROILUS AND CRESSIDA</a></td></tr>
+      <tr><td><a href="#abc" class="pginternal">CHAUCER'S A. B. C.</a></td></tr>
+      <tr><td><a href="#ballad" class="pginternal">A GOODLY BALLAD OF CHAUCER</a></td></tr>
+    </tbody></table>
+    <h2><a id="assembly"></a>THE ASSEMBLY OF FOWLS</h2>
+    <p>Assembly paragraph.</p>
+    <h2><a id="troilus"></a>TROILUS AND CRESSIDA</h2>
+    <h3>THE FIRST BOOK.</h3>
+    <p>First book paragraph.</p>
+    <h3>THE SECOND BOOK.</h3>
+    <p>Second book paragraph.</p>
+    <h2><a id="abc"></a>CHAUCER'S A. B. C.</h2>
+    <h4>C.</h4>
+    <p>C paragraph.</p>
+    <h4>D.</h4>
+    <p>D paragraph.</p>
+    <h2><a id="ballad"></a>A GOODLY BALLAD OF CHAUCER</h2>
+    <p>Ballad paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == [
+        "THE ASSEMBLY OF FOWLS",
+        "TROILUS AND CRESSIDA",
+        "THE FIRST BOOK",
+        "THE SECOND BOOK",
+        "CHAUCER'S A. B. C",
+        "A GOODLY BALLAD OF CHAUCER",
+    ]
+
+
 def test_dialogue_speaker_headings_do_not_replace_book_structure():
     html = _make_html("""
     <h1>BOOK I</h1>
