@@ -204,6 +204,7 @@ def chunk_html(html: str) -> list[Chunk]:
         return []
 
     sections = _normalize_collection_titles(sections)
+    sections = _merge_adjacent_duplicate_sections(sections)
 
     # Compact levels so the shallowest level maps to div1.
     # e.g. chapter-only books (min_level=2) shift chapters to div1.
@@ -504,6 +505,24 @@ def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
     return merged
 
 
+def _merge_adjacent_duplicate_sections(sections: list[_Section]) -> list[_Section]:
+    """Drop immediately repeated section headings such as duplicate running headers."""
+    if len(sections) < 2:
+        return sections
+
+    merged = [sections[0]]
+    for section in sections[1:]:
+        previous = merged[-1]
+        if (
+            previous.level == section.level
+            and previous.heading_rank == section.heading_rank
+            and _same_heading_text(previous.heading_text, section.heading_text)
+        ):
+            continue
+        merged.append(section)
+    return merged
+
+
 def _parse_heading_sections(
     soup: BeautifulSoup,
     *,
@@ -558,6 +577,15 @@ def _parse_heading_sections(
         row = heading_rows[i]
         heading_text = row.heading_text
         next_row = heading_rows[i + 1] if i + 1 < len(heading_rows) else None
+        previous_row = heading_rows[i - 1] if i > start_idx else None
+
+        if (
+            previous_row is not None
+            and _same_heading_text(previous_row.heading_text, heading_text)
+            and not _headings_have_text_between(previous_row, row, doc_index=doc_index)
+        ):
+            i += 1
+            continue
 
         if _is_rank5_subheading_under_nonchapter_section(
             row,
@@ -1204,11 +1232,24 @@ def _heading_tag_rank(tag: Tag) -> int | None:
 
 def _fallback_start_index(heading_rows: list[_HeadingRow]) -> int | None:
     """Return the first body-structure heading to use for heading-scan fallback."""
+    first_front_matter_idx = next(
+        (
+            idx
+            for idx, row in enumerate(heading_rows)
+            if _FALLBACK_START_HEADING_RE.match(row.heading_text)
+        ),
+        None,
+    )
     structural_rows = [
         (idx, row)
         for idx, row in enumerate(heading_rows)
-        if _is_fallback_start_heading_text(row.heading_text)
+        if _heading_keyword(row.heading_text) or _STANDALONE_STRUCTURAL_RE.search(row.heading_text)
     ]
+    if first_front_matter_idx is not None and (
+        not structural_rows or first_front_matter_idx < structural_rows[0][0]
+    ):
+        return first_front_matter_idx
+
     start_rows = structural_rows or list(enumerate(heading_rows))
     start_rank = min(row.rank for _, row in start_rows)
     for idx, row in start_rows:

@@ -1237,6 +1237,27 @@ def test_heading_scan_starts_from_prologues_and_skips_short_dramatic_cues():
     assert paragraphs[-1].div2 == ""
 
 
+def test_heading_scan_starts_from_front_matter_before_shallower_chapters():
+    html = _make_html("""
+    <h3>ETYMOLOGY.</h3>
+    <h3>ETYMOLOGY</h3>
+    <p>Etymology paragraph.</p>
+    <h3>EXTRACTS.</h3>
+    <h3>EXTRACTS.</h3>
+    <p>Extracts paragraph.</p>
+    <h2>CHAPTER I.</h2>
+    <p>Call me Ishmael.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert headings == ["ETYMOLOGY", "EXTRACTS", "CHAPTER I"]
+    assert paragraphs[0].div1 == "ETYMOLOGY"
+    assert paragraphs[1].div1 == "EXTRACTS"
+    assert paragraphs[2].div1 == "CHAPTER I"
+
+
 # ------------------------------------------------------------------
 # Chunk kind coverage
 # ------------------------------------------------------------------

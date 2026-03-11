@@ -282,3 +282,9 @@ def test_leviathan_refines_toc_subsections_within_chapters():
     assert dreams.div3 == "Dreams"
     assert prudence.div2 == "CHAPTER III. OF THE CONSEQUENCE OR TRAYNE OF IMAGINATIONS"
     assert prudence.div3 == "Prudence"
+
+
+def test_moby_dick_keeps_etymology_and_extracts_before_chapter_one():
+    heading_texts = [heading.content for heading in _headings(15)]
+
+    assert heading_texts[:4] == ["ETYMOLOGY", "EXTRACTS", "CHAPTER I", "CHAPTER II"]
