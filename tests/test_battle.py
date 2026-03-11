@@ -152,3 +152,243 @@ def test_ulysses_preserves_bracketed_episode_labels():
     assert len(episode_labels) == 18
     assert episode_labels[:3] == ["[ 1 ]", "[ 2 ]", "[ 3 ]"]
     assert episode_labels[-1] == "[ 18 ]"
+
+
+def test_hamlet_uses_paragraph_fallback_for_act_and_scene_structure():
+    headings = _headings(1122)
+    heading_texts = [heading.content for heading in headings]
+
+    assert heading_texts[:4] == [
+        "Actus Primus",
+        "Scoena Prima",
+        "Scena Secunda",
+        "Scena Tertia",
+    ]
+    assert "Actus Secundus" in heading_texts
+    assert "FINIS" not in heading_texts
+
+    first_scene = next(heading for heading in headings if heading.content == "Scoena Prima")
+    assert first_scene.div1 == "Actus Primus"
+    assert first_scene.div2 == "Scoena Prima"
+
+
+def test_macbeth_uses_paragraph_fallback_for_full_play_structure():
+    headings = _headings(1129)
+    heading_texts = [heading.content for heading in headings]
+
+    assert heading_texts[:8] == [
+        "Actus Primus",
+        "Scoena Prima",
+        "Scena Secunda",
+        "Scena Tertia",
+        "Scena Quarta",
+        "Scena Quinta",
+        "Scena Sexta",
+        "Scena Septima",
+    ]
+    assert len(headings) == 28
+    assert "Actus Quintus" in heading_texts
+    assert "FINIS" not in heading_texts
+
+    act_two_scene_one = next(
+        heading
+        for heading in headings
+        if heading.content == "Scena Prima" and heading.div1 == "Actus Secundus"
+    )
+    assert act_two_scene_one.div2 == "Scena Prima"
+
+
+def test_republic_preserves_book_headings_over_dialogue_speakers():
+    headings = _headings(150)
+    heading_texts = [heading.content for heading in headings]
+
+    assert heading_texts == [
+        "BOOK I",
+        "BOOK II",
+        "BOOK III",
+        "BOOK IV",
+        "BOOK V",
+        "BOOK VI",
+        "BOOK VII",
+        "BOOK VIII",
+        "BOOK IX",
+        "BOOK X",
+    ]
+    assert all("-" not in heading.content for heading in headings)
+    assert all(heading.div2 == "" for heading in headings)
+
+
+def test_faust_keeps_only_top_level_dramatic_sections():
+    headings = _headings(3023)
+    heading_texts = [heading.content for heading in headings]
+
+    assert heading_texts == [
+        "PROLOGUE FOR THE THEATRE",
+        "PROLOGUE IN HEAVEN",
+        "THE TRAGEDY OF FAUST",
+        "PART I",
+    ]
+    excluded = {"MANAGER", "POET", "MERRYMAN", "NIGHT", "FAUST"}
+    assert all(text not in excluded for text in heading_texts)
+
+
+def test_canterbury_keeps_troilus_books_and_skips_garbage_headings():
+    headings = _headings(2383)
+    heading_texts = [heading.content for heading in headings]
+
+    troilus_index = heading_texts.index("TROILUS AND CRESSIDA")
+    assert heading_texts[troilus_index : troilus_index + 6] == [
+        "TROILUS AND CRESSIDA",
+        "THE FIRST BOOK",
+        "THE SECOND BOOK",
+        "THE THIRD BOOK",
+        "THE FOURTH BOOK",
+        "THE FIFTH BOOK",
+    ]
+    assert "act iv" not in heading_texts
+    assert "scene v" not in heading_texts
+    assert not any(text in {"C", "D", "I", "L", "M", "V", "X"} for text in heading_texts)
+
+
+def test_inferno_skips_stray_front_matter_numeral_sections():
+    headings = _headings(41537)
+    heading_texts = [heading.content for heading in headings]
+
+    assert heading_texts[:7] == [
+        "PREFACE",
+        "FLORENCE AND DANTE",
+        "GIOTTO’S PORTRAIT OF DANTE",
+        "CANTO I",
+        "CANTO II",
+        "CANTO III",
+        "CANTO IV",
+    ]
+    assert not any(text in {"II", "III", "IV", "V", "VI"} for text in heading_texts[:10])
+
+
+def test_leviathan_refines_toc_subsections_within_chapters():
+    headings = _headings(3207)
+
+    assert len(headings) > 500
+
+    memory = next(heading for heading in headings if heading.content == "Memory")
+    dreams = next(heading for heading in headings if heading.content == "Dreams")
+    prudence = next(heading for heading in headings if heading.content == "Prudence")
+
+    assert memory.div1 == "PART I. OF MAN"
+    assert memory.div2 == "CHAPTER II. OF IMAGINATION"
+    assert memory.div3 == "Memory"
+    assert dreams.div2 == "CHAPTER II. OF IMAGINATION"
+    assert dreams.div3 == "Dreams"
+    assert prudence.div2 == "CHAPTER III. OF THE CONSEQUENCE OR TRAYNE OF IMAGINATIONS"
+    assert prudence.div3 == "Prudence"
+
+
+def test_moby_dick_keeps_etymology_and_extracts_before_chapter_one():
+    heading_texts = [heading.content for heading in _headings(15)]
+
+    assert heading_texts[:4] == ["ETYMOLOGY", "EXTRACTS", "CHAPTER I", "CHAPTER II"]
+
+
+def test_dracula_keeps_the_final_note_section():
+    heading_texts = [heading.content for heading in _headings(345)]
+
+    assert heading_texts[-2:] == ["CHAPTER XXVII MINA HARKER’S JOURNAL", "NOTE"]
+
+
+def test_middlemarch_keeps_the_finale_section():
+    heading_texts = [heading.content for heading in _headings(145)]
+
+    assert heading_texts[-2:] == ["FINALE", "THE END"]
+
+
+def test_jane_eyre_keeps_preface_and_note_before_chapter_one():
+    heading_texts = [heading.content for heading in _headings(1260)]
+
+    assert heading_texts[:4] == ["PREFACE", "NOTE TO THE THIRD EDITION", "CHAPTER I", "CHAPTER II"]
+
+
+def test_les_miserables_keeps_preface_and_final_letter():
+    heading_texts = [heading.content for heading in _headings(135)]
+
+    assert heading_texts[:3] == ["LES MISÉRABLES", "PREFACE", "VOLUME I FANTINE"]
+    assert heading_texts[-1] == "LETTER TO M. DAELLI"
+
+
+def test_christmas_carol_keeps_preface_before_stave_one():
+    heading_texts = [heading.content for heading in _headings(46)]
+
+    assert heading_texts[:3] == ["PREFACE", "STAVE ONE", "STAVE TWO"]
+
+
+def test_tom_sawyer_keeps_preface_before_chapter_one():
+    heading_texts = [heading.content for heading in _headings(74)]
+
+    assert heading_texts[:3] == ["PREFACE", "CHAPTER I", "CHAPTER II"]
+
+
+def test_gulliver_keeps_both_prefatory_sections_before_part_one():
+    heading_texts = [heading.content for heading in _headings(829)]
+
+    assert heading_texts[:3] == [
+        "THE PUBLISHER TO THE READER",
+        "A LETTER FROM CAPTAIN GULLIVER TO HIS COUSIN SYMPSON",
+        "PART I. A VOYAGE TO LILLIPUT",
+    ]
+
+
+def test_don_quixote_keeps_preface_and_commendatory_verses():
+    heading_texts = [heading.content for heading in _headings(996)]
+
+    assert heading_texts[:8] == [
+        "INTRODUCTION",
+        "PREFARATORY",
+        "CERVANTES",
+        "‘DON QUIXOTE’",
+        "THE AUTHOR’S PREFACE",
+        "SOME COMMENDATORY VERSES",
+        "URGANDA THE UNKNOWN",
+        "AMADIS OF GAUL",
+    ]
+
+
+def test_bleak_house_keeps_preface_before_chapter_one():
+    heading_texts = [heading.content for heading in _headings(1023)]
+
+    assert heading_texts[:3] == ["PREFACE", "CHAPTER I In Chancery", "CHAPTER II In Fashion"]
+
+
+def test_vanity_fair_keeps_before_the_curtain_before_chapter_one():
+    heading_texts = [heading.content for heading in _headings(599)]
+
+    assert heading_texts[:3] == [
+        "BEFORE THE CURTAIN",
+        "CHAPTER I Chiswick Mall",
+        "CHAPTER II In Which Miss Sharp and Miss Sedley Prepare to Open the Campaign",
+    ]
+
+
+def test_black_beauty_keeps_part_headings_as_independent_sections():
+    heading_texts = [heading.content for heading in _headings(271)]
+
+    assert heading_texts[:4] == ["Black Beauty", "Part I", "01 My Early Home", "02 The Hunt"]
+    assert [heading for heading in heading_texts if heading.startswith("Part ")] == [
+        "Part I",
+        "Part II",
+        "Part III",
+        "Part IV",
+    ]
+    assert heading_texts[heading_texts.index("Part II") + 1] == "22 Earlshall"
+
+
+def test_candide_keeps_front_matter_headings_and_skips_attribution_noise():
+    heading_texts = [heading.content for heading in _headings(19942)]
+
+    assert heading_texts[:5] == [
+        "THE MODERN LIBRARY",
+        "CANDIDE BY VOLTAIRE",
+        "INTRODUCTION",
+        "CANDIDE",
+        "I",
+    ]
+    assert "INTRODUCTION BY PHILIP LITTELL" not in heading_texts

@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from bs4 import BeautifulSoup, NavigableString, Tag
@@ -51,7 +52,12 @@ class Chunk:
 # ---------------------------------------------------------------------------
 
 _BROAD_KEYWORDS = frozenset({"book", "part", "act", "epilogue", "volume"})
-CHUNKER_VERSION = 15
+_STRUCTURAL_KEYWORD_ALIASES = {
+    "actus": "act",
+    "scena": "scene",
+    "scoena": "scene",
+}
+CHUNKER_VERSION = 22
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
@@ -62,7 +68,7 @@ _BARE_HEADING_NUMBER_RE = re.compile(
 )
 
 _HEADING_KEYWORD_RE = re.compile(
-    r"^(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)\.?\s",
+    r"^(?:BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|SCOENA|SECTION|ADVENTURE)\.?\s",
     re.IGNORECASE,
 )
 _START_DELIMITER_RE = re.compile(
@@ -86,14 +92,29 @@ _BRACKETED_NUMERIC_HEADING_RE = re.compile(r"^\[\s*\d+\s*\]$")
 _NUMERIC_LINK_TEXT_RE = re.compile(r"^\[?\d+\]?$")
 _ROMAN_NUMERAL_RE = re.compile(r"^[IVXLCDM]+$")
 _PLAIN_NUMBER_HEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.?$", re.IGNORECASE)
+_STRUCTURAL_INDEX_TOKEN_RE = re.compile(
+    r"^(?:[IVXLCDM]+|[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
+    r"nineteen|twenty|first|second|third|fourth|fifth|sixth|seventh|eighth|"
+    r"ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|"
+    r"sixteenth|seventeenth|eighteenth|nineteenth|twentieth|"
+    r"primus|prima|secundus|secunda|tertius|tertia|quartus|quarta|"
+    r"quintus|quinta|sextus|sexta|septimus|septima|octavus|octava|"
+    r"nonus|nona|decimus|decima)$",
+    re.IGNORECASE,
+)
 _PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
 _NON_STRUCTURAL_HEADING_RE = re.compile(
-    r"^(?:notes?|footnotes?|endnotes?|transcriber's note|transcribers note|"
-    r"editor's note|editors note)\b",
+    r"^(?:notes|footnotes?|endnotes?|transcriber's note|transcribers note|"
+    r"editor's note|editors note|finis)\b",
     re.IGNORECASE,
 )
 _FRONT_MATTER_ATTRIBUTION_RE = re.compile(
     r"^(?:by|translated\s+by|edited\s+by|illustrated\s+by)\s",
+    re.IGNORECASE,
+)
+_FRONT_MATTER_ATTRIBUTION_HEADING_RE = re.compile(
+    r"^(?:introduction|preface|foreword|afterword)\s+by\b",
     re.IGNORECASE,
 )
 _FRONT_MATTER_HEADINGS = frozenset(
@@ -106,6 +127,18 @@ _FRONT_MATTER_HEADINGS = frozenset(
 )
 
 _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
+_PLAY_HEADING_PARAGRAPH_RE = re.compile(
+    r"^(?:(?P<act>(?:ACTUS|ACT)\s+[A-Z0-9IVXLCDM]+\.?)"
+    r"(?:\s+(?P<scene>(?:SC(?:OE|E)NA|SCENE)\s+[A-Z0-9IVXLCDM]+\.?))?"
+    r"|(?P<scene_only>(?:SC(?:OE|E)NA|SCENE)\s+[A-Z0-9IVXLCDM]+\.?))$",
+    re.IGNORECASE,
+)
+_TRAILING_STRUCTURAL_HEADING_RE = re.compile(
+    r"^(?:THE\s+)?(?P<index>[A-Z0-9]+)\s+"
+    r"(?P<keyword>BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|"
+    r"SCOENA|SECTION|ADVENTURE)\.?\s*$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +149,7 @@ class _Section:
     heading_text: str
     level: int  # 1 = broad (BOOK/PART), 2 = chapter, 3 = sub-chapter
     body_anchor: Tag
+    heading_rank: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,13 +209,20 @@ def chunk_html(html: str) -> list[Chunk]:
         return []
 
     sections = _normalize_collection_titles(sections)
+    sections = _merge_adjacent_duplicate_sections(sections)
 
     # Compact levels so the shallowest level maps to div1.
     # e.g. chapter-only books (min_level=2) shift chapters to div1.
     min_level = min(s.level for s in sections)
     if min_level > 1:
         sections = [
-            _Section(s.anchor_id, s.heading_text, s.level - min_level + 1, s.body_anchor)
+            _Section(
+                s.anchor_id,
+                s.heading_text,
+                s.level - min_level + 1,
+                s.body_anchor,
+                s.heading_rank,
+            )
             for s in sections
         ]
 
@@ -339,18 +380,23 @@ def _parse_toc_sections(
 
         heading_level = _classify_level(heading_text, is_emphasized)
         if _toc_link_refines_body_heading(link_text, heading_text):
-            sections.append(_Section(anchor_id, heading_text, heading_level, body_anchor))
+            sections.append(
+                _Section(anchor_id, heading_text, heading_level, body_anchor, heading_rank)
+            )
             sections.append(
                 _Section(
                     anchor_id,
                     link_text,
                     _classify_level(link_text, False),
                     body_anchor,
+                    heading_rank,
                 )
             )
             continue
 
-        sections.append(_Section(anchor_id, heading_text, heading_level, body_anchor))
+        sections.append(
+            _Section(anchor_id, heading_text, heading_level, body_anchor, heading_rank)
+        )
 
     sections.sort(key=lambda section: tag_positions.get(id(section.body_anchor), float("inf")))
     # Remove a leading title section whose heading is a prefix of the next section's
@@ -382,17 +428,39 @@ _EDITORIAL_PLACEHOLDER_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 _ENUMERATED_SUBHEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.\s+\S", re.IGNORECASE)
+_ENUMERATED_HEADING_PREFIX_RE = re.compile(
+    r"^(?:[IVXLCDM]+|[0-9]+)(?:[.)])?\s+\S",
+    re.IGNORECASE,
+)
 _LIST_ITEM_MARKER_RE = re.compile(r"(?:^|\s)(?:[IVXLCDM]+|[0-9]+)\.\s+\S", re.IGNORECASE)
 _STANDALONE_APPARATUS_HEADING_RE = re.compile(r"^SYNOPSIS OF\b", re.IGNORECASE)
 _FONT_SIZE_STYLE_RE = re.compile(
     r"font-size\s*:\s*([0-9.]+)\s*(%|em|rem|px)",
     re.IGNORECASE,
 )
+_FALLBACK_START_HEADING_RE = re.compile(
+    r"^(?:preface|introduction|introductory note|prelude|prologue\b|"
+    r"note\b|note to\b|letter\b|a letter from\b|the publisher to the reader\b|"
+    r"before the curtain\b|etymology\b|extracts\b|some commendatory verses\b)",
+    re.IGNORECASE,
+)
+_TAIL_SECTION_HEADING_RE = re.compile(
+    r"^(?:note\b|note to\b|letter\b|a letter from\b|finale\b|the conclusion\b)",
+    re.IGNORECASE,
+)
+_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
+    r"\b(?:act|scene|prologue|epilogue|tragedy|comedy)\b",
+    re.IGNORECASE,
+)
+_STRONG_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
+    r"\b(?:act|scene|tragedy|comedy)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
 class _HeadingRow:
-    """One cleaned heading candidate used by heading-scan fallback."""
+    """One cleaned section candidate used by heading-scan fallback."""
 
     tag: Tag
     anchor: Tag
@@ -405,6 +473,8 @@ def _next_heading_is_subtitle(heading_text: str) -> bool:
     if _NON_SUBTITLE_HEADING_RE.fullmatch(heading_text):
         return False
     if _HEADING_KEYWORD_RE.match(heading_text):
+        return False
+    if _is_dialogue_speaker_heading(heading_text):
         return False
     # Reject if the text contains an embedded structural heading pattern
     # (e.g. "I hope Mr. Bingley will like it. CHAPTER II"), but allow
@@ -433,6 +503,10 @@ def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
         if (
             i + 1 < len(sections)
             and _BARE_HEADING_NUMBER_RE.fullmatch(sec.heading_text)
+            and not _broad_heading_with_enumerated_child(
+                sec.heading_text,
+                sections[i + 1].heading_text,
+            )
             and _next_heading_is_subtitle(sections[i + 1].heading_text)
         ):
             # Merge: keep anchor and level from the chapter-number heading,
@@ -440,11 +514,37 @@ def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
             next_sec = sections[i + 1]
             combined_text = f"{sec.heading_text} {next_sec.heading_text}"
             combined_level = _classify_level(combined_text, False)
-            merged.append(_Section(sec.anchor_id, combined_text, combined_level, sec.body_anchor))
+            merged.append(
+                _Section(
+                    sec.anchor_id,
+                    combined_text,
+                    combined_level,
+                    sec.body_anchor,
+                    sec.heading_rank,
+                )
+            )
             i += 2
         else:
             merged.append(sec)
             i += 1
+    return merged
+
+
+def _merge_adjacent_duplicate_sections(sections: list[_Section]) -> list[_Section]:
+    """Drop immediately repeated section headings such as duplicate running headers."""
+    if len(sections) < 2:
+        return sections
+
+    merged = [sections[0]]
+    for section in sections[1:]:
+        previous = merged[-1]
+        if (
+            previous.level == section.level
+            and previous.heading_rank == section.heading_rank
+            and _same_heading_text(previous.heading_text, section.heading_text)
+        ):
+            continue
+        merged.append(section)
     return merged
 
 
@@ -474,19 +574,97 @@ def _parse_heading_sections(
         anchor = heading.find("a", id=True) or heading
         heading_rows.append(_HeadingRow(heading, anchor, heading_text, rank))
 
+    if _should_scan_paragraph_heading_rows(heading_rows, doc_index.paragraphs):
+        heading_rows.extend(_paragraph_heading_rows(doc_index))
+
     if not heading_rows:
         return []
+
+    heading_rows.sort(
+        key=lambda row: _tag_position(row.tag, doc_index.tag_positions) or float("inf")
+    )
+    heading_rows = _filter_fallback_heading_rows(heading_rows)
+    if not heading_rows:
+        return []
+
+    bare_numeral_run_indices = _deep_rank_bare_numeral_run_indices(heading_rows)
 
     start_idx = _fallback_start_index(heading_rows)
     if start_idx is None:
         return []
 
     sections: list[_Section] = []
+    dramatic_context_active = False
+    previous_kept_heading: str | None = None
+    previous_kept_row: _HeadingRow | None = None
     i = start_idx
     while i < len(heading_rows):
         row = heading_rows[i]
         heading_text = row.heading_text
         next_row = heading_rows[i + 1] if i + 1 < len(heading_rows) else None
+        following_row = heading_rows[i + 2] if i + 2 < len(heading_rows) else None
+        previous_row = heading_rows[i - 1] if i > start_idx else None
+
+        if (
+            previous_row is not None
+            and _same_heading_text(previous_row.heading_text, heading_text)
+            and not _headings_have_text_between(previous_row, row, doc_index=doc_index)
+        ):
+            i += 1
+            continue
+
+        if _is_rank5_subheading_under_nonchapter_section(
+            row,
+            previous_kept_heading=previous_kept_heading,
+            dramatic_context_active=dramatic_context_active,
+        ):
+            i += 1
+            continue
+
+        if _is_single_letter_subheading(
+            row,
+            previous_kept_heading=previous_kept_heading,
+            previous_row=previous_row,
+            next_row=next_row,
+            doc_index=doc_index,
+        ):
+            i += 1
+            continue
+
+        if _is_deep_rank_bare_numeral_heading(
+            row,
+            previous_kept_heading=previous_kept_heading,
+            previous_row=previous_row,
+            next_row=next_row,
+            row_index=i,
+            bare_numeral_run_indices=bare_numeral_run_indices,
+            doc_index=doc_index,
+        ):
+            i += 1
+            continue
+
+        if _is_short_uppercase_stage_heading(
+            row,
+            previous_kept_heading=previous_kept_heading,
+            previous_row=previous_row,
+            next_row=next_row,
+            dramatic_context_active=dramatic_context_active,
+            doc_index=doc_index,
+        ):
+            i += 1
+            continue
+
+        if _is_title_page_subtitle(row, previous_kept_row=previous_kept_row):
+            i += 1
+            continue
+
+        if next_row is not None and _is_empty_front_matter_stub_heading(
+            row,
+            next_row,
+            doc_index=doc_index,
+        ):
+            i += 1
+            continue
 
         if next_row is not None and _is_editorial_placeholder_heading(
             row,
@@ -496,10 +674,21 @@ def _parse_heading_sections(
             i += 1
             continue
 
+        if (
+            previous_row is previous_kept_row
+            and previous_row is not None
+            and _is_shorter_adjacent_title_repeat(row, previous_row, doc_index=doc_index)
+        ):
+            i += 1
+            continue
+
         if _BARE_HEADING_NUMBER_RE.fullmatch(heading_text) and next_row is not None:
             subtitle = _normalized_heading_continuation(
                 row,
                 next_row,
+                following_row=following_row,
+                previous_kept_heading=previous_kept_heading,
+                dramatic_context_active=dramatic_context_active,
                 doc_index=doc_index,
             )
             if subtitle:
@@ -512,10 +701,16 @@ def _parse_heading_sections(
 
         level = _classify_level(heading_text, False)
         anchor_id = str(row.anchor.get("id", ""))
-        sections.append(_Section(anchor_id, heading_text, level, row.anchor))
+        sections.append(_Section(anchor_id, heading_text, level, row.anchor, row.rank))
+        previous_kept_heading = heading_text
+        previous_kept_row = row
+        dramatic_context_active = _update_dramatic_context_state(
+            dramatic_context_active,
+            heading_text,
+        )
         i += 1
 
-    return sections
+    return _drop_leading_repeated_title_sections(sections)
 
 
 def _refine_toc_sections(
@@ -536,6 +731,30 @@ def _refine_toc_sections(
     refined: list[_Section] = []
     added = 0
     heading_idx = 0
+
+    first_toc = toc_sections[0]
+    first_pos = _tag_position(first_toc.body_anchor, tag_positions)
+    if first_pos is not None:
+        while heading_idx < len(heading_sections):
+            candidate = heading_sections[heading_idx]
+            candidate_pos = _tag_position(candidate.body_anchor, tag_positions)
+            if candidate_pos is None:
+                heading_idx += 1
+                continue
+            if candidate_pos >= first_pos:
+                break
+            if _FALLBACK_START_HEADING_RE.match(candidate.heading_text):
+                refined.append(
+                    _Section(
+                        candidate.anchor_id,
+                        candidate.heading_text,
+                        min(candidate.level, first_toc.level),
+                        candidate.body_anchor,
+                        candidate.heading_rank,
+                    )
+                )
+                added += 1
+            heading_idx += 1
 
     for toc_idx, toc_section in enumerate(toc_sections):
         refined.append(toc_section)
@@ -566,11 +785,13 @@ def _refine_toc_sections(
             if _same_heading_text(candidate.heading_text, toc_section.heading_text):
                 scan_idx += 1
                 continue
-            if not _is_refinement_heading(candidate.heading_text):
-                scan_idx += 1
-                continue
-            if _candidate_refines_toc(candidate, toc_section):
-                refined.append(candidate)
+            refined_candidate = _refined_candidate_section(
+                candidate,
+                toc_section,
+                allow_tail_title_like=next_pos is None,
+            )
+            if refined_candidate is not None:
+                refined.append(refined_candidate)
                 added += 1
             scan_idx += 1
 
@@ -700,9 +921,29 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
 
 def _heading_keyword(heading_text: str) -> str:
     match = _HEADING_KEYWORD_RE.match(heading_text)
-    if not match:
+    if match:
+        keyword = heading_text.split()[0].rstrip(".,:]").lower()
+        canonical = _STRUCTURAL_KEYWORD_ALIASES.get(keyword, keyword)
+
+        remainder = heading_text[len(heading_text.split()[0]) :].lstrip(" .,:;!?-—–")
+        tokens = [token.lower() for token in re.split(r"[^A-Za-z0-9]+", remainder) if token]
+        if not tokens:
+            return canonical
+        index_token = tokens[1] if len(tokens) > 1 and tokens[0] == "the" else tokens[0]
+        if _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(index_token):
+            return canonical
         return ""
-    return heading_text.split()[0].rstrip(".,:]").lower()
+
+    trailing_match = _TRAILING_STRUCTURAL_HEADING_RE.fullmatch(heading_text)
+    if not trailing_match:
+        return ""
+
+    index_token = trailing_match.group("index").lower()
+    if not _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(index_token):
+        return ""
+
+    keyword = trailing_match.group("keyword").lower()
+    return _STRUCTURAL_KEYWORD_ALIASES.get(keyword, keyword)
 
 
 def _heading_key(heading_text: str) -> str:
@@ -739,9 +980,8 @@ def _classify_level(heading_text: str, is_emphasized_in_toc: bool) -> int:
     """Determine structural level: 1=broad (BOOK/PART), 2=chapter, 3=sub-chapter."""
     if is_emphasized_in_toc:
         return 1
-    m = _HEADING_KEYWORD_RE.match(heading_text)
-    if m:
-        keyword = heading_text.split()[0].rstrip(".,:]").lower()
+    keyword = _heading_keyword(heading_text)
+    if keyword:
         if keyword in _BROAD_KEYWORDS:
             return 1
         if keyword == "section":
@@ -750,10 +990,42 @@ def _classify_level(heading_text: str, is_emphasized_in_toc: bool) -> int:
     return 2
 
 
-def _candidate_refines_toc(candidate: _Section, toc_section: _Section) -> bool:
+def _rank_relative_level(candidate: _Section, toc_section: _Section) -> int:
+    if candidate.heading_rank is None or toc_section.heading_rank is None:
+        return candidate.level
+    return max(1, min(4, toc_section.level + candidate.heading_rank - toc_section.heading_rank))
+
+
+def _refined_candidate_section(
+    candidate: _Section,
+    toc_section: _Section,
+    *,
+    allow_tail_title_like: bool,
+) -> _Section | None:
+    if _is_title_like_heading(candidate.heading_text):
+        if candidate.heading_rank is None or toc_section.heading_rank is None:
+            return None
+        if (
+            candidate.heading_rank != toc_section.heading_rank + 1
+            and not (
+                allow_tail_title_like
+                and _TAIL_SECTION_HEADING_RE.match(candidate.heading_text)
+            )
+        ):
+            return None
+        return _Section(
+            candidate.anchor_id,
+            candidate.heading_text,
+            _rank_relative_level(candidate, toc_section),
+            candidate.body_anchor,
+            candidate.heading_rank,
+        )
+
+    if not _is_refinement_heading(candidate.heading_text):
+        return None
     if _is_title_like_heading(toc_section.heading_text):
-        return True
-    return candidate.level > toc_section.level
+        return candidate
+    return candidate if candidate.level > toc_section.level else None
 
 
 def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
@@ -761,18 +1033,23 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
     if len(sections) < 3:
         return sections
 
+    def _is_collection_title(section: _Section) -> bool:
+        return _is_title_like_heading(section.heading_text) and (
+            section.heading_rank is None or section.heading_rank <= 2
+        )
+
     title_indices_by_level: dict[int, list[int]] = defaultdict(list)
     container_title_indices_by_level: dict[int, list[int]] = defaultdict(list)
 
     for idx, section in enumerate(sections):
-        if not _is_title_like_heading(section.heading_text):
+        if not _is_collection_title(section):
             continue
         title_indices_by_level[section.level].append(idx)
 
         for next_idx in range(idx + 1, len(sections)):
             next_section = sections[next_idx]
             if (
-                _is_title_like_heading(next_section.heading_text)
+                _is_collection_title(next_section)
                 and next_section.level == section.level
             ):
                 break
@@ -801,8 +1078,73 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
                 new_levels[section_idx] += 1
 
     return [
-        _Section(section.anchor_id, section.heading_text, new_levels[idx], section.body_anchor)
+        _Section(
+            section.anchor_id,
+            section.heading_text,
+            new_levels[idx],
+            section.body_anchor,
+            section.heading_rank,
+        )
         for idx, section in enumerate(sections)
+    ]
+
+
+def _leading_title_cluster_start_index(
+    items: list[_Section | _HeadingRow],
+    *,
+    first_front_matter_idx: int,
+) -> int:
+    start_idx = first_front_matter_idx
+    while start_idx > 0 and _is_title_like_heading(items[start_idx - 1].heading_text):
+        start_idx -= 1
+    return start_idx
+
+
+def _post_front_matter_repeat_title_keys(
+    items: list[_Section | _HeadingRow],
+    *,
+    first_front_matter_idx: int,
+) -> set[str]:
+    """Return immediate post-front-matter titles that repeat a leading title page."""
+    repeat_keys: set[str] = set()
+    for item in items[first_front_matter_idx + 1 :]:
+        heading_text = item.heading_text
+        if _is_refinement_heading(heading_text):
+            break
+        if not _is_title_like_heading(heading_text):
+            break
+        repeat_keys.add(_heading_key(heading_text))
+    return repeat_keys
+
+
+def _drop_leading_repeated_title_sections(sections: list[_Section]) -> list[_Section]:
+    """Drop title-page duplicates when the same title reappears after front matter."""
+    first_front_matter_idx = next(
+        (
+            idx
+            for idx, section in enumerate(sections)
+            if _FALLBACK_START_HEADING_RE.match(section.heading_text)
+        ),
+        None,
+    )
+    if first_front_matter_idx is None:
+        return sections
+
+    repeat_title_keys = _post_front_matter_repeat_title_keys(
+        sections,
+        first_front_matter_idx=first_front_matter_idx,
+    )
+    if not repeat_title_keys:
+        return sections
+
+    return [
+        section
+        for idx, section in enumerate(sections)
+        if not (
+            idx < first_front_matter_idx
+            and _is_title_like_heading(section.heading_text)
+            and _heading_key(section.heading_text) in repeat_title_keys
+        )
     ]
 
 
@@ -810,6 +1152,7 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
 class _IndexedParagraph:
     """A paragraph tag with its pre-computed position and extracted text."""
 
+    tag: Tag
     position: int
     text: str
     is_toc: bool
@@ -846,7 +1189,7 @@ def _build_paragraph_index(
             continue
         text = _extract_paragraph_text(p)
         if text:
-            result.append(_IndexedParagraph(pos, text, _is_toc_paragraph(p)))
+            result.append(_IndexedParagraph(p, pos, text, _is_toc_paragraph(p)))
             positions.append(pos)
     return result, positions
 
@@ -1083,17 +1426,137 @@ def _heading_tag_rank(tag: Tag) -> int | None:
 
 def _fallback_start_index(heading_rows: list[_HeadingRow]) -> int | None:
     """Return the first body-structure heading to use for heading-scan fallback."""
+    first_front_matter_idx = next(
+        (
+            idx
+            for idx, row in enumerate(heading_rows)
+            if _FALLBACK_START_HEADING_RE.match(row.heading_text)
+        ),
+        None,
+    )
     structural_rows = [
         (idx, row)
         for idx, row in enumerate(heading_rows)
-        if _HEADING_KEYWORD_RE.match(row.heading_text)
+        if _heading_keyword(row.heading_text) or _STANDALONE_STRUCTURAL_RE.search(row.heading_text)
     ]
+    if first_front_matter_idx is not None and (
+        not structural_rows or first_front_matter_idx < structural_rows[0][0]
+    ):
+        repeat_title_keys = _post_front_matter_repeat_title_keys(
+            heading_rows,
+            first_front_matter_idx=first_front_matter_idx,
+        )
+        if not repeat_title_keys:
+            return first_front_matter_idx
+
+        start_idx = _leading_title_cluster_start_index(
+            heading_rows,
+            first_front_matter_idx=first_front_matter_idx,
+        )
+        leading_title_keys = {
+            _heading_key(row.heading_text)
+            for row in heading_rows[start_idx:first_front_matter_idx]
+            if _is_title_like_heading(row.heading_text)
+        }
+        if leading_title_keys & repeat_title_keys:
+            return start_idx
+        return first_front_matter_idx
+
     start_rows = structural_rows or list(enumerate(heading_rows))
     start_rank = min(row.rank for _, row in start_rows)
     for idx, row in start_rows:
         if row.rank == start_rank:
             return idx
     return None
+
+
+def _filter_fallback_heading_rows(heading_rows: list[_HeadingRow]) -> list[_HeadingRow]:
+    """Drop heading-scan rows that are clearly non-navigational subheads."""
+    filtered: list[_HeadingRow] = []
+    for idx, row in enumerate(heading_rows):
+        previous_row = heading_rows[idx - 1] if idx > 0 else None
+        next_row = heading_rows[idx + 1] if idx + 1 < len(heading_rows) else None
+        if _is_dialogue_speaker_heading(row.heading_text):
+            continue
+        if _is_single_speaker_dialogue_heading(
+            row.heading_text,
+            previous_heading=previous_row.heading_text if previous_row else None,
+            next_heading=next_row.heading_text if next_row else None,
+        ):
+            continue
+        if _is_front_matter_attribution_heading(row):
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def _paragraph_heading_rows(
+    doc_index: _DocumentIndex,
+) -> list[_HeadingRow]:
+    """Return strict paragraph-based structural rows for heading-scan fallback."""
+    rows: list[_HeadingRow] = []
+    for paragraph in doc_index.paragraphs:
+        if paragraph.is_toc:
+            continue
+        for heading_text in _split_play_heading_paragraph(paragraph.text):
+            rows.append(_HeadingRow(paragraph.tag, paragraph.tag, heading_text, 7))
+    return rows
+
+
+def _should_scan_paragraph_heading_rows(
+    heading_rows: list[_HeadingRow],
+    paragraphs: list[_IndexedParagraph],
+) -> bool:
+    """Return True when paragraph-based play headings are worth scanning."""
+    if not paragraphs:
+        return False
+    if any(_heading_text_suggests_play_structure(row.heading_text) for row in heading_rows):
+        return True
+
+    non_toc_scanned = 0
+    for paragraph in paragraphs:
+        if paragraph.is_toc:
+            continue
+        if _PLAY_HEADING_PARAGRAPH_RE.fullmatch(paragraph.text):
+            return True
+        non_toc_scanned += 1
+        if non_toc_scanned >= 400:
+            break
+    return False
+
+
+def _heading_text_suggests_play_structure(heading_text: str) -> bool:
+    lowered = heading_text.lower()
+    return _DRAMATIC_CONTEXT_HEADING_RE.search(heading_text) is not None or (
+        "dramatis personae" in lowered
+    )
+
+
+def _split_play_heading_paragraph(paragraph_text: str) -> list[str]:
+    """Split strict play-heading paragraphs into act/scene section labels."""
+    text = " ".join(paragraph_text.split()).strip()
+    match = _PLAY_HEADING_PARAGRAPH_RE.fullmatch(text)
+    if not match:
+        return []
+
+    parts: list[str] = []
+    act = match.group("act")
+    if act:
+        parts.append(_clean_heading_text(act))
+
+    scene = match.group("scene") or match.group("scene_only")
+    if scene:
+        parts.append(_clean_heading_text(scene))
+    return parts
+
+
+def _is_fallback_start_heading_text(heading_text: str) -> bool:
+    """Return True when a heading is strong enough to start fallback scanning."""
+    if _heading_keyword(heading_text):
+        return True
+    if _STANDALONE_STRUCTURAL_RE.search(heading_text):
+        return True
+    return _FALLBACK_START_HEADING_RE.match(heading_text) is not None
 
 
 def _build_subtree_end_positions(
@@ -1158,6 +1621,20 @@ def _normalize_heading_subtitle(heading_text: str) -> str:
     return " ".join(text.split()).strip()
 
 
+def _starts_with_enumerated_heading_prefix(heading_text: str) -> bool:
+    return _ENUMERATED_HEADING_PREFIX_RE.match(heading_text) is not None
+
+
+def _broad_heading_with_enumerated_child(
+    current_heading_text: str,
+    next_heading_text: str,
+) -> bool:
+    return (
+        _heading_keyword(current_heading_text) in _BROAD_KEYWORDS
+        and _starts_with_enumerated_heading_prefix(next_heading_text)
+    )
+
+
 def _is_ignorable_fallback_heading(heading_text: str) -> bool:
     """Return True for heading-scan rows that are likely contents or inline subheads."""
     if _NON_SUBTITLE_HEADING_RE.fullmatch(heading_text):
@@ -1171,7 +1648,7 @@ def _is_ignorable_fallback_heading(heading_text: str) -> bool:
 
 def _is_refinement_heading(heading_text: str) -> bool:
     """Return True when a body heading is strong enough to refine a TOC."""
-    if _HEADING_KEYWORD_RE.match(heading_text):
+    if _heading_keyword(heading_text):
         return True
     if _STANDALONE_STRUCTURAL_RE.search(heading_text):
         return True
@@ -1217,17 +1694,310 @@ def _is_dialogue_speaker_heading(heading_text: str) -> bool:
     return True
 
 
+def _is_single_speaker_dialogue_heading(
+    heading_text: str,
+    *,
+    previous_heading: str | None,
+    next_heading: str | None,
+) -> bool:
+    """Return True for uppercase single-speaker headings within dialogue runs."""
+    if _heading_keyword(heading_text):
+        return False
+    if _STANDALONE_STRUCTURAL_RE.search(heading_text):
+        return False
+    if heading_text != heading_text.upper():
+        return False
+
+    words = heading_text.split()
+    if not 1 <= len(words) <= 3:
+        return False
+    if not all(any(char.isalpha() for char in word) for word in words):
+        return False
+
+    adjacent_headings = [text for text in (previous_heading, next_heading) if text]
+    return any(_is_dialogue_speaker_heading(text) for text in adjacent_headings)
+
+
+def _is_short_uppercase_stage_heading(
+    row: _HeadingRow,
+    *,
+    previous_kept_heading: str | None,
+    previous_row: _HeadingRow | None,
+    next_row: _HeadingRow | None,
+    dramatic_context_active: bool,
+    doc_index: _DocumentIndex,
+) -> bool:
+    """Return True for short all-caps dramatic cues like ``FAUST`` or ``NIGHT``."""
+    if not _is_short_uppercase_heading_candidate(row):
+        return False
+    if dramatic_context_active:
+        return True
+    if previous_kept_heading and _DRAMATIC_CONTEXT_HEADING_RE.search(previous_kept_heading):
+        return True
+    return _has_adjacent_heading_candidate(
+        row,
+        previous_row=previous_row,
+        next_row=next_row,
+        doc_index=doc_index,
+        predicate=_is_short_uppercase_heading_candidate,
+    )
+
+
+def _is_short_uppercase_heading_candidate(row: _HeadingRow) -> bool:
+    if row.rank < 5:
+        return False
+    if _heading_keyword(row.heading_text):
+        return False
+    if _STANDALONE_STRUCTURAL_RE.search(row.heading_text):
+        return False
+    if row.heading_text.upper().startswith("OF "):
+        return False
+
+    words = [word for word in row.heading_text.split() if any(char.isalpha() for char in word)]
+    if not words or len(words) > 4:
+        return False
+
+    letters = "".join(char for char in row.heading_text if char.isalpha())
+    return bool(letters) and letters == letters.upper()
+
+
+def _is_front_matter_attribution_heading(row: _HeadingRow) -> bool:
+    if row.rank < 4:
+        return False
+    return _FRONT_MATTER_ATTRIBUTION_HEADING_RE.match(row.heading_text) is not None
+
+
+def _is_single_letter_subheading(
+    row: _HeadingRow,
+    *,
+    previous_kept_heading: str | None,
+    previous_row: _HeadingRow | None,
+    next_row: _HeadingRow | None,
+    doc_index: _DocumentIndex,
+) -> bool:
+    """Return True for deep-rank alphabet markers like ``C.`` in acrostic sections."""
+    if not _is_single_letter_heading_candidate(row):
+        return False
+    if previous_kept_heading and _looks_like_letter_series_heading(previous_kept_heading):
+        return True
+    return _has_adjacent_heading_candidate(
+        row,
+        previous_row=previous_row,
+        next_row=next_row,
+        doc_index=doc_index,
+        predicate=_is_single_letter_heading_candidate,
+    )
+
+
+def _is_single_letter_heading_candidate(row: _HeadingRow) -> bool:
+    if row.rank < 4:
+        return False
+    if _heading_keyword(row.heading_text):
+        return False
+
+    normalized = row.heading_text.strip(" .,:;!?()[]'\"")
+    return len(normalized) == 1 and normalized.isalpha()
+
+
+def _is_deep_rank_bare_numeral_heading(
+    row: _HeadingRow,
+    *,
+    previous_kept_heading: str | None,
+    previous_row: _HeadingRow | None,
+    next_row: _HeadingRow | None,
+    row_index: int,
+    bare_numeral_run_indices: set[int],
+    doc_index: _DocumentIndex,
+) -> bool:
+    """Return True for deep-rank numeral-only subheads like ``II.`` or ``VI.``."""
+    if not _is_deep_rank_bare_numeral_candidate(row):
+        return False
+    if previous_kept_heading is None:
+        return False
+    return _has_adjacent_heading_candidate(
+        row,
+        previous_row=previous_row,
+        next_row=next_row,
+        doc_index=doc_index,
+        predicate=_is_deep_rank_bare_numeral_candidate,
+    ) or (
+        not _heading_keyword(previous_kept_heading)
+        and row_index in bare_numeral_run_indices
+    )
+
+
+def _is_deep_rank_bare_numeral_candidate(row: _HeadingRow) -> bool:
+    if row.rank < 4:
+        return False
+    if _heading_keyword(row.heading_text):
+        return False
+    return _PLAIN_NUMBER_HEADING_RE.fullmatch(row.heading_text) is not None
+
+
+def _looks_like_letter_series_heading(heading_text: str) -> bool:
+    return len(re.findall(r"\b[A-Z]\b", heading_text.upper())) >= 3
+
+
+def _has_adjacent_heading_candidate(
+    row: _HeadingRow,
+    *,
+    previous_row: _HeadingRow | None,
+    next_row: _HeadingRow | None,
+    doc_index: _DocumentIndex,
+    predicate: Callable[[_HeadingRow], bool],
+) -> bool:
+    if (
+        previous_row is not None
+        and predicate(previous_row)
+        and not _headings_have_text_between(previous_row, row, doc_index=doc_index)
+    ):
+        return True
+    return (
+        next_row is not None
+        and predicate(next_row)
+        and not _headings_have_text_between(row, next_row, doc_index=doc_index)
+    )
+
+
+def _deep_rank_bare_numeral_run_indices(heading_rows: list[_HeadingRow]) -> set[int]:
+    """Return indices of deep-rank numeral runs bounded by shallower headings."""
+    run_indices: set[int] = set()
+    idx = 0
+    while idx < len(heading_rows):
+        row = heading_rows[idx]
+        if not _is_deep_rank_bare_numeral_candidate(row):
+            idx += 1
+            continue
+
+        run_start = idx
+        run_rank = row.rank
+        idx += 1
+        while idx < len(heading_rows):
+            candidate = heading_rows[idx]
+            if not _is_deep_rank_bare_numeral_candidate(candidate) or candidate.rank != run_rank:
+                break
+            idx += 1
+
+        run_end = idx - 1
+        previous_row = heading_rows[run_start - 1] if run_start > 0 else None
+        next_row = heading_rows[idx] if idx < len(heading_rows) else None
+        if (
+            run_end - run_start >= 2
+            and previous_row is not None
+            and previous_row.rank < run_rank
+            and next_row is not None
+            and next_row.rank < run_rank
+        ):
+            run_indices.update(range(run_start, run_end + 1))
+    return run_indices
+
+
+def _update_dramatic_context_state(
+    dramatic_context_active: bool,
+    heading_text: str,
+) -> bool:
+    """Track dramatic context only within the current local container."""
+    if _STRONG_DRAMATIC_CONTEXT_HEADING_RE.search(heading_text):
+        return True
+
+    keyword = _heading_keyword(heading_text)
+    if keyword in {"chapter", "section", "adventure", "stave"}:
+        return False
+    if keyword in _BROAD_KEYWORDS:
+        return dramatic_context_active
+    if _is_title_like_heading(heading_text):
+        return False
+    if _STANDALONE_STRUCTURAL_RE.search(heading_text):
+        return False
+    return dramatic_context_active
+
+
+def _is_title_page_subtitle(
+    row: _HeadingRow,
+    *,
+    previous_kept_row: _HeadingRow | None,
+) -> bool:
+    if previous_kept_row is None:
+        return False
+    if row.rank < 4 or row.rank <= previous_kept_row.rank:
+        return False
+    if not _is_title_like_heading(previous_kept_row.heading_text):
+        return False
+    if not _is_title_like_heading(row.heading_text):
+        return False
+    if row.heading_text.upper().startswith("OF "):
+        return True
+
+    words = [word for word in row.heading_text.split() if any(char.isalpha() for char in word)]
+    letters = "".join(char for char in row.heading_text if char.isalpha())
+    return len(words) >= 5 and bool(letters) and letters == letters.upper()
+
+
+def _is_shorter_adjacent_title_repeat(
+    row: _HeadingRow,
+    previous_row: _HeadingRow,
+    *,
+    doc_index: _DocumentIndex,
+) -> bool:
+    if not _is_title_like_heading(previous_row.heading_text):
+        return False
+    if not _is_title_like_heading(row.heading_text):
+        return False
+    if _headings_have_text_between(previous_row, row, doc_index=doc_index):
+        return False
+    return previous_row.heading_text.startswith(row.heading_text + " ")
+
+
+def _is_rank5_subheading_under_nonchapter_section(
+    row: _HeadingRow,
+    *,
+    previous_kept_heading: str | None,
+    dramatic_context_active: bool,
+) -> bool:
+    """Return True for h5 dramatic cues nested under non-chapter parent sections."""
+    if row.rank < 5:
+        return False
+    if previous_kept_heading is None:
+        return False
+    if dramatic_context_active:
+        return _DRAMATIC_CONTEXT_HEADING_RE.search(row.heading_text) is None
+    if not _is_short_uppercase_heading_candidate(row):
+        return False
+    return _DRAMATIC_CONTEXT_HEADING_RE.search(previous_kept_heading) is not None
+
+
 def _normalized_heading_continuation(
     current: _HeadingRow,
     next_row: _HeadingRow,
     *,
+    following_row: _HeadingRow | None,
+    previous_kept_heading: str | None,
+    dramatic_context_active: bool,
     doc_index: _DocumentIndex,
 ) -> str | None:
     """Return a normalized continuation subtitle for a bare heading, if present."""
     if _headings_have_text_between(current, next_row, doc_index=doc_index):
         return None
+    if _is_short_uppercase_heading_candidate(next_row) and (
+        dramatic_context_active
+        or
+        (
+            previous_kept_heading is not None
+            and _DRAMATIC_CONTEXT_HEADING_RE.search(previous_kept_heading)
+        )
+        or _has_adjacent_heading_candidate(
+            next_row,
+            previous_row=None,
+            next_row=following_row,
+            doc_index=doc_index,
+            predicate=_is_short_uppercase_heading_candidate,
+        )
+    ):
+        return None
     subtitle = _normalize_heading_subtitle(next_row.heading_text)
     if not subtitle:
+        return None
+    if _broad_heading_with_enumerated_child(current.heading_text, subtitle):
         return None
     if not _next_heading_is_subtitle(subtitle):
         return None
@@ -1244,6 +2014,22 @@ def _is_editorial_placeholder_heading(
     if not _EDITORIAL_PLACEHOLDER_HEADING_RE.search(current.heading_text):
         return False
     if not _HEADING_KEYWORD_RE.match(next_row.heading_text):
+        return False
+    return not _headings_have_text_between(current, next_row, doc_index=doc_index)
+
+
+def _is_empty_front_matter_stub_heading(
+    current: _HeadingRow,
+    next_row: _HeadingRow,
+    *,
+    doc_index: _DocumentIndex,
+) -> bool:
+    """Skip empty front-matter stubs that only label a following real section."""
+    if not _FALLBACK_START_HEADING_RE.match(current.heading_text):
+        return False
+    if current.heading_text.lower() == "introductory note":
+        return current.rank >= 4 and next_row.rank is not None and next_row.rank < current.rank
+    if current.rank < 4 or next_row.rank is None or next_row.rank >= current.rank:
         return False
     return not _headings_have_text_between(current, next_row, doc_index=doc_index)
 
