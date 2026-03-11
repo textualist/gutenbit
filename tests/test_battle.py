@@ -294,3 +294,9 @@ def test_dracula_keeps_the_final_note_section():
     heading_texts = [heading.content for heading in _headings(345)]
 
     assert heading_texts[-2:] == ["CHAPTER XXVII MINA HARKER’S JOURNAL", "NOTE"]
+
+
+def test_middlemarch_keeps_the_finale_section():
+    heading_texts = [heading.content for heading in _headings(145)]
+
+    assert heading_texts[-2:] == ["FINALE", "THE END"]
