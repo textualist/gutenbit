@@ -1215,6 +1215,8 @@ def _filter_fallback_heading_rows(heading_rows: list[_HeadingRow]) -> list[_Head
             continue
         if _is_single_letter_subheading(row):
             continue
+        if _is_deep_rank_bare_numeral_heading(row):
+            continue
         if _is_short_uppercase_stage_heading(row):
             continue
         filtered.append(row)
@@ -1439,6 +1441,15 @@ def _is_single_letter_subheading(row: _HeadingRow) -> bool:
 
     normalized = row.heading_text.strip(" .,:;!?()[]'\"")
     return len(normalized) == 1 and normalized.isalpha()
+
+
+def _is_deep_rank_bare_numeral_heading(row: _HeadingRow) -> bool:
+    """Return True for deep-rank numeral-only subheads like ``II.`` or ``VI.``."""
+    if row.rank < 4:
+        return False
+    if _heading_keyword(row.heading_text):
+        return False
+    return _PLAIN_NUMBER_HEADING_RE.fullmatch(row.heading_text) is not None
 
 
 def _is_rank5_subheading_under_nonchapter_section(

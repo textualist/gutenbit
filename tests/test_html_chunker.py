@@ -1140,6 +1140,32 @@ def test_title_like_toc_sections_keep_trailing_book_headings_and_skip_letter_mar
     ]
 
 
+def test_heading_scan_skips_deep_rank_bare_numeral_subheads():
+    html = _make_html("""
+    <h2>PREFACE.</h2>
+    <p>Preface paragraph.</p>
+    <h2>FLORENCE AND DANTE.</h2>
+    <p>Essay paragraph.</p>
+    <h4>II.</h4>
+    <h4>III.</h4>
+    <h4>IV.</h4>
+    <h4>VI.</h4>
+    <h2>GIOTTO'S PORTRAIT OF DANTE.</h2>
+    <p>Portrait paragraph.</p>
+    <h2>CANTO I.</h2>
+    <p>Canto paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == [
+        "PREFACE",
+        "FLORENCE AND DANTE",
+        "GIOTTO'S PORTRAIT OF DANTE",
+        "CANTO I",
+    ]
+
+
 def test_dialogue_speaker_headings_do_not_replace_book_structure():
     html = _make_html("""
     <h1>BOOK I</h1>

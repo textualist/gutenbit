@@ -248,3 +248,19 @@ def test_canterbury_keeps_troilus_books_and_skips_garbage_headings():
     assert "act iv" not in heading_texts
     assert "scene v" not in heading_texts
     assert not any(text in {"C", "D", "I", "L", "M", "V", "X"} for text in heading_texts)
+
+
+def test_inferno_skips_stray_front_matter_numeral_sections():
+    headings = _headings(41537)
+    heading_texts = [heading.content for heading in headings]
+
+    assert heading_texts[:7] == [
+        "PREFACE",
+        "FLORENCE AND DANTE",
+        "GIOTTO’S PORTRAIT OF DANTE",
+        "CANTO I",
+        "CANTO II",
+        "CANTO III",
+        "CANTO IV",
+    ]
+    assert not any(text in {"II", "III", "IV", "V", "VI"} for text in heading_texts[:10])
