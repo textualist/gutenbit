@@ -1186,16 +1186,25 @@ def _ingest_one_book(
     delay: float,
     as_json: bool,
     force: bool = False,
+    progress_callback: Any | None = None,
 ) -> bool:
+    ingest_kwargs = {
+        "delay": delay,
+        "force": force,
+        "state": state,
+    }
+    if progress_callback is not None:
+        ingest_kwargs["progress_callback"] = progress_callback
+
     if as_json:
         previous_disable = logging.root.manager.disable
         logging.disable(logging.CRITICAL)
         try:
-            return db._ingest_book(book, delay=delay, force=force, state=state)
+            return db._ingest_book(book, **ingest_kwargs)
         finally:
             logging.disable(previous_disable)
 
-    return db._ingest_book(book, delay=delay, force=force, state=state)
+    return db._ingest_book(book, **ingest_kwargs)
 
 
 def _process_books_for_ingest(
@@ -1212,52 +1221,69 @@ def _process_books_for_ingest(
     statuses: dict[int, str] = {}
     errors: list[str] = []
     states = db.text_states([book.id for book in books])
-    for book in books:
-        title = _single_line(book.title)
-        state = states.get(book.id, TextState(has_text=False, has_current_text=False))
-        if state.has_current_text and not force:
-            statuses[book.id] = "skipped_current"
-            if not as_json and show_skipped_current:
-                display.status(f"  skipping {book.id}: {title} (already downloaded)")
-            continue
+    with display.ingest_progress() as progress:
+        for index, book in enumerate(books, start=1):
+            title = _single_line(book.title)
+            state = states.get(book.id, TextState(has_text=False, has_current_text=False))
+            if state.has_current_text and not force:
+                statuses[book.id] = "skipped_current"
+                if not as_json and show_skipped_current:
+                    display.status(f"  skipping {book.id}: {title} (already downloaded)")
+                continue
 
-        target_status = "reprocessed" if state.has_text else "added"
-        if not as_json:
-            if state.has_text:
-                reason = "forced" if force else "chunker updated"
-                display.status(f"  processing {book.id}: {title} ({reason})...")
-            else:
-                display.status(f"  adding {book.id}: {title}...")
-
-        success = _ingest_one_book(
-            db,
-            book,
-            state=state,
-            delay=delay,
-            as_json=as_json,
-            force=force,
-        )
-
-        if success:
-            statuses[book.id] = target_status
+            target_status = "reprocessed" if state.has_text else "added"
+            progress_callback = None
             if not as_json:
-                source = get_last_download_source()
-                source_description = describe_download_source(source)
-                if source:
-                    if source_description:
-                        display.success(
-                            f"  finished {book.id}: {title} ({source_description}: {source})"
-                        )
-                    else:
-                        display.success(f"  finished {book.id}: {title} ({source})")
+                if progress is not None:
+                    progress.start_book(
+                        book_id=book.id,
+                        title=title,
+                        action="reprocess" if state.has_text else "add",
+                        index=index,
+                        total=len(books),
+                        delay=delay,
+                    )
+                    progress_callback = progress.update_stage
+                elif state.has_text:
+                    reason = "forced" if force else "chunker updated"
+                    display.status(f"  processing {book.id}: {title} ({reason})...")
                 else:
-                    display.success(f"  finished {book.id}: {title}")
-        else:
-            statuses[book.id] = "failed"
-            failure = f"Failed to {failure_action} {book.id}: {title}"
-            errors.append(failure)
-            if not as_json:
-                display.error(f"  failed {book.id}: {title}")
+                    display.status(f"  adding {book.id}: {title}...")
+
+            success = _ingest_one_book(
+                db,
+                book,
+                state=state,
+                delay=delay,
+                as_json=as_json,
+                force=force,
+                progress_callback=progress_callback,
+            )
+
+            if progress is not None:
+                progress.finish_book()
+
+            if success:
+                statuses[book.id] = target_status
+                if not as_json:
+                    source = get_last_download_source()
+                    source_description = describe_download_source(source)
+                    if source:
+                        if source_description:
+                            display.success(
+                                f"  {target_status} {book.id}: {title} "
+                                f"({source_description}: {source})"
+                            )
+                        else:
+                            display.success(f"  {target_status} {book.id}: {title} ({source})")
+                    else:
+                        display.success(f"  {target_status} {book.id}: {title}")
+            else:
+                statuses[book.id] = "failed"
+                failure = f"Failed to {failure_action} {book.id}: {title}"
+                errors.append(failure)
+                if not as_json:
+                    display.error(f"  failed {book.id}: {title}")
 
     return statuses, errors
 

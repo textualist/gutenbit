@@ -1894,6 +1894,26 @@ def test_ingest_reprocesses_stale_chunker_version(tmp_path, monkeypatch):
     assert ingested_ids == [889]
 
 
+def test_ingest_book_reports_progress_stages(tmp_path, monkeypatch):
+    events: list[str] = []
+    sleeps: list[float] = []
+    monkeypatch.setattr("gutenbit.db.download_html", lambda _book_id: _BOOK_HTML)
+    monkeypatch.setattr("gutenbit.db.time.sleep", lambda seconds: sleeps.append(seconds))
+
+    with Database(tmp_path / "progress.db") as db:
+        success = db._ingest_book(
+            _BOOK,
+            delay=0.5,
+            force=False,
+            state=TextState(has_text=False, has_current_text=False),
+            progress_callback=events.append,
+        )
+
+    assert success is True
+    assert events == ["download", "chunk", "store", "delay", "done"]
+    assert sleeps == [0.5]
+
+
 def test_ingest_remaps_to_canonical_catalog_id(tmp_path, monkeypatch):
     canonical = BookRecord(
         id=100,
@@ -2543,7 +2563,7 @@ def test_add_non_json_reports_download_source(tmp_path, monkeypatch):
 
     assert code == 0
     assert "adding 15: Moby Dick" in out
-    assert "finished 15: Moby Dick (official mirror: aleph.pglaf.org)" in out
+    assert "added 15: Moby Dick (official mirror: aleph.pglaf.org)" in out
 
 
 def test_delete_json_output(tmp_path):

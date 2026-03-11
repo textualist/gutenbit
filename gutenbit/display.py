@@ -4,11 +4,20 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Mapping
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any, TextIO
 
 from rich import box
 from rich.console import Console, Group
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskID,
+    TaskProgressColumn,
+    TextColumn,
+)
 from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
@@ -33,6 +42,14 @@ TOC_OVERVIEW_LIST_MAX_ITEMS = 7
 EMPTY_DISPLAY = "-"
 BOOK_ID_LABEL = "Book ID"
 BOOK_ID_KEY = "book_id"
+_INGEST_STAGE_LABELS = {
+    "download": "Downloading",
+    "chunk": "Parsing",
+    "store": "Storing",
+    "delay": "Waiting",
+    "done": "Done",
+    "failed": "Failed",
+}
 
 
 def _format_int(value: int) -> str:
@@ -353,6 +370,86 @@ def _is_tty(stream: TextIO) -> bool:
         return False
 
 
+class _IngestProgressSession:
+    def __init__(self, display: CliDisplay) -> None:
+        self._progress = Progress(
+            SpinnerColumn(style="accent"),
+            TextColumn("{task.description}", style="title"),
+            BarColumn(bar_width=24, complete_style="accent", finished_style="success"),
+            TaskProgressColumn(),
+            TextColumn("{task.fields[stage]}", style="muted"),
+            console=display._out,
+            transient=True,
+            expand=True,
+        )
+        self._task_id: TaskID | None = None
+        self._task_total = 0
+        self._completed = 0
+
+    def __enter__(self) -> _IngestProgressSession:
+        self._progress.__enter__()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._progress.__exit__(*exc)
+
+    def start_book(
+        self,
+        *,
+        book_id: int,
+        title: str,
+        action: str,
+        index: int,
+        total: int,
+        delay: float,
+    ) -> None:
+        if self._task_id is not None:
+            self.finish_book()
+        prefix = f"[{index}/{total}] " if total > 1 else ""
+        verb = "Adding" if action == "add" else "Reprocessing"
+        self._task_total = 4 if delay > 0 else 3
+        self._completed = 0
+        self._task_id = self._progress.add_task(
+            f"{prefix}{verb} {book_id}: {title}",
+            total=self._task_total,
+            stage=_INGEST_STAGE_LABELS["download"],
+        )
+
+    def update_stage(self, stage: str) -> None:
+        if self._task_id is None:
+            return
+
+        completed = self._completed
+        if stage == "chunk":
+            completed = 1
+        elif stage == "store":
+            completed = 2
+        elif stage == "delay":
+            completed = max(self._task_total - 1, 2)
+        elif stage == "done":
+            completed = self._task_total
+        elif stage == "failed":
+            completed = self._completed
+
+        if stage != "failed":
+            self._completed = completed
+
+        self._progress.update(
+            self._task_id,
+            completed=completed,
+            stage=_INGEST_STAGE_LABELS.get(stage, stage.title()),
+            refresh=True,
+        )
+
+    def finish_book(self) -> None:
+        if self._task_id is None:
+            return
+        self._progress.remove_task(self._task_id)
+        self._task_id = None
+        self._task_total = 0
+        self._completed = 0
+
+
 @dataclass
 class CliDisplay:
     """Render human-readable CLI output with TTY-aware styling."""
@@ -515,6 +612,11 @@ class CliDisplay:
 
     def error(self, message: str, *, err: bool = False) -> None:
         self._print_text(message, style="error", err=err)
+
+    def ingest_progress(self) -> Any:
+        if not self.interactive:
+            return nullcontext(None)
+        return _IngestProgressSession(self)
 
     def books(self, books: list[Any], *, db_path: str) -> None:
         if not self.interactive:
