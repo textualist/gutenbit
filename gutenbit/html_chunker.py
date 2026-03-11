@@ -56,7 +56,7 @@ _STRUCTURAL_KEYWORD_ALIASES = {
     "scena": "scene",
     "scoena": "scene",
 }
-CHUNKER_VERSION = 20
+CHUNKER_VERSION = 21
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
@@ -1030,6 +1030,34 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
     ]
 
 
+def _leading_title_cluster_start_index(
+    items: list[_Section | _HeadingRow],
+    *,
+    first_front_matter_idx: int,
+) -> int:
+    start_idx = first_front_matter_idx
+    while start_idx > 0 and _is_title_like_heading(items[start_idx - 1].heading_text):
+        start_idx -= 1
+    return start_idx
+
+
+def _post_front_matter_repeat_title_keys(
+    items: list[_Section | _HeadingRow],
+    *,
+    first_front_matter_idx: int,
+) -> set[str]:
+    """Return immediate post-front-matter titles that repeat a leading title page."""
+    repeat_keys: set[str] = set()
+    for item in items[first_front_matter_idx + 1 :]:
+        heading_text = item.heading_text
+        if _is_refinement_heading(heading_text):
+            break
+        if not _is_title_like_heading(heading_text):
+            break
+        repeat_keys.add(_heading_key(heading_text))
+    return repeat_keys
+
+
 def _drop_leading_repeated_title_sections(sections: list[_Section]) -> list[_Section]:
     """Drop title-page duplicates when the same title reappears after front matter."""
     first_front_matter_idx = next(
@@ -1043,12 +1071,11 @@ def _drop_leading_repeated_title_sections(sections: list[_Section]) -> list[_Sec
     if first_front_matter_idx is None:
         return sections
 
-    later_title_keys = {
-        _heading_key(section.heading_text)
-        for section in sections[first_front_matter_idx + 1 :]
-        if _is_title_like_heading(section.heading_text)
-    }
-    if not later_title_keys:
+    repeat_title_keys = _post_front_matter_repeat_title_keys(
+        sections,
+        first_front_matter_idx=first_front_matter_idx,
+    )
+    if not repeat_title_keys:
         return sections
 
     return [
@@ -1057,7 +1084,7 @@ def _drop_leading_repeated_title_sections(sections: list[_Section]) -> list[_Sec
         if not (
             idx < first_front_matter_idx
             and _is_title_like_heading(section.heading_text)
-            and _heading_key(section.heading_text) in later_title_keys
+            and _heading_key(section.heading_text) in repeat_title_keys
         )
     ]
 
@@ -1355,10 +1382,25 @@ def _fallback_start_index(heading_rows: list[_HeadingRow]) -> int | None:
     if first_front_matter_idx is not None and (
         not structural_rows or first_front_matter_idx < structural_rows[0][0]
     ):
-        start_idx = first_front_matter_idx
-        while start_idx > 0 and _is_title_like_heading(heading_rows[start_idx - 1].heading_text):
-            start_idx -= 1
-        return start_idx
+        repeat_title_keys = _post_front_matter_repeat_title_keys(
+            heading_rows,
+            first_front_matter_idx=first_front_matter_idx,
+        )
+        if not repeat_title_keys:
+            return first_front_matter_idx
+
+        start_idx = _leading_title_cluster_start_index(
+            heading_rows,
+            first_front_matter_idx=first_front_matter_idx,
+        )
+        leading_title_keys = {
+            _heading_key(row.heading_text)
+            for row in heading_rows[start_idx:first_front_matter_idx]
+            if _is_title_like_heading(row.heading_text)
+        }
+        if leading_title_keys & repeat_title_keys:
+            return start_idx
+        return first_front_matter_idx
 
     start_rows = structural_rows or list(enumerate(heading_rows))
     start_rank = min(row.rank for _, row in start_rows)

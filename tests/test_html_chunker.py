@@ -778,6 +778,50 @@ def test_heading_scan_keeps_leading_title_page_headings_and_skips_attributions()
     assert "BONI AND LIVERIGHT, INC. PUBLISHERS NEW YORK" not in heading_texts
 
 
+def test_heading_scan_starts_at_front_matter_without_immediate_title_repeat():
+    html = _make_html("""
+    <h2>BLEAK HOUSE</h2>
+    <h3>by</h3>
+    <h3>Charles Dickens</h3>
+    <h2>PREFACE</h2>
+    <p>Preface paragraph.</p>
+    <h2>CHAPTER I</h2>
+    <p>Chapter one paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == ["PREFACE", "CHAPTER I"]
+
+
+def test_heading_scan_does_not_drop_title_that_only_repeats_much_later():
+    html = _make_html("""
+    <h2>VOLUME II</h2>
+    <h2>INTRODUCTION</h2>
+    <h3>PREFARATORY</h3>
+    <h3>CERVANTES</h3>
+    <h3>‘DON QUIXOTE’</h3>
+    <h3>THE AUTHOR’S PREFACE</h3>
+    <h2>SOME COMMENDATORY VERSES</h2>
+    <h3>URGANDA THE UNKNOWN</h3>
+    <h3>AMADIS OF GAUL</h3>
+    <h2>PART I</h2>
+    <h3>THE AUTHOR’S PREFACE</h3>
+    <p>Body paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings[:6] == [
+        "VOLUME II INTRODUCTION",
+        "PREFARATORY",
+        "CERVANTES",
+        "‘DON QUIXOTE’",
+        "THE AUTHOR’S PREFACE",
+        "SOME COMMENDATORY VERSES",
+    ]
+
+
 def test_heading_scan_strips_synopsis_from_book_heading():
     html = _make_html("""
     <h2>BOOK IV</h2>
