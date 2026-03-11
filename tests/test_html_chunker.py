@@ -719,6 +719,109 @@ def test_heading_scan_skips_front_contents_cluster_and_merges_split_headings():
     assert headings[1].div2 == "CHAPTER I OF WORDS OR LANGUAGE IN GENERAL"
 
 
+def test_heading_scan_keeps_part_headings_separate_from_numbered_child_sections():
+    html = _make_html("""
+    <h1>Black Beauty</h1>
+    <h2>Part I</h2>
+    <h3>01 My Early Home</h3>
+    <p>First chapter paragraph.</p>
+    <h3>02 The Hunt</h3>
+    <p>Second chapter paragraph.</p>
+    <h2>Part II</h2>
+    <h3>22 Earlshall</h3>
+    <p>Third chapter paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert [h.content for h in headings] == [
+        "Part I",
+        "01 My Early Home",
+        "02 The Hunt",
+        "Part II",
+        "22 Earlshall",
+    ]
+    assert headings[0].div1 == "Part I"
+    assert headings[1].div1 == "Part I"
+    assert headings[1].div2 == "01 My Early Home"
+    assert headings[4].div1 == "Part II"
+    assert headings[4].div2 == "22 Earlshall"
+
+
+def test_heading_scan_keeps_leading_title_page_headings_and_skips_attributions():
+    html = _make_html("""
+    <h3>THE MODERN LIBRARY</h3>
+    <h4>OF THE WORLD'S BEST BOOKS</h4>
+    <h3>CANDIDE BY VOLTAIRE</h3>
+    <h1>CANDIDE</h1>
+    <h4>INTRODUCTION BY PHILIP LITTELL</h4>
+    <h5>BONI AND LIVERIGHT, INC. PUBLISHERS NEW YORK</h5>
+    <h2>INTRODUCTION</h2>
+    <p>Intro paragraph.</p>
+    <h2>CANDIDE</h2>
+    <h2>I</h2>
+    <h3>HOW CANDIDE WAS BROUGHT UP IN A MAGNIFICENT CASTLE</h3>
+    <p>First chapter paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts[:5] == [
+        "THE MODERN LIBRARY",
+        "CANDIDE BY VOLTAIRE",
+        "INTRODUCTION",
+        "CANDIDE",
+        "I",
+    ]
+    assert "INTRODUCTION BY PHILIP LITTELL" not in heading_texts
+    assert "BONI AND LIVERIGHT, INC. PUBLISHERS NEW YORK" not in heading_texts
+
+
+def test_heading_scan_starts_at_front_matter_without_immediate_title_repeat():
+    html = _make_html("""
+    <h2>BLEAK HOUSE</h2>
+    <h3>by</h3>
+    <h3>Charles Dickens</h3>
+    <h2>PREFACE</h2>
+    <p>Preface paragraph.</p>
+    <h2>CHAPTER I</h2>
+    <p>Chapter one paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == ["PREFACE", "CHAPTER I"]
+
+
+def test_heading_scan_does_not_drop_title_that_only_repeats_much_later():
+    html = _make_html("""
+    <h2>VOLUME II</h2>
+    <h2>INTRODUCTION</h2>
+    <h3>PREFARATORY</h3>
+    <h3>CERVANTES</h3>
+    <h3>‘DON QUIXOTE’</h3>
+    <h3>THE AUTHOR’S PREFACE</h3>
+    <h2>SOME COMMENDATORY VERSES</h2>
+    <h3>URGANDA THE UNKNOWN</h3>
+    <h3>AMADIS OF GAUL</h3>
+    <h2>PART I</h2>
+    <h3>THE AUTHOR’S PREFACE</h3>
+    <p>Body paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings[:6] == [
+        "VOLUME II INTRODUCTION",
+        "PREFARATORY",
+        "CERVANTES",
+        "‘DON QUIXOTE’",
+        "THE AUTHOR’S PREFACE",
+        "SOME COMMENDATORY VERSES",
+    ]
+
+
 def test_heading_scan_strips_synopsis_from_book_heading():
     html = _make_html("""
     <h2>BOOK IV</h2>
@@ -779,7 +882,7 @@ def test_heading_scan_skips_editorial_placeholder_heading():
     ]
 
 
-def test_heading_scan_keeps_dialogue_subheadings_after_book_start():
+def test_heading_scan_skips_dialogue_subheadings_after_book_start():
     html = _make_html("""
     <h2>BOOK I</h2>
     <h4>SOCRATES - GLAUCON</h4>
@@ -789,14 +892,14 @@ def test_heading_scan_keeps_dialogue_subheadings_after_book_start():
     """)
     chunks = chunk_html(html)
     headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
 
-    assert [h.content for h in headings] == [
-        "BOOK I SOCRATES - GLAUCON",
-        "SOCRATES - THRASYMACHUS",
-    ]
+    assert [h.content for h in headings] == ["BOOK I"]
+    assert all(paragraph.div1 == "BOOK I" for paragraph in paragraphs)
+    assert all(not paragraph.div2 for paragraph in paragraphs)
 
 
-def test_heading_scan_keeps_repeated_dialogue_speakers_nested_under_each_book():
+def test_heading_scan_keeps_repeated_books_without_dialogue_speakers():
     html = _make_html("""
     <h2>BOOK I</h2>
     <h4>SOCRATES - GLAUCON</h4>
@@ -817,16 +920,22 @@ def test_heading_scan_keeps_repeated_dialogue_speakers_nested_under_each_book():
     <h4>SOCRATES - GLAUCON</h4>
     <p>Dialogue paragraph seven.</p>
     """)
-    headings = [c for c in chunk_html(html) if c.kind == "heading"]
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
 
-    book_headings = [h for h in headings if h.content.startswith("BOOK")]
-    assert [h.div1 for h in book_headings] == [
-        "BOOK I SOCRATES - GLAUCON",
-        "BOOK II SOCRATES - GLAUCON",
-        "BOOK III SOCRATES - GLAUCON",
-        "BOOK IV SOCRATES - GLAUCON",
+    assert [h.content for h in headings] == ["BOOK I", "BOOK II", "BOOK III", "BOOK IV"]
+    assert all(not h.div2 for h in headings)
+    assert [paragraph.div1 for paragraph in paragraphs] == [
+        "BOOK I",
+        "BOOK I",
+        "BOOK II",
+        "BOOK II",
+        "BOOK III",
+        "BOOK III",
+        "BOOK IV",
     ]
-    assert all(not h.div2 for h in book_headings)
+    assert all(not paragraph.div2 for paragraph in paragraphs)
 
 
 def test_heading_scan_uses_non_keyword_headings_when_no_structural_keywords_exist():
@@ -976,10 +1085,10 @@ def test_dense_chapter_index_paragraph_falls_back_to_heading_scan():
     chunks = chunk_html(html)
     headings = [c.content for c in chunks if c.kind == "heading"]
 
-    assert headings == ["CHAPTER I", "CHAPTER II", "CHAPTER III"]
+    assert headings == ["PREFACE", "CHAPTER I", "CHAPTER II", "CHAPTER III"]
 
 
-def test_toc_ignores_title_like_h3_subheads_inside_chapters():
+def test_toc_refines_title_like_h3_subheads_inside_chapters():
     html = _make_html("""
     <table><tbody>
       <tr><td><a href="#intro" class="pginternal">THE INTRODUCTION</a></td></tr>
@@ -1009,16 +1118,391 @@ def test_toc_ignores_title_like_h3_subheads_inside_chapters():
         "THE INTRODUCTION",
         "PART I. OF MAN",
         "CHAPTER I. OF SENSE",
+        "Memory",
+        "Dreams",
         "CHAPTER II. OF IMAGINATION",
     ]
-    assert all(h.content not in {"Memory", "Dreams"} for h in headings)
+
+    memory_heading = next(h for h in headings if h.content == "Memory")
+    dreams_heading = next(h for h in headings if h.content == "Dreams")
+    assert memory_heading.div1 == "PART I. OF MAN"
+    assert memory_heading.div2 == "CHAPTER I. OF SENSE"
+    assert memory_heading.div3 == "Memory"
+    assert dreams_heading.div1 == "PART I. OF MAN"
+    assert dreams_heading.div2 == "CHAPTER I. OF SENSE"
+    assert dreams_heading.div3 == "Dreams"
 
     memory_paragraph = next(p for p in paragraphs if p.content == "Memory paragraph.")
     dreams_paragraph = next(p for p in paragraphs if p.content == "Dreams paragraph.")
     assert memory_paragraph.div1 == "PART I. OF MAN"
     assert memory_paragraph.div2 == "CHAPTER I. OF SENSE"
+    assert memory_paragraph.div3 == "Memory"
     assert dreams_paragraph.div1 == "PART I. OF MAN"
     assert dreams_paragraph.div2 == "CHAPTER I. OF SENSE"
+    assert dreams_paragraph.div3 == "Dreams"
+
+
+# ------------------------------------------------------------------
+# Paragraph heading fallback
+# ------------------------------------------------------------------
+
+
+def test_paragraph_play_headings_split_act_and_scene_and_ignore_finis():
+    html = _make_html("""
+    <h1>The Tragedie of Hamlet</h1>
+    <p>Actus Primus. Scoena Prima.</p>
+    <p>Enter Barnardo and Francisco two Centinels.</p>
+    <p>Scena Secunda.</p>
+    <p>Enter Claudius, King of Denmarke.</p>
+    <h4>FINIS.</h4>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == ["Actus Primus", "Scoena Prima", "Scena Secunda"]
+    assert headings[0].div1 == "Actus Primus"
+    assert headings[1].div1 == "Actus Primus"
+    assert headings[1].div2 == "Scoena Prima"
+    assert headings[2].div1 == "Actus Primus"
+    assert headings[2].div2 == "Scena Secunda"
+    assert all(h.content != "FINIS" for h in headings)
+    assert paragraphs[0].div1 == "Actus Primus"
+    assert paragraphs[0].div2 == "Scoena Prima"
+    assert paragraphs[1].div1 == "Actus Primus"
+    assert paragraphs[1].div2 == "Scena Secunda"
+
+
+def test_paragraph_play_headings_reset_scene_hierarchy_on_new_act():
+    html = _make_html("""
+    <h1>The Tragedie of Macbeth</h1>
+    <p>Actus Primus. Scoena Prima.</p>
+    <p>Thunder and Lightning. Enter three Witches.</p>
+    <p>Scena Secunda.</p>
+    <p>Alarum within.</p>
+    <p>Actus Secundus. Scena Prima.</p>
+    <p>Enter Banquo, and Fleance with a Torch before him.</p>
+    <h4>FINIS.</h4>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == [
+        "Actus Primus",
+        "Scoena Prima",
+        "Scena Secunda",
+        "Actus Secundus",
+        "Scena Prima",
+    ]
+    assert headings[3].div1 == "Actus Secundus"
+    assert headings[3].div2 == ""
+    assert headings[4].div1 == "Actus Secundus"
+    assert headings[4].div2 == "Scena Prima"
+    assert paragraphs[2].div1 == "Actus Secundus"
+    assert paragraphs[2].div2 == "Scena Prima"
+
+
+def test_paragraph_play_headings_do_not_extract_act_scene_from_prose():
+    html = _make_html("""
+    <h2>THE ASSEMBLY OF FOWLS</h2>
+    <p>
+      Quoted in Terence, "Eunuchus," act iv. scene v., but this is body prose,
+      not a structural heading.
+    </p>
+    <h2>TROILUS AND CRESSIDA</h2>
+    <p>Story paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == ["THE ASSEMBLY OF FOWLS", "TROILUS AND CRESSIDA"]
+
+
+def test_title_like_toc_sections_keep_trailing_book_headings_and_skip_letter_markers():
+    html = _make_html("""
+    <table><tbody>
+      <tr><td><a href="#assembly" class="pginternal">THE ASSEMBLY OF FOWLS</a></td></tr>
+      <tr><td><a href="#troilus" class="pginternal">TROILUS AND CRESSIDA</a></td></tr>
+      <tr><td><a href="#abc" class="pginternal">CHAUCER'S A. B. C.</a></td></tr>
+      <tr><td><a href="#ballad" class="pginternal">A GOODLY BALLAD OF CHAUCER</a></td></tr>
+    </tbody></table>
+    <h2><a id="assembly"></a>THE ASSEMBLY OF FOWLS</h2>
+    <p>Assembly paragraph.</p>
+    <h2><a id="troilus"></a>TROILUS AND CRESSIDA</h2>
+    <h3>THE FIRST BOOK.</h3>
+    <p>First book paragraph.</p>
+    <h3>THE SECOND BOOK.</h3>
+    <p>Second book paragraph.</p>
+    <h2><a id="abc"></a>CHAUCER'S A. B. C.</h2>
+    <h4>C.</h4>
+    <p>C paragraph.</p>
+    <h4>D.</h4>
+    <p>D paragraph.</p>
+    <h2><a id="ballad"></a>A GOODLY BALLAD OF CHAUCER</h2>
+    <p>Ballad paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == [
+        "THE ASSEMBLY OF FOWLS",
+        "TROILUS AND CRESSIDA",
+        "THE FIRST BOOK",
+        "THE SECOND BOOK",
+        "CHAUCER'S A. B. C",
+        "A GOODLY BALLAD OF CHAUCER",
+    ]
+
+
+def test_heading_scan_skips_deep_rank_bare_numeral_subheads():
+    html = _make_html("""
+    <h2>PREFACE.</h2>
+    <p>Preface paragraph.</p>
+    <h2>FLORENCE AND DANTE.</h2>
+    <p>Essay paragraph.</p>
+    <h4>II.</h4>
+    <h4>III.</h4>
+    <h4>IV.</h4>
+    <h4>VI.</h4>
+    <h2>GIOTTO'S PORTRAIT OF DANTE.</h2>
+    <p>Portrait paragraph.</p>
+    <h2>CANTO I.</h2>
+    <p>Canto paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == [
+        "PREFACE",
+        "FLORENCE AND DANTE",
+        "GIOTTO'S PORTRAIT OF DANTE",
+        "CANTO I",
+    ]
+
+
+def test_heading_scan_keeps_deep_rank_bare_numerals_when_they_are_real_sections():
+    html = _make_html("""
+    <h4>I</h4>
+    <p>First section paragraph.</p>
+    <h4>II</h4>
+    <p>Second section paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == ["I", "II"]
+
+
+def test_heading_scan_keeps_deep_rank_single_letter_sections_when_they_are_real():
+    html = _make_html("""
+    <h2>APPENDIX</h2>
+    <p>Appendix opening paragraph.</p>
+    <h4>A</h4>
+    <p>Appendix A paragraph.</p>
+    <h4>B</h4>
+    <p>Appendix B paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == ["APPENDIX", "A", "B"]
+
+
+def test_dialogue_speaker_headings_do_not_replace_book_structure():
+    html = _make_html("""
+    <h1>BOOK I</h1>
+    <h4>SOCRATES - GLAUCON</h4>
+    <p>Book one opening paragraph.</p>
+    <h5>GLAUCON</h5>
+    <p>Another book one paragraph.</p>
+    <h2>BOOK II</h2>
+    <h4>SOCRATES - GLAUCON</h4>
+    <h5>ADEIMANTUS</h5>
+    <p>Book two opening paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == ["BOOK I", "BOOK II"]
+    assert all("SOCRATES" not in h.content for h in headings)
+    assert all("GLAUCON" not in h.content for h in headings)
+    assert paragraphs[0].div1 == "BOOK I"
+    assert paragraphs[0].div2 == ""
+    assert paragraphs[1].div1 == "BOOK I"
+    assert paragraphs[1].div2 == ""
+    assert paragraphs[2].div1 == "BOOK II"
+    assert paragraphs[2].div2 == ""
+
+
+def test_heading_scan_starts_from_prologues_and_skips_short_dramatic_cues():
+    html = _make_html("""
+    <h5>INTRODUCTORY NOTE</h5>
+    <h1>PROLOGUE FOR THE THEATRE</h1>
+    <h5>MANAGER</h5>
+    <p>Manager paragraph.</p>
+    <h1>PROLOGUE IN HEAVEN</h1>
+    <h5>RAPHAEL</h5>
+    <p>Raphael paragraph.</p>
+    <h1>THE TRAGEDY OF FAUST</h1>
+    <h5>DRAMATIS PERSONAE</h5>
+    <h1>PART I</h1>
+    <h5>NIGHT</h5>
+    <h5>FAUST</h5>
+    <p>Faust paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == [
+        "PROLOGUE FOR THE THEATRE",
+        "PROLOGUE IN HEAVEN",
+        "THE TRAGEDY OF FAUST",
+        "PART I",
+    ]
+    excluded = {"MANAGER", "RAPHAEL", "DRAMATIS PERSONAE", "NIGHT", "FAUST"}
+    assert all(h.content not in excluded for h in headings)
+    assert paragraphs[-1].div1 == "PART I"
+    assert paragraphs[-1].div2 == ""
+
+
+def test_heading_scan_resets_dramatic_context_after_non_dramatic_sections():
+    html = _make_html("""
+    <h2>ACT I</h2>
+    <h3>SCENE I</h3>
+    <p>Opening speech.</p>
+    <h2>CHAPTER I</h2>
+    <p>Chapter opening paragraph.</p>
+    <h5>MEMORY</h5>
+    <p>Memory paragraph.</p>
+    <h5>DREAMS</h5>
+    <p>Dreams paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == ["ACT I", "SCENE I", "CHAPTER I", "MEMORY", "DREAMS"]
+
+
+def test_heading_scan_keeps_short_uppercase_prose_sections_outside_dramatic_context():
+    html = _make_html("""
+    <h2>CHAPTER I</h2>
+    <p>Chapter opening paragraph.</p>
+    <h5>MEMORY</h5>
+    <p>Memory paragraph.</p>
+    <h5>DREAMS</h5>
+    <p>Dreams paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == ["CHAPTER I", "MEMORY", "DREAMS"]
+
+
+def test_heading_scan_uses_paragraph_play_headings_after_generic_title():
+    html = _make_html("""
+    <h2>HAMLET</h2>
+    <p>ACT I</p>
+    <p>SCENE I</p>
+    <p>Opening speech.</p>
+    <p>SCENE II</p>
+    <p>Another speech.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [heading.content for heading in headings] == ["ACT I", "SCENE I", "SCENE II"]
+    assert paragraphs[0].div1 == "ACT I"
+    assert paragraphs[0].div2 == "SCENE I"
+    assert paragraphs[1].div1 == "ACT I"
+    assert paragraphs[1].div2 == "SCENE II"
+
+
+def test_heading_scan_starts_from_front_matter_before_shallower_chapters():
+    html = _make_html("""
+    <h3>ETYMOLOGY.</h3>
+    <h3>ETYMOLOGY</h3>
+    <p>Etymology paragraph.</p>
+    <h3>EXTRACTS.</h3>
+    <h3>EXTRACTS.</h3>
+    <p>Extracts paragraph.</p>
+    <h2>CHAPTER I.</h2>
+    <p>Call me Ishmael.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert headings == ["ETYMOLOGY", "EXTRACTS", "CHAPTER I"]
+    assert paragraphs[0].div1 == "ETYMOLOGY"
+    assert paragraphs[1].div1 == "EXTRACTS"
+    assert paragraphs[2].div1 == "CHAPTER I"
+
+
+def test_singular_note_heading_is_preserved_as_a_section():
+    html = _make_html("""
+    <h2>CHAPTER I</h2>
+    <p>Chapter paragraph.</p>
+    <h2>NOTE</h2>
+    <p>Closing note paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    note_paragraph = next(
+        c for c in chunks if c.kind == "text" and c.content == "Closing note paragraph."
+    )
+
+    assert headings == ["CHAPTER I", "NOTE"]
+    assert note_paragraph.div1 == "NOTE"
+
+
+def test_toc_refinement_keeps_terminal_note_after_last_chapter():
+    html = _make_html("""
+    <table><tbody>
+      <tr><td><a href="#ch1" class="pginternal">CHAPTER I</a></td></tr>
+      <tr><td><a href="#ch2" class="pginternal">CHAPTER II</a></td></tr>
+    </tbody></table>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Chapter one paragraph.</p>
+    <h2><a id="ch2"></a>CHAPTER II</h2>
+    <p>Chapter two paragraph.</p>
+    <h2>NOTE</h2>
+    <p>Closing note paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    note_paragraph = next(
+        c for c in chunks if c.kind == "text" and c.content == "Closing note paragraph."
+    )
+
+    assert headings == ["CHAPTER I", "CHAPTER II", "NOTE"]
+    assert note_paragraph.div1 == "NOTE"
+
+
+def test_toc_refinement_keeps_leading_preface_before_first_toc_section():
+    html = _make_html("""
+    <h3>PREFACE</h3>
+    <p>Preface paragraph.</p>
+    <table><tbody>
+      <tr><td><a href="#ch1" class="pginternal">CHAPTER I</a></td></tr>
+      <tr><td><a href="#ch2" class="pginternal">CHAPTER II</a></td></tr>
+    </tbody></table>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Chapter one paragraph.</p>
+    <h2><a id="ch2"></a>CHAPTER II</h2>
+    <p>Chapter two paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    preface_paragraph = next(
+        c for c in chunks if c.kind == "text" and c.content == "Preface paragraph."
+    )
+
+    assert headings == ["PREFACE", "CHAPTER I", "CHAPTER II"]
+    assert preface_paragraph.div1 == "PREFACE"
 
 
 # ------------------------------------------------------------------
