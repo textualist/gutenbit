@@ -8,7 +8,7 @@ Gutenbit processes books in four stages:
 
 1. **Catalog.** A CSV feed from Project Gutenberg provides metadata for every book: title, author, subjects, language, and Gutenberg ID. The catalog is filtered to English text and deduplicated so each work has one canonical ID.
 
-2. **Download.** Each book's HTML is fetched from Gutenberg's epub cache as a zip archive. The single `.html` file inside is extracted.
+2. **Download.** Each book's HTML is fetched from official mirrors first, with a fallback to Gutenberg's epub-cache zip when needed.
 
 3. **Chunk.** The HTML is parsed into discrete text units. Each `<p>` element becomes one chunk. Structural metadata (divisions and kinds) is attached to every chunk.
 

@@ -51,18 +51,18 @@ class Chunk:
 # ---------------------------------------------------------------------------
 
 _BROAD_KEYWORDS = frozenset({"book", "part", "act", "epilogue", "volume"})
-CHUNKER_VERSION = 13
+CHUNKER_VERSION = 15
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
 _BARE_HEADING_NUMBER_RE = re.compile(
-    r"^(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)"
+    r"^(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)"
     r"\.?\s+[IVXLCDM0-9]+\.?$",
     re.IGNORECASE,
 )
 
 _HEADING_KEYWORD_RE = re.compile(
-    r"^(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)\.?\s",
+    r"^(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)\.?\s",
     re.IGNORECASE,
 )
 _START_DELIMITER_RE = re.compile(
@@ -75,13 +75,14 @@ _END_DELIMITER_RE = re.compile(
 )
 _HEADING_CITATION_SUFFIX_RE = re.compile(r"\s*\[\d+\]\s*$")
 _STRUCTURAL_HEADING_SPACING_RE = re.compile(
-    r"\b(BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)(\.?)\s*([IVXLCDM0-9]+)\b",
+    r"\b(BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)(\.?)\s*([IVXLCDM0-9]+)\b",
     re.IGNORECASE,
 )
 _STRUCTURAL_HEADING_TRAILER_RE = re.compile(
-    r"(\b(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION)\.?\s*[IVXLCDM0-9]+\b.*)$",
+    r"(\b(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)\.?\s*[IVXLCDM0-9]+\b.*)$",
     re.IGNORECASE,
 )
+_BRACKETED_NUMERIC_HEADING_RE = re.compile(r"^\[\s*\d+\s*\]$")
 _NUMERIC_LINK_TEXT_RE = re.compile(r"^\[?\d+\]?$")
 _ROMAN_NUMERAL_RE = re.compile(r"^[IVXLCDM]+$")
 _PLAIN_NUMBER_HEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.?$", re.IGNORECASE)
@@ -276,8 +277,16 @@ def _parse_toc_sections(
     for link in toc_links:
         if not _tag_within_bounds(link, tag_positions, bounds):
             continue
-        if not _is_structural_toc_link(link):
-            continue
+        raw_link_text = _clean_heading_text(" ".join(link.get_text().split()))
+        link_text = raw_link_text
+        if not _is_structural_toc_link(link, raw_link_text):
+            context_text = _toc_context_text(link)
+            if not (
+                _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text)
+                and _looks_enumerated_toc_entry(context_text)
+            ):
+                continue
+            link_text = context_text
         href = str(link.get("href", ""))
         if not href.startswith("#"):
             continue
@@ -295,7 +304,9 @@ def _parse_toc_sections(
         heading_el = body_anchor.find_parent(_HEADING_TAGS)
         if heading_el and not _tag_within_bounds(heading_el, tag_positions, bounds):
             heading_el = None
+        used_fallback_heading = False
         if not heading_el:
+            used_fallback_heading = True
             heading_el = _find_next_heading(
                 body_anchor,
                 used_headings,
@@ -306,14 +317,26 @@ def _parse_toc_sections(
             continue
         used_headings.add(id(heading_el))
 
-        link_text = _clean_heading_text(" ".join(link.get_text().split()))
         heading_text = _clean_heading_text(_extract_heading_text(heading_el))
         if not heading_text:
             continue
         if _is_non_structural_heading_text(heading_text):
             continue
+        if used_fallback_heading and not _toc_entry_matches_heading(link_text, heading_text):
+            continue
 
         is_emphasized = _is_emphasized_toc_link(link)
+        heading_rank = _heading_tag_rank(heading_el)
+        if heading_rank is None:
+            continue
+        if not _is_toc_section_heading(
+            heading_text,
+            link_text=link_text,
+            heading_rank=heading_rank,
+            is_emphasized=is_emphasized,
+        ):
+            continue
+
         heading_level = _classify_level(heading_text, is_emphasized)
         if _toc_link_refines_body_heading(link_text, heading_text):
             sections.append(_Section(anchor_id, heading_text, heading_level, body_anchor))
@@ -342,7 +365,7 @@ def _parse_toc_sections(
 # Matches a structural heading pattern anywhere in text (keyword + number).
 # Used to reject subtitles that contain embedded headings like "... CHAPTER II".
 _EMBEDDED_HEADING_RE = re.compile(
-    r"(?:BOOK|PART|ACT|VOLUME|CHAPTER|STAVE|SCENE|SECTION)"
+    r"(?:BOOK|PART|ACT|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)"
     r"\.?\s+[IVXLCDM0-9]+",
     re.IGNORECASE,
 )
@@ -651,6 +674,8 @@ def _clean_heading_text(heading_text: str) -> str:
     text = " ".join(heading_text.split()).strip()
     text = _HEADING_CITATION_SUFFIX_RE.sub("", text)
     text = _STRUCTURAL_HEADING_SPACING_RE.sub(r"\1\2 \3", text)
+    if _BRACKETED_NUMERIC_HEADING_RE.fullmatch(text):
+        return text
     text = text.rstrip(" .,;:])")
     trailer_match = _STRUCTURAL_HEADING_TRAILER_RE.search(text)
     if trailer_match:
@@ -700,6 +725,8 @@ def _is_title_like_heading(heading_text: str) -> bool:
 
 def _toc_link_refines_body_heading(link_text: str, heading_text: str) -> bool:
     if not link_text or _same_heading_text(link_text, heading_text):
+        return False
+    if _NUMERIC_LINK_TEXT_RE.fullmatch(link_text):
         return False
     if not _is_refinement_heading(link_text):
         return False
@@ -897,6 +924,16 @@ def _extract_paragraph_text(paragraph: Tag) -> str:
 _NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]+")
 
 
+def _container_residue_without_link_text(container: Tag) -> str:
+    """Return container text after removing each internal-link label once."""
+    residue = container.get_text()
+    for link in container.find_all("a", class_="pginternal"):
+        link_text = link.get_text()
+        if link_text:
+            residue = residue.replace(link_text, "", 1)
+    return " ".join(residue.split()).strip()
+
+
 def _is_toc_paragraph(paragraph: Tag) -> bool:
     """Return True for TOC/navigation paragraphs."""
     links = paragraph.find_all("a", class_="pginternal")
@@ -909,34 +946,110 @@ def _is_toc_paragraph(paragraph: Tag) -> bool:
 
     # Check if removing pginternal link text leaves only punctuation/whitespace,
     # without re-parsing the paragraph.
-    full_text = paragraph.get_text()
-    residue = full_text
-    for link in links:
-        link_text = link.get_text()
-        if link_text:
-            residue = residue.replace(link_text, "", 1)
-    residue = " ".join(residue.split()).strip()
+    residue = _container_residue_without_link_text(paragraph)
     return _NON_ALNUM_RE.sub("", residue) == ""
 
 
-def _is_structural_toc_link(link: Tag) -> bool:
+def _is_dense_chapter_index_paragraph(paragraph: Tag) -> bool:
+    """Return True for single-line chapter indexes like ``Chapter: I., II., ...``."""
+    links = paragraph.find_all("a", class_="pginternal")
+    if len(links) < 3:
+        return False
+    text = " ".join(paragraph.get_text(" ", strip=True).split()).lower()
+    return "chapter:" in text or "chapters:" in text
+
+
+def _is_toc_context_link(link: Tag) -> bool:
+    """Return True when *link* sits in a TOC-like container."""
+    if link.find_parent("tr") is not None:
+        return True
+
+    for name in ("p", "li", "div"):
+        container = link.find_parent(name)
+        if container is None:
+            continue
+        if container.name == "p" and _is_toc_paragraph(container):
+            return True
+
+        classes = {str(c).lower() for c in (container.get("class") or [])}
+        if "toc" in classes or "contents" in classes:
+            return True
+
+        residue = _container_residue_without_link_text(container)
+        if _NON_ALNUM_RE.sub("", residue) == "":
+            return True
+    return False
+
+
+def _toc_context_text(link: Tag) -> str:
+    """Return nearby non-link TOC text for a link, if any."""
+    for name in ("tr", "p", "li", "div"):
+        container = link.find_parent(name)
+        if container is None:
+            continue
+        text = _clean_heading_text(_container_residue_without_link_text(container))
+        if text:
+            return text
+    return ""
+
+
+def _looks_enumerated_toc_entry(text: str) -> bool:
+    """Return True for entries like ``I. Title`` or ``12. Title``."""
+    if not text:
+        return False
+    first_token = text.split(maxsplit=1)[0].rstrip(".)")
+    return _ROMAN_NUMERAL_RE.fullmatch(first_token) is not None or first_token.isdigit()
+
+
+def _previous_heading_text(link: Tag) -> str:
+    """Return the nearest preceding heading text, if any."""
+    for heading in link.find_all_previous(_HEADING_TAGS):
+        if not isinstance(heading, Tag):
+            continue
+        text = _clean_heading_text(_extract_heading_text(heading))
+        if text:
+            return text
+    return ""
+
+
+def _is_structural_toc_link(link: Tag, link_text: str | None = None) -> bool:
     """Return True for TOC links that can map to actual section headings."""
+    if not _is_toc_context_link(link):
+        return False
+
+    previous_heading = _previous_heading_text(link).lower()
+    if previous_heading in _FRONT_MATTER_HEADINGS and previous_heading not in {
+        "contents",
+        "table of contents",
+    }:
+        return False
+
     link_classes = {str(cls).lower() for cls in (link.get("class") or [])}
     if "citation" in link_classes:
         return False
 
+    paragraph = link.find_parent("p")
+    if paragraph is not None and _is_dense_chapter_index_paragraph(paragraph):
+        cleaned_link_text = _clean_heading_text(" ".join(link.get_text().split()))
+        chapter_marker = cleaned_link_text.rstrip(".,;:)")
+        if cleaned_link_text.lower().startswith("chapter") or _ROMAN_NUMERAL_RE.fullmatch(
+            chapter_marker
+        ):
+            return False
+
     href = str(link.get("href", ""))
     if href.startswith("#"):
         target_id = href[1:].lower()
-        if target_id.startswith(("page", "footnote", "citation")):
+        if target_id.startswith(("footnote", "citation")):
             return False
 
     if link.find_parent("span", class_="indexpageno"):
-        return False
+        pass
     if link.find_parent("span", class_="pagenum"):
         return False
 
-    link_text = " ".join(link.get_text().split()).strip()
+    if link_text is None:
+        link_text = _clean_heading_text(" ".join(link.get_text().split()))
     if not link_text:
         return False
     if _NUMERIC_LINK_TEXT_RE.fullmatch(link_text):
@@ -946,6 +1059,20 @@ def _is_structural_toc_link(link: Tag) -> bool:
         return False
     # Filter bare roman numerals (I, II, III — sub-section markers, not chapters)
     return not _ROMAN_NUMERAL_RE.fullmatch(link_text)
+
+
+def _toc_entry_matches_heading(entry_text: str, heading_text: str) -> bool:
+    """Return True when a TOC entry label clearly aligns with a heading."""
+    if not entry_text:
+        return False
+    if _same_heading_text(entry_text, heading_text):
+        return True
+
+    entry_key = _heading_key(entry_text)
+    heading_key = _heading_key(heading_text)
+    if len(entry_key) < 6:
+        return False
+    return entry_key in heading_key or heading_key in entry_key
 
 
 def _heading_tag_rank(tag: Tag) -> int | None:
@@ -1049,6 +1176,25 @@ def _is_refinement_heading(heading_text: str) -> bool:
     if _STANDALONE_STRUCTURAL_RE.search(heading_text):
         return True
     return _PLAIN_NUMBER_HEADING_RE.fullmatch(heading_text) is not None
+
+
+def _is_toc_section_heading(
+    heading_text: str,
+    *,
+    link_text: str,
+    heading_rank: int,
+    is_emphasized: bool,
+) -> bool:
+    """Return True when a TOC entry points at a real structural section."""
+    if is_emphasized or heading_rank <= 2:
+        return True
+    if _BRACKETED_NUMERIC_HEADING_RE.fullmatch(heading_text):
+        return True
+    if _BRACKETED_NUMERIC_HEADING_RE.fullmatch(link_text):
+        return True
+    if _is_refinement_heading(heading_text):
+        return True
+    return _is_refinement_heading(link_text)
 
 
 def _is_dialogue_speaker_heading(heading_text: str) -> bool:

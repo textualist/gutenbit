@@ -61,6 +61,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not network'"
 markers = ["network: tests that require network access (download from Project Gutenberg)"]
 
 [tool.hatch.envs.docs]

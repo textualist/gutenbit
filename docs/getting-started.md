@@ -17,8 +17,7 @@ uv tool install git+https://github.com/keinan1/gutenbit
 ```
 
 Then run `gutenbit --help`. Remove it later with `uv tool uninstall gutenbit`.
-
-If this is your first `uv` tool, run `uv tool update-shell` once and restart your shell so `gutenbit` is on your `PATH`.
+Gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
 
 If you want to use the Python package inside a `uv` project instead of installing the CLI globally:
 
@@ -54,7 +53,7 @@ Pass one or more Project Gutenberg IDs to `add`:
 gutenbit add 1342
 ```
 
-The book's HTML is downloaded, parsed into paragraph-level chunks with structural metadata, and stored in a local SQLite database (`gutenbit.db` by default).
+The book's HTML is downloaded, parsed into paragraph-level chunks with structural metadata, and stored in a local SQLite database (`.gutenbit/gutenbit.db` by default).
 
 ### Explore structure
 
@@ -89,13 +88,13 @@ gutenbit view 1342 --section 1 --all
 Read from an exact chunk position:
 
 ```bash
-gutenbit view 1342 --position 50 --forward 5
+gutenbit view 1342 --position 1 --forward 5
 ```
 
 Read surrounding passage around a position or section start:
 
 ```bash
-gutenbit view 1342 --position 50 --radius 2
+gutenbit view 1342 --position 1 --radius 2
 gutenbit view 1342 --section 1 --radius 2
 ```
 
@@ -148,14 +147,14 @@ for book in books[:5]:
     print(book.id, book.title)
 ```
 
-The catalog is cached locally for two hours, filtered to English text, and deduplicated by normalized title plus primary author, keeping the lowest Project Gutenberg ID as canonical. Use `--refresh` to force a redownload.
+The catalog is cached locally for two hours under `.gutenbit/cache/`, filtered to English text, and deduplicated by normalized title plus primary author, keeping the lowest Project Gutenberg ID as canonical. Use `--refresh` to force a redownload.
 
 ### Ingest books
 
 ```python
 from gutenbit import Database
 
-with Database("gutenbit.db") as db:
+with Database(".gutenbit/gutenbit.db") as db:
     db.ingest(books[:3])
 ```
 
@@ -169,7 +168,7 @@ for hit in results:
     print(f"{hit.title} | {hit.div1} | {hit.content[:80]}")
 ```
 
-Results are ranked by BM25 relevance. Each `SearchResult` includes the matching text, its structural position (div1 through div4), book metadata, and a relevance score.
+Results use BM25 rank ordering by default. Each `SearchResult` includes the matching text, its structural position (div1 through div4), book metadata, and a relevance score.
 
 ### Read structured chunks
 
@@ -193,4 +192,4 @@ print(text[:500])
 
 ## What just happened
 
-The pipeline has four stages. The catalog provides book metadata and IDs. The downloader fetches HTML from Project Gutenberg's epub cache. The chunker parses the HTML using its table of contents as a structural map, turning each paragraph into a discrete chunk with a position and a place in the book's heading hierarchy. The database stores chunks in SQLite with FTS5 indexing for fast full-text search with BM25 ranking.
+The pipeline has four stages. The catalog provides book metadata and IDs. The downloader prefers official mirror HTML and falls back to the main site's HTML zip when needed. The chunker parses the HTML using its table of contents as a structural map, turning each paragraph into a discrete chunk with a position and a place in the book's heading hierarchy. The database stores chunks in SQLite with FTS5 indexing for fast full-text search with BM25 ranking.

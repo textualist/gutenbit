@@ -5,9 +5,12 @@ import gzip
 import io
 import json
 import os
+import shlex
 import time
+import zipfile
 
 import httpx
+import pytest
 
 from gutenbit.catalog import (
     BookRecord,
@@ -44,6 +47,13 @@ _PG_TEMPLATE = """\
 
 def _make_html(title: str, body: str) -> str:
     return _PG_TEMPLATE.format(title=title, body=body)
+
+
+def _zip_payload(filename: str, html: str) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(filename, html)
+    return buffer.getvalue()
 
 
 # ------------------------------------------------------------------
@@ -148,6 +158,12 @@ def _run_cli(db_path, *args):
         except SystemExit as exc:
             code = exc.code if isinstance(exc.code, int) else 1
     return code, out.getvalue(), err.getvalue()
+
+
+def _run_documented_command(db_path, command: str):
+    argv = shlex.split(command)
+    assert argv[0] == "gutenbit"
+    return _run_cli(db_path, *argv[1:])
 
 
 # ------------------------------------------------------------------
@@ -366,22 +382,30 @@ def test_search_filter_by_kind(tmp_path):
     assert all(r.kind == "heading" for r in results)
 
 
-def test_search_mode_first_orders_by_position(tmp_path):
+def test_search_order_first_orders_by_position(tmp_path):
     db = _make_db(tmp_path)
-    results = db.search("CHAPTER", book_id=1, kind="heading", mode="first", limit=2)
+    results = db.search("CHAPTER", book_id=1, kind="heading", order="first", limit=2)
     assert [r.position for r in results] == [0, 3]
 
 
-def test_search_mode_last_orders_reverse_position(tmp_path):
+def test_search_order_last_orders_reverse_position(tmp_path):
     db = _make_db(tmp_path)
-    results = db.search("CHAPTER", book_id=1, kind="heading", mode="last", limit=2)
+    results = db.search("CHAPTER", book_id=1, kind="heading", order="last", limit=2)
     assert [r.position for r in results] == [3, 0]
 
 
-def test_search_help_documents_mode_ordering(tmp_path):
+def test_search_rejects_legacy_mode_keyword(tmp_path):
+    db = _make_db(tmp_path)
+    with pytest.raises(TypeError):
+        db.search("CHAPTER", book_id=1, kind="heading", mode="first", limit=2)
+
+
+def test_search_help_documents_ordering(tmp_path):
     code, out, _err = _run_cli(tmp_path / "any.db", "search", "-h")
     assert code == 0
-    assert "ranked" in out and "BM25" in out
+    assert "--order" in out
+    assert "--mode" not in out
+    assert "rank" in out and "BM25" in out
     assert "first" in out and "book ascending" in out
     assert "last" in out and "book descending" in out
 
@@ -488,7 +512,28 @@ def test_search_cli_raw_passes_fts5_syntax(tmp_path):
     code, out, _err = _run_cli(db_path, "search", "Ishmael OR truth", "--raw")
     assert code == 0
     assert "total_results=2  shown_results=2" in out
-    assert "2 results · ranked order" in out
+    assert "2 results · rank order" in out
+
+
+def test_search_cli_rejects_legacy_mode_flag(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, err = _run_cli(
+        db_path,
+        "search",
+        "CHAPTER",
+        "--book",
+        "1",
+        "--kind",
+        "heading",
+        "--mode",
+        "first",
+    )
+    assert code == 2
+    assert out == ""
+    assert "unrecognized arguments: --mode first" in err
 
 
 def test_search_cli_defaults_to_text_chunks(tmp_path):
@@ -535,7 +580,7 @@ def test_search_cli_footer_shows_total_and_shown_when_limited(tmp_path):
     code, out, _err = _run_cli(db_path, "search", "the", "--book", "1", "--limit", "1")
     assert code == 0
     assert f"total_results={total_results}  shown_results=1" in out
-    assert f"{total_results} results · 1 shown · ranked order" in out
+    assert f"{total_results} results · 1 shown · rank order" in out
 
 
 def test_search_cli_skips_count_for_untruncated_page(tmp_path, monkeypatch):
@@ -851,6 +896,9 @@ def test_view_default_json(tmp_path):
     assert "Call me Ishmael" in data["content"]
     assert data["action_hints"]["toc"] == "gutenbit toc 1"
     assert data["action_hints"]["view_first_section"] == "gutenbit view 1 --section 1 --forward 20"
+    assert data["action_hints"]["search"].startswith('gutenbit search "')
+    assert data["action_hints"]["search"].endswith('" --book 1')
+    assert "<query>" not in data["action_hints"]["search"]
 
 
 def test_toc_default_json(tmp_path):
@@ -889,7 +937,9 @@ def test_toc_default_json(tmp_path):
     assert summary["sections"][0]["est_words"] > 0
     assert summary["sections"][0]["opening_line"].endswith("…")
     assert len(summary["sections"][0]["opening_line"]) <= 141
-    assert summary["quick_actions"]["search"] == "gutenbit search <query> --book 1"
+    assert summary["quick_actions"]["search"].startswith('gutenbit search "')
+    assert summary["quick_actions"]["search"].endswith('" --book 1')
+    assert "<query>" not in summary["quick_actions"]["search"]
     assert (
         summary["quick_actions"]["view_first_section"]
         == "gutenbit view 1 --section 1 --forward 20"
@@ -899,6 +949,14 @@ def test_toc_default_json(tmp_path):
         == "gutenbit view 1 --position 0 --forward 20"
     )
     assert summary["quick_actions"]["view_all"] == "gutenbit view 1 --all"
+
+    search_code, search_out, search_err = _run_documented_command(
+        db_path,
+        summary["quick_actions"]["search"],
+    )
+    assert search_code == 0
+    assert search_err == ""
+    assert "Moby Dick" in search_out
 
 
 def test_select_section_opening_line_skips_opening_title_block():
@@ -967,6 +1025,43 @@ def test_toc_json_skips_title_like_opening_block(tmp_path):
         sections[1]["opening_line"]
         == "1:1 The words of the Preacher, the son of David, king in Jerusalem."
     )
+
+
+def test_toc_json_preserves_bracketed_numeric_section_labels(tmp_path):
+    book = BookRecord(
+        id=12,
+        title="Bracketed Episodes",
+        authors="Anon.",
+        language="en",
+        subjects="Test fixtures",
+        locc="PR",
+        bookshelves="",
+        issued="2001-06-01",
+        type="Text",
+    )
+    html = _make_html(
+        "Bracketed Episodes",
+        """
+<p class="toc"><a href="#part01" class="pginternal"><b>— I —</b></a></p>
+<p class="toc"><a href="#chap01" class="pginternal">[ 1 ]</a></p>
+<h2><a id="part01"></a>— I —</h2>
+<h3><a id="chap01"></a>[ 1 ]</h3>
+<p>Stately, plump Buck Mulligan came from the stairhead.</p>
+""",
+    )
+
+    db = Database(tmp_path / "bracketed-sections.db")
+    db._store(book, chunk_html(html))
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "toc", "12", "--json")
+    assert code == 0
+
+    payload = json.loads(out)
+    sections = payload["data"]["toc"]["sections"]
+    assert sections[0]["section"] == "— I —"
+    assert sections[1]["section"] == "— I — / [ 1 ]"
 
 
 def test_view_json_all_for_book(tmp_path):
@@ -1496,7 +1591,7 @@ def test_catalog_fetch_refresh_bypasses_fresh_cache(tmp_path, monkeypatch):
     assert calls["count"] == 2
 
 
-def test_catalog_cli_uses_db_local_cache_dir_and_reports_cache_hit(tmp_path, monkeypatch):
+def test_catalog_cli_uses_project_local_cache_dir_and_reports_cache_hit(tmp_path, monkeypatch):
     record = BookRecord(
         id=777,
         title="Cached Catalog Title",
@@ -1522,8 +1617,14 @@ def test_catalog_cli_uses_db_local_cache_dir_and_reports_cache_hit(tmp_path, mon
         )
 
     monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(_fake_fetch))
+    monkeypatch.chdir(tmp_path)
 
-    code, out, _err = _run_cli(tmp_path / "library.db", "catalog", "--author", "Example")
+    code, out, _err = _run_cli(
+        tmp_path / "nested" / "library.db",
+        "catalog",
+        "--author",
+        "Example",
+    )
     assert code == 0
     assert "Using cached catalog (English text corpus)." in out
     assert seen["refresh"] is False
@@ -1556,9 +1657,10 @@ def test_catalog_cli_refresh_flag_forces_redownload_message(tmp_path, monkeypatc
         )
 
     monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(_fake_fetch))
+    monkeypatch.chdir(tmp_path)
 
     code, out, _err = _run_cli(
-        tmp_path / "library.db",
+        tmp_path / "nested" / "library.db",
         "catalog",
         "--author",
         "Example",
@@ -1567,6 +1669,7 @@ def test_catalog_cli_refresh_flag_forces_redownload_message(tmp_path, monkeypatc
     assert code == 0
     assert "Refreshed catalog from Project Gutenberg (English text corpus)." in out
     assert seen["refresh"] is True
+    assert str(seen["cache_dir"]) == str(tmp_path / ".gutenbit" / "cache")
 
 
 def test_catalog_policy_dedupes_by_primary_author_and_title():
@@ -1787,7 +1890,7 @@ def test_ingest_reprocesses_stale_chunker_version(tmp_path, monkeypatch):
 
     code, out, _err = _run_cli(tmp_path / "stale.db", "add", "889", "--delay", "0")
     assert code == 0
-    assert "reprocessing 889: Needs Refresh (chunker updated)" in out
+    assert "processing 889: Needs Refresh (chunker updated)" in out
     assert ingested_ids == [889]
 
 
@@ -1897,8 +2000,8 @@ def test_books_update_reprocesses_only_stale_books(tmp_path, monkeypatch):
 
     code, out, _err = _run_cli(db_path, "books", "--update", "--delay", "0")
     assert code == 0
-    assert "reprocessing 1: Moby Dick (chunker updated)" in out
-    assert "reprocessing 2:" not in out
+    assert "processing 1: Moby Dick (chunker updated)" in out
+    assert "processing 2:" not in out
     assert seen_downloads == [1]
 
 
@@ -1917,8 +2020,8 @@ def test_books_update_force_reprocesses_all_books(tmp_path, monkeypatch):
 
     code, out, _err = _run_cli(db_path, "books", "--update", "--force", "--delay", "0")
     assert code == 0
-    assert "reprocessing 1: Moby Dick (forced)" in out
-    assert "reprocessing 2: Pride and Prejudice (forced)" in out
+    assert "processing 1: Moby Dick (forced)" in out
+    assert "processing 2: Pride and Prejudice (forced)" in out
     assert seen_downloads == [1, 2]
 
 
@@ -2100,7 +2203,7 @@ def test_search_json_output(tmp_path):
 
     data = payload["data"]
     assert data["query"]["raw"] == "Ishmael"
-    assert data["order"] == "ranked"
+    assert data["order"] == "rank"
     assert data["limit"] == 10
     assert data["filters"]["book_id"] is None
     assert "book" not in data["filters"]
@@ -2124,6 +2227,18 @@ def test_search_json_output(tmp_path):
     assert result["kind"] == "text"
     assert "rank" in result
     assert "score" in result
+
+
+def test_search_cli_rejects_removed_default_order_value(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    removed_order = "rank" + "ed"
+    code, out, err = _run_cli(db_path, "search", "Ishmael", "--order", removed_order)
+    assert code == 2
+    assert out == ""
+    assert f"invalid choice: '{removed_order}'" in err
 
 
 def test_search_json_radius_output(tmp_path):
@@ -2382,6 +2497,53 @@ def test_add_non_json_failure_returns_exit_1(tmp_path, monkeypatch):
     assert "adding 555: Broken Download" in out
     assert "failed 555: Broken Download" in out
     assert "Completed with 1 failure(s)." in out
+
+
+def test_add_non_json_reports_download_source(tmp_path, monkeypatch):
+    record = BookRecord(
+        id=15,
+        title="Moby Dick",
+        authors="Melville, Herman",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    monkeypatch.setattr(
+        "gutenbit.cli.Catalog.fetch",
+        staticmethod(lambda **_kwargs: Catalog([record])),
+    )
+
+    class _FakeResponse:
+        def __init__(self, *, text: str = "", content: bytes = b"") -> None:
+            self.text = text
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+    def _fake_get(url: str, **_kwargs):
+        if url == "https://aleph.pglaf.org/cache/epub/15/pg15-images.html":
+            return _FakeResponse(
+                text=_make_html("Moby Dick", "<h2>CHAPTER 1</h2><p>Call me Ishmael.</p>")
+            )
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr("gutenbit.download.httpx.get", _fake_get)
+
+    code, out, _err = _run_cli(
+        tmp_path / "source.db",
+        "add",
+        "15",
+        "--delay",
+        "0",
+    )
+
+    assert code == 0
+    assert "adding 15: Moby Dick" in out
+    assert "finished 15: Moby Dick (official mirror: aleph.pglaf.org)" in out
 
 
 def test_delete_json_output(tmp_path):

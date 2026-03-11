@@ -8,15 +8,26 @@ import logging
 import re
 import sqlite3
 import sys
-from importlib.metadata import PackageNotFoundError, version as package_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any, TypedDict
 
 from gutenbit.catalog import BookRecord, Catalog, CatalogFetchInfo
-from gutenbit.db import ChunkRecord, Database, TextState, _div_parts_match, _normalize_div_segment
+from gutenbit.db import (
+    ChunkRecord,
+    Database,
+    TextState,
+    _div_parts_match,
+    _normalize_div_segment,
+)
 from gutenbit.display import CliDisplay, format_summary_stats
+from gutenbit.download import describe_download_source, get_last_download_source
 
-DEFAULT_DB = "gutenbit.db"
+STATE_DIR_NAME = ".gutenbit"
+DEFAULT_DB_NAME = "gutenbit.db"
+DEFAULT_DB = f"{STATE_DIR_NAME}/{DEFAULT_DB_NAME}"
+DEFAULT_DOWNLOAD_DELAY = 2.0
 JSON_OPENING_LINE_PREVIEW_CHARS = 140
 DEFAULT_OPENING_CHUNK_COUNT = 3
 DEFAULT_VIEW_FORWARD = 1
@@ -74,11 +85,12 @@ def _display() -> CliDisplay:
     return _DISPLAY_CACHE[2]
 
 
-def _catalog_cache_dir_for_db(db_path: str | Path) -> Path:
-    resolved_db = Path(db_path).expanduser()
-    if not resolved_db.is_absolute():
-        resolved_db = (Path.cwd() / resolved_db).resolve()
-    return resolved_db.parent / ".gutenbit" / "cache"
+def _cli_state_dir() -> Path:
+    return (Path.cwd() / STATE_DIR_NAME).resolve()
+
+
+def _catalog_cache_dir() -> Path:
+    return _cli_state_dir() / "cache"
 
 
 def _catalog_status_message(fetch_info: CatalogFetchInfo | None, *, refresh: bool) -> str:
@@ -96,7 +108,7 @@ def _catalog_status_message(fetch_info: CatalogFetchInfo | None, *, refresh: boo
 
 def _load_catalog(args: argparse.Namespace, *, display: CliDisplay, as_json: bool) -> Catalog:
     catalog = Catalog.fetch(
-        cache_dir=_catalog_cache_dir_for_db(args.db),
+        cache_dir=_catalog_cache_dir(),
         refresh=getattr(args, "refresh", False),
     )
     if not as_json:
@@ -337,6 +349,43 @@ _FTS_OPERATOR_RE = re.compile(
     """,
     re.VERBOSE,
 )
+_SEARCH_QUERY_TOKEN_RE = re.compile(r"[A-Za-z]+(?:['\u2019][A-Za-z]+)*")
+_SEARCH_QUERY_STOPWORDS = frozenset(
+    {
+        "about",
+        "after",
+        "before",
+        "being",
+        "call",
+        "could",
+        "first",
+        "from",
+        "have",
+        "having",
+        "however",
+        "into",
+        "little",
+        "never",
+        "ought",
+        "shall",
+        "should",
+        "since",
+        "some",
+        "there",
+        "these",
+        "those",
+        "through",
+        "under",
+        "until",
+        "upon",
+        "when",
+        "where",
+        "which",
+        "while",
+        "would",
+        "years",
+    }
+)
 
 
 def _has_fts_operators(query: str) -> bool:
@@ -357,6 +406,21 @@ def _safe_fts_query(query: str) -> str:
         return query
     quoted = [_fts_phrase_query(t) for t in tokens]
     return " ".join(quoted)
+
+
+def _quick_action_search_query(rows: list[ChunkRecord]) -> str:
+    """Choose a real in-book token for quick-action search examples."""
+    text_rows = [row.content for row in rows if row.kind == "text"]
+    for content in text_rows:
+        tokens = _SEARCH_QUERY_TOKEN_RE.findall(content)
+        for token in tokens:
+            if len(token) >= 4 and token.casefold() not in _SEARCH_QUERY_STOPWORDS:
+                return token
+    for content in text_rows:
+        tokens = _SEARCH_QUERY_TOKEN_RE.findall(content)
+        if tokens:
+            return tokens[0]
+    return "chapter"
 
 
 def _format_int(value: int) -> str:
@@ -746,17 +810,17 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Project Gutenberg ETL — download, chunk, and search public-domain books.",
         epilog="""\
 typical workflow:
-  1. gutenbit catalog --author Dickens         # find book IDs
-  2. gutenbit add 46 730                       # download & store
-  3. gutenbit books                            # list stored books
-  4. gutenbit toc 46                           # inspect structure / sections
-  5. gutenbit view 46 --section 3 --forward 20  # read part of a book
-  6. gutenbit search "Marley's ghost" --book 46 # find relevant passages
+  1. gutenbit catalog --author "Austen, Jane"                       # find Pride and Prejudice
+  2. gutenbit add 1342                                              # download & store it
+  3. gutenbit toc 1342                                              # inspect numbered sections
+  4. gutenbit view 1342                                             # read the opening
+  5. gutenbit view 1342 --section 1 --forward 5                     # jump into chapter 1
+  6. gutenbit search "truth universally acknowledged" --book 1342 --phrase
 
 chunk kinds:  heading, text
 section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowest heading)
 
-all data is stored in a local SQLite database (default: gutenbit.db).""",
+CLI-managed data is stored under .gutenbit/ (default database: .gutenbit/gutenbit.db).""",
     )
     p.add_argument("--db", default=DEFAULT_DB, help="SQLite database path (default: %(default)s)")
     p.add_argument("--version", action="version", version=f"%(prog)s {_package_version()}")
@@ -809,8 +873,8 @@ examples:
     add.add_argument(
         "--delay",
         type=float,
-        default=1.0,
-        help="seconds between downloads (default: 1.0)",
+        default=DEFAULT_DOWNLOAD_DELAY,
+        help="seconds between downloads (default: %(default)s)",
     )
     add.add_argument("--json", action="store_true", help="output as JSON")
     _add_catalog_cache_args(add)
@@ -864,8 +928,8 @@ output columns:  ID  AUTHORS  TITLE""",
     bk.add_argument(
         "--delay",
         type=float,
-        default=1.0,
-        help="seconds between downloads in update mode (default: 1.0)",
+        default=DEFAULT_DOWNLOAD_DELAY,
+        help="seconds between downloads in update mode (default: %(default)s)",
     )
     bk.add_argument(
         "--force",
@@ -888,34 +952,34 @@ output columns:  ID  AUTHORS  TITLE""",
         description=(
             "Full-text search using SQLite FTS5 with BM25 ranking. "
             "Plain-text queries are auto-escaped so apostrophes, hyphens, "
-            "and other punctuation just work. Use --raw for advanced FTS5 "
+            "and other punctuation are ok. Use --raw for advanced FTS5 "
             "syntax (AND/OR/NOT, prefix*, NEAR, parentheses)."
         ),
         epilog="""\
 examples:
-  gutenbit search "ghost"                                   # simple search
-  gutenbit search "don't stop"                              # punctuation just works
+  gutenbit search "bennet"                                  # simple search
+  gutenbit search "don't stop"                              # punctuation is ok
   gutenbit search "half-hour"                               # hyphens just work
-  gutenbit search "may it be" --phrase                      # exact phrase match
+  gutenbit search "truth universally acknowledged" --phrase # exact phrase match
   gutenbit search "ghost OR spirit" --raw                   # FTS5 boolean query
   gutenbit search "(ghost OR spirit) AND NOT haunt*" --raw  # advanced FTS5
-  gutenbit search "battle" --book 2600                      # restrict to one book
-  gutenbit search "battle" --section "BOOK ONE"             # restrict to a section
-  gutenbit search "STAVE" --book 46 --kind heading          # search headings only
-  gutenbit search "door" --mode first                       # reading order (earliest)
-  gutenbit search "door" --mode last                        # reverse reading order
-  gutenbit search "ghost" --radius 2                        # show surrounding passage
-  gutenbit search "ghost" --limit 3                         # limit the result set
-  gutenbit search "battle" --count                          # just show match count
-  gutenbit search "battle" --json                           # JSON output
+  gutenbit search "bennet" --book 1342                      # restrict to one book
+  gutenbit search "truth universally acknowledged" --book 1342 --section 1 --phrase
+  gutenbit search "chapter" --book 1342 --kind heading      # search headings only
+  gutenbit search "bennet" --book 1342 --order first        # reading order (earliest)
+  gutenbit search "bennet" --book 1342 --order last         # reverse reading order
+  gutenbit search "bennet" --book 1342 --radius 1           # show surrounding passage
+  gutenbit search "bennet" --book 1342 --limit 3            # limit the result set
+  gutenbit search "bennet" --book 1342 --count              # just show match count
+  gutenbit search "bennet" --book 1342 --json               # JSON output
 
 query modes:
   (default)  plain text — punctuation is auto-escaped, words are AND'd
   --phrase   exact phrase — word order and adjacency must match exactly
   --raw      FTS5 syntax — AND, OR, NOT, NEAR(), prefix*, "phrases", (groups)
 
-mode ordering:
-  ranked  BM25 rank, then book, then position (default)
+result order:
+  rank    BM25 rank, then book, then position (default)
   first   book ascending, then position ascending
   last    book descending, then position descending
 
@@ -936,11 +1000,11 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
         help="pass query directly to FTS5 (AND/OR/NOT, prefix*, NEAR, groups)",
     )
     se.add_argument(
-        "--mode",
-        choices=["ranked", "first", "last"],
-        default="ranked",
+        "--order",
+        choices=["rank", "first", "last"],
+        default="rank",
         help=(
-            "search mode: ranked (BM25); "
+            "search result order: rank (BM25); "
             "first (book asc + position asc); "
             "last (book desc + position desc)"
         ),
@@ -1014,17 +1078,17 @@ section numbers in this output can be passed to:
         ),
         epilog="""\
 examples:
-  gutenbit toc 2600                                  # inspect structure first
-  gutenbit view 2600                                 # first structural section + quick actions
-  gutenbit view 2600 --all                           # full reconstructed text
-  gutenbit view 2600 --section 3                     # first passage in section 3
-  gutenbit view 2600 --section 3 --all               # full section
-  gutenbit view 2600 --section 3 --forward 20        # first 20 passages in section 3
-  gutenbit view 2600 --section 3 --radius 2          # surrounding passage around the section start
-  gutenbit view 2600 --position 12345                # passage at position 12345
-  gutenbit view 2600 --position 12345 --forward 20   # continue reading from position
-  gutenbit view 2600 --position 12345 --radius 2     # surrounding passage around position
-  gutenbit view 2600 --section "BOOK I/CHAPTER I" --forward 10 --json
+  gutenbit toc 1342                                  # inspect structure first
+  gutenbit view 1342                                 # first structural section + quick actions
+  gutenbit view 1342 --all                           # full reconstructed text
+  gutenbit view 1342 --section 1                     # first passage in section 1
+  gutenbit view 1342 --section 1 --all               # full section
+  gutenbit view 1342 --section 1 --forward 5         # first 5 passages in section 1
+  gutenbit view 1342 --section 1 --radius 1          # surrounding passage around the section start
+  gutenbit view 1342 --position 1                    # passage at position 1
+  gutenbit view 1342 --position 1 --forward 5        # continue reading from position
+  gutenbit view 1342 --position 1 --radius 1         # surrounding passage around position
+  gutenbit view 1342 --section "Chapter 1" --forward 5 --json
 
 selectors (choose at most one):
   --position <n> | --section <SECTION_SELECTOR>
@@ -1161,7 +1225,7 @@ def _process_books_for_ingest(
         if not as_json:
             if state.has_text:
                 reason = "forced" if force else "chunker updated"
-                display.status(f"  reprocessing {book.id}: {title} ({reason})...")
+                display.status(f"  processing {book.id}: {title} ({reason})...")
             else:
                 display.status(f"  adding {book.id}: {title}...")
 
@@ -1176,6 +1240,18 @@ def _process_books_for_ingest(
 
         if success:
             statuses[book.id] = target_status
+            if not as_json:
+                source = get_last_download_source()
+                source_description = describe_download_source(source)
+                if source:
+                    if source_description:
+                        display.success(
+                            f"  finished {book.id}: {title} ({source_description}: {source})"
+                        )
+                    else:
+                        display.success(f"  finished {book.id}: {title} ({source})")
+                else:
+                    display.success(f"  finished {book.id}: {title}")
         else:
             statuses[book.id] = "failed"
             failure = f"Failed to {failure_action} {book.id}: {title}"
@@ -1331,7 +1407,7 @@ def _cmd_books(args: argparse.Namespace) -> int:
     as_json = getattr(args, "json", False)
     display = _display()
     if not args.update:
-        if args.delay != 1.0:
+        if args.delay != DEFAULT_DOWNLOAD_DELAY:
             return _command_error(
                 "books",
                 "--delay can only be used with --update.",
@@ -1600,7 +1676,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
         return _command_error("search", "Search query must not be empty.", as_json=as_json)
 
     # Query mode: --phrase wraps as exact phrase, --raw passes through to FTS5,
-    # default auto-escapes plain text so punctuation just works.
+    # default auto-escapes plain text so punctuation is ok.
     if args.phrase:
         search_query = _fts_phrase_query(query_text)
         query_mode = "phrase"
@@ -1707,7 +1783,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
                     book_id=search_book_id,
                     kind=search_kind,
                     div_path=search_div_path,
-                    mode=args.mode,
+                    order=args.order,
                     limit=limit,
                 )
                 total_results = search_page.total_results
@@ -1730,7 +1806,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
                         kind=args.kind,
                         section=section_arg,
                     ),
-                    "order": args.mode,
+                    "order": args.order,
                     "limit": limit,
                     **({"radius": radius} if radius is not None else {}),
                 },
@@ -1805,7 +1881,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
                 kind=args.kind,
                 section=section_arg,
             ),
-            "order": args.mode,
+            "order": args.order,
             "limit": limit,
             "total_results": total_results,
             "shown_results": len(result_items),
@@ -1825,7 +1901,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
 
     display.search_results(
         query=args.query,
-        order=args.mode,
+        order=args.order,
         items=result_items,
         total_results=total_results,
     )
@@ -1885,7 +1961,6 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
     est_words = round(total_chars / 5) if total_chars else 0
     read_time = _estimate_read_time(est_words)
 
-    search_cmd = f"gutenbit search <query> --book {book_id}"
     section_rows: list[_SectionRow] = []
     for idx, sec in enumerate(sections, start=1):
         chars = int(sec["chars"])
@@ -1923,6 +1998,10 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
             if section["section"] == opening_section:
                 opening_section_num = section["section_number"]
                 break
+
+    opening_example_rows = opening_rows or chunk_records
+    search_query = _quick_action_search_query(opening_example_rows)
+    search_cmd = f'gutenbit search "{search_query}" --book {book_id}'
 
     first_section_cmd = ""
     if opening_section_num is not None:

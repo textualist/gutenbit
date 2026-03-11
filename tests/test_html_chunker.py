@@ -620,6 +620,22 @@ def test_heading_cleanup_does_not_treat_part_inside_word_as_keyword():
     assert headings[0].content == "CHAPTER XXXVII"
 
 
+def test_bracketed_numeric_heading_keeps_closing_bracket():
+    html = _make_html("""
+    <p class="toc"><a href="#part01" class="pginternal"><b>— I —</b></a></p>
+    <p class="toc"><a href="#chap01" class="pginternal">[ 1 ]</a></p>
+    <h2><a id="part01"></a>— I —</h2>
+    <h3><a id="chap01"></a>[ 1 ]</h3>
+    <p>Stately, plump Buck Mulligan came from the stairhead.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert [h.content for h in headings] == ["— I —", "[ 1 ]"]
+    assert headings[1].div1 == "— I —"
+    assert headings[1].div2 == "[ 1 ]"
+
+
 def test_paragraph_from_img_alt_drop_cap():
     html = _make_html("""
     <p><a href="#ch1" class="pginternal">CHAPTER I</a></p>
@@ -911,6 +927,98 @@ def test_page_number_toc_links_fall_back_to_heading_scan():
 
     assert headings == ["BOOK THE FIRST", "CHAPTER I", "CHAPTER II"]
     assert "Hard Times and Reprinted Pieces [0" not in headings
+
+
+def test_numeric_toc_links_to_heading_keep_story_sections_and_ignore_inline_links():
+    html = _make_html("""
+    <h2>CONTENTS</h2>
+    <table><tbody>
+      <tr><td>I.</td><td>—A SCANDAL IN BOHEMIA</td><td>
+        <a href="#i" class="pginternal">3</a></td></tr>
+      <tr><td>II.</td><td>—THE RED-HEADED LEAGUE</td><td>
+        <a href="#ii" class="pginternal">29</a></td></tr>
+    </tbody></table>
+    <h2>ADVENTURES OF SHERLOCK HOLMES<br><a id="i"></a>
+      <span class="ornate">Adventure I</span><br>A SCANDAL IN BOHEMIA</h2>
+    <p>Story one text with an inline glossary link
+      <a href="#term" class="pginternal">parallel</a>.</p>
+    <p><a id="term"></a>Glossary marker.</p>
+    <h2><a id="ii"></a><span class="ornate">Adventure II</span><br>THE RED-HEADED LEAGUE</h2>
+    <p>Story two text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == [
+        "Adventure I A SCANDAL IN BOHEMIA",
+        "Adventure II THE RED-HEADED LEAGUE",
+    ]
+
+
+def test_dense_chapter_index_paragraph_falls_back_to_heading_scan():
+    html = _make_html("""
+    <p>
+      <a href="#preface" class="pginternal">PREFACE.</a>
+      Chapter:
+      <a href="#ch1" class="pginternal">I.,</a>
+      <a href="#ch2" class="pginternal">II.,</a>
+      <a href="#ch3" class="pginternal">III.</a>
+    </p>
+    <h2><a id="preface"></a>PREFACE</h2>
+    <p>Preface paragraph.</p>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Chapter one paragraph.</p>
+    <h2><a id="ch2"></a>CHAPTER II</h2>
+    <p>Chapter two paragraph.</p>
+    <h2><a id="ch3"></a>CHAPTER III</h2>
+    <p>Chapter three paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == ["CHAPTER I", "CHAPTER II", "CHAPTER III"]
+
+
+def test_toc_ignores_title_like_h3_subheads_inside_chapters():
+    html = _make_html("""
+    <table><tbody>
+      <tr><td><a href="#intro" class="pginternal">THE INTRODUCTION</a></td></tr>
+      <tr><td><a href="#part1" class="pginternal"><b>PART I. OF MAN</b></a></td></tr>
+      <tr><td><a href="#ch1" class="pginternal">CHAPTER I. OF SENSE</a></td></tr>
+      <tr><td><a href="#memory" class="pginternal">Memory</a></td></tr>
+      <tr><td><a href="#dreams" class="pginternal">Dreams</a></td></tr>
+      <tr><td><a href="#ch2" class="pginternal">CHAPTER II. OF IMAGINATION</a></td></tr>
+    </tbody></table>
+    <h2><a id="intro"></a>THE INTRODUCTION</h2>
+    <p>Intro paragraph.</p>
+    <h2><a id="part1"></a>PART I. OF MAN</h2>
+    <h2><a id="ch1"></a>CHAPTER I. OF SENSE</h2>
+    <p>Chapter one paragraph.</p>
+    <h3><a id="memory"></a>Memory</h3>
+    <p>Memory paragraph.</p>
+    <h3><a id="dreams"></a>Dreams</h3>
+    <p>Dreams paragraph.</p>
+    <h2><a id="ch2"></a>CHAPTER II. OF IMAGINATION</h2>
+    <p>Chapter two paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == [
+        "THE INTRODUCTION",
+        "PART I. OF MAN",
+        "CHAPTER I. OF SENSE",
+        "CHAPTER II. OF IMAGINATION",
+    ]
+    assert all(h.content not in {"Memory", "Dreams"} for h in headings)
+
+    memory_paragraph = next(p for p in paragraphs if p.content == "Memory paragraph.")
+    dreams_paragraph = next(p for p in paragraphs if p.content == "Dreams paragraph.")
+    assert memory_paragraph.div1 == "PART I. OF MAN"
+    assert memory_paragraph.div2 == "CHAPTER I. OF SENSE"
+    assert dreams_paragraph.div1 == "PART I. OF MAN"
+    assert dreams_paragraph.div2 == "CHAPTER I. OF SENSE"
 
 
 # ------------------------------------------------------------------
