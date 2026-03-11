@@ -185,13 +185,26 @@ def format_search_footer_stats(
 
 
 def _section_summary_stats(overview: dict[str, Any]) -> list[str]:
-    return format_summary_stats(
-        sections=int(overview["sections_total"]),
-        paragraphs=int(overview["paragraphs_total"]),
-        words=int(overview["est_words"]),
-        chars=int(overview["chars_total"]),
-        read=str(overview["est_read_time"]),
+    sections_total = int(overview["sections_total"])
+    sections_shown = int(overview.get("sections_shown", sections_total))
+    stats: list[str] = []
+    if sections_shown != sections_total:
+        stats.append(
+            format_search_summary_count(
+                shown_results=sections_shown,
+                total_results=sections_total,
+            )
+        )
+    stats.extend(
+        format_summary_stats(
+            sections=sections_total,
+            paragraphs=int(overview["paragraphs_total"]),
+            words=int(overview["est_words"]),
+            chars=int(overview["chars_total"]),
+            read=str(overview["est_read_time"]),
+        )
     )
+    return stats
 
 
 def _section_meta_bits(payload: dict[str, Any]) -> list[tuple[str, Any]]:

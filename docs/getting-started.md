@@ -63,7 +63,13 @@ View the table of contents with numbered sections:
 gutenbit toc 1342
 ```
 
-Each section number can be used with `view --section` to jump directly to that part of the book.
+By default, `toc` shows two heading levels. Use `--expand 1`, `--expand 3`, or `--expand all` to collapse further or reveal the full nested structure.
+
+```bash
+gutenbit toc 100 --expand all
+```
+
+Each section number can be used with `view --section` to jump directly to that part of the book. When deeper levels are collapsed, the visible lowest-level rows include the stats for the hidden descendants beneath them.
 
 ### Read text
 

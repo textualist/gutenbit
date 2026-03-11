@@ -29,7 +29,7 @@ uv add git+https://github.com/keinan1/gutenbit
 ```bash
 gutenbit catalog --author "Austen, Jane"                              # find Pride and Prejudice
 gutenbit add 1342                                                     # download and store it
-gutenbit toc 1342                                                     # inspect numbered sections
+gutenbit toc 1342                                                     # inspect numbered sections (default: 2 levels)
 gutenbit view 1342                                                    # read the opening
 gutenbit view 1342 --section 1 --forward 5                            # jump into chapter 1
 gutenbit search "truth universally acknowledged" --book 1342 --phrase

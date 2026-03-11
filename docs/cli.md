@@ -182,19 +182,22 @@ Use `--phrase` to auto-wrap the entire query as an exact phrase without manual q
 
 ## toc
 
-Show the structural table of contents for a stored book, with numbered sections.
+Show the structural table of contents for a stored book, with numbered sections. By default the table shows two heading levels; use `--expand` to collapse further or reveal all nested levels.
 
 ```bash
 gutenbit toc 1342
+gutenbit toc 100 --expand 1
+gutenbit toc 100 --expand all
 gutenbit toc 2600 --json
 ```
 
 | Flag | Description |
 |------|-------------|
 | `BOOK_ID` | Project Gutenberg book ID (positional) |
+| `--expand {1,2,3,4,all}` | Show heading levels up to this depth (default: `2`; `all` shows every stored level) |
 | `--json` | Output as JSON |
 
-Section numbers in the output can be passed to `view --section` or `search --section`.
+Collapsed rows roll hidden descendants into the lowest shown level. For example, with `--expand 2`, visible act rows include the stats for their hidden scenes. Section numbers remain stable and can be passed to `view --section` or `search --section`.
 
 ## view
 

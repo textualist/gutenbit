@@ -955,12 +955,14 @@ def test_toc_default_json(tmp_path):
 
     data = payload["data"]
     assert data["book_id"] == 1
+    assert data["expand"] == "2"
     assert "book" not in data
     summary = data["toc"]
     assert summary["book"]["id"] == 1
     assert summary["book"]["title"] == "Moby Dick"
     assert summary["book"]["authors"] == "Melville, Herman"
     assert summary["overview"]["sections_total"] == 2
+    assert summary["overview"]["sections_shown"] == 2
     assert summary["overview"]["chunk_counts"]["heading"] == 2
     assert summary["sections"][0]["section"] == "CHAPTER 1"
     assert list(summary["sections"][0].keys()) == [
@@ -994,6 +996,102 @@ def test_toc_default_json(tmp_path):
     assert search_code == 0
     assert search_err == ""
     assert "Moby Dick" in search_out
+
+
+def test_toc_default_expand_collapses_nested_sections_and_rolls_up_hidden_stats(tmp_path):
+    db = _make_nested_sections_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "toc", "13", "--json")
+    assert code == 0
+
+    payload = json.loads(out)
+    assert payload["data"]["expand"] == "2"
+    summary = payload["data"]["toc"]
+    assert summary["overview"]["sections_total"] == 9
+    assert summary["overview"]["sections_shown"] == 5
+    assert [section["section_number"] for section in summary["sections"]] == [1, 2, 5, 7, 8]
+    assert [section["section"] for section in summary["sections"]] == [
+        "PLAY ONE",
+        "PLAY ONE / ACT I",
+        "PLAY ONE / ACT II",
+        "PLAY TWO",
+        "PLAY TWO / ACT I",
+    ]
+
+    play_one = summary["sections"][0]
+    act_one = summary["sections"][1]
+    act_two = summary["sections"][2]
+    play_two = summary["sections"][3]
+    play_two_act_one = summary["sections"][4]
+
+    assert play_one["paras"] == 1
+    assert play_one["opening_line"] == "Play intro."
+
+    assert act_one["paras"] == 3
+    assert act_one["est_words"] > 0
+    assert act_one["opening_line"] == "Scene one first."
+
+    assert act_two["paras"] == 1
+    assert act_two["opening_line"] == "Act two scene one."
+
+    assert play_two["paras"] == 0
+    assert play_two["opening_line"] == ""
+
+    assert play_two_act_one["paras"] == 1
+    assert play_two_act_one["opening_line"] == "Second play scene one."
+
+
+def test_toc_expand_one_rolls_entire_subtree_to_top_level_rows(tmp_path):
+    db = _make_nested_sections_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "toc", "13", "--expand", "1", "--json")
+    assert code == 0
+
+    payload = json.loads(out)
+    assert payload["data"]["expand"] == "1"
+    summary = payload["data"]["toc"]
+    assert summary["overview"]["sections_total"] == 9
+    assert summary["overview"]["sections_shown"] == 2
+    assert [section["section_number"] for section in summary["sections"]] == [1, 7]
+    assert [section["section"] for section in summary["sections"]] == ["PLAY ONE", "PLAY TWO"]
+    assert summary["sections"][0]["paras"] == 5
+    assert summary["sections"][0]["opening_line"] == "Play intro."
+    assert summary["sections"][1]["paras"] == 1
+    assert summary["sections"][1]["opening_line"] == "Second play scene one."
+
+
+def test_toc_expand_all_keeps_full_nested_rows_and_direct_stats(tmp_path):
+    db = _make_nested_sections_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "toc", "13", "--expand", "all", "--json")
+    assert code == 0
+
+    payload = json.loads(out)
+    assert payload["data"]["expand"] == "all"
+    summary = payload["data"]["toc"]
+    assert summary["overview"]["sections_total"] == 9
+    assert summary["overview"]["sections_shown"] == 9
+    assert [section["section_number"] for section in summary["sections"]] == list(range(1, 10))
+
+    play_one = summary["sections"][0]
+    act_one = summary["sections"][1]
+    scene_one = summary["sections"][2]
+    scene_two = summary["sections"][3]
+
+    assert play_one["paras"] == 1
+    assert play_one["opening_line"] == "Play intro."
+    assert act_one["paras"] == 0
+    assert act_one["opening_line"] == ""
+    assert scene_one["paras"] == 2
+    assert scene_one["opening_line"] == "Scene one first."
+    assert scene_two["paras"] == 1
+    assert scene_two["opening_line"] == "Scene two only."
 
 
 def test_select_section_opening_line_skips_opening_title_block():

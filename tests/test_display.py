@@ -9,7 +9,7 @@ from gutenbit.display import (
     format_search_summary_count,
     format_summary_stats,
 )
-from tests.test_search import _make_db
+from tests.test_search import _make_db, _make_nested_sections_db
 
 
 def test_format_summary_stats_uses_consistent_ordering():
@@ -206,6 +206,18 @@ def test_rich_section_summary_uses_simple_section_layout(tmp_path):
     assert 'gutenbit search "Ishmael" --book 1' in rendered
     assert "gutenbit view 1 --position 0 --forward 20" in rendered
     assert "gutenbit view 1 --all" in rendered
+
+
+def test_rich_section_summary_shows_visible_section_count_when_collapsed(tmp_path):
+    db = _make_nested_sections_db(tmp_path)
+    summary = _build_section_summary(db, 13, expand_depth=2)
+    assert summary is not None
+    out = StringIO()
+
+    CliDisplay(stdout=out, interactive=True, color=False, width=100).section_summary(summary)
+
+    rendered = out.getvalue()
+    assert "5 shown · 9 sections" in rendered
 
 
 def test_rich_section_summary_indents_long_nested_section_paths(tmp_path):

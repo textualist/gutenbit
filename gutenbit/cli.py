@@ -11,7 +11,7 @@ import sys
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from gutenbit.catalog import BookRecord, Catalog, CatalogFetchInfo
 from gutenbit.db import (
@@ -28,6 +28,7 @@ STATE_DIR_NAME = ".gutenbit"
 DEFAULT_DB_NAME = "gutenbit.db"
 DEFAULT_DB = f"{STATE_DIR_NAME}/{DEFAULT_DB_NAME}"
 DEFAULT_DOWNLOAD_DELAY = 2.0
+DEFAULT_TOC_EXPAND = "2"
 JSON_OPENING_LINE_PREVIEW_CHARS = 140
 DEFAULT_OPENING_CHUNK_COUNT = 3
 DEFAULT_VIEW_FORWARD = 1
@@ -157,6 +158,7 @@ class _OverviewSummary(TypedDict):
     chunks_total: int
     chunk_counts: _ChunkCounts
     sections_total: int
+    sections_shown: int
     paragraphs_total: int
     chars_total: int
     est_words: int
@@ -446,6 +448,14 @@ def _json_search_filters(
 
 def _section_path(*levels: str) -> str:
     return " / ".join(level for level in levels if level) or "(unsectioned opening)"
+
+
+def _section_path_parts(section: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in section.split(" / ") if part.strip())
+
+
+def _section_depth(section: str) -> int:
+    return len(_section_path_parts(section)) or 1
 
 
 def _section_selector_parts(raw: str) -> list[str]:
@@ -799,7 +809,11 @@ def _package_version() -> str:
             from gutenbit import __version__
         except ImportError:
             return "0+unknown"
-        return __version__
+            return __version__
+
+
+def _toc_expand_depth(expand: str) -> int:
+    return 4 if expand == "all" else int(expand)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -1051,17 +1065,25 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
         help="show structural table of contents for a stored book",
         description=(
             "Show a compact structural summary of one stored book, including "
-            "section numbering for ergonomic section selection in `view`."
+            "section numbering for ergonomic section selection in `view`. "
+            "Use --expand to control how many heading levels the table shows."
         ),
         epilog="""\
 examples:
   gutenbit toc 2600
+  gutenbit toc 100 --expand all
   gutenbit toc 2600 --json
 
 section numbers in this output can be passed to:
   gutenbit view 2600 --section <NUMBER>""",
     )
     tc.add_argument("book", type=int, help="Project Gutenberg book ID")
+    tc.add_argument(
+        "--expand",
+        choices=["1", "2", "3", "4", "all"],
+        default=DEFAULT_TOC_EXPAND,
+        help="show heading levels up to this depth (default: 2; use 'all' for every level)",
+    )
     tc.add_argument("--json", action="store_true", help="output as JSON")
     _add_global_args(tc)
 
@@ -1936,7 +1958,65 @@ def _cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
-def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None:
+def _collapse_section_rows(
+    section_rows: list[_SectionRow], *, expand_depth: int
+) -> list[_SectionRow]:
+    if expand_depth >= 4:
+        return [cast(_SectionRow, dict(section)) for section in section_rows]
+
+    visible_rows: list[_SectionRow] = []
+    visible_parts: list[tuple[str, ...]] = []
+    for section in section_rows:
+        row = cast(_SectionRow, dict(section))
+        parts = _section_path_parts(str(row["section"]))
+        if len(parts) <= expand_depth:
+            visible_rows.append(row)
+            visible_parts.append(parts)
+            continue
+
+        for idx in range(len(visible_rows) - 1, -1, -1):
+            ancestor_parts = visible_parts[idx]
+            if len(ancestor_parts) > len(parts) or parts[: len(ancestor_parts)] != ancestor_parts:
+                continue
+            visible_rows[idx]["paras"] = int(visible_rows[idx]["paras"]) + int(row["paras"])
+            visible_rows[idx]["chars"] = int(visible_rows[idx]["chars"]) + int(row["chars"])
+            if (
+                not str(visible_rows[idx]["opening_line"]).strip()
+                and str(row["opening_line"]).strip()
+            ):
+                visible_rows[idx]["opening_line"] = str(row["opening_line"])
+            break
+
+    for row in visible_rows:
+        chars = int(row["chars"])
+        words = round(chars / 5) if chars else 0
+        row["est_words"] = words
+        row["est_read"] = _estimate_read_time(words)
+    return visible_rows
+
+
+def _visible_section_number(
+    section_rows: list[_SectionRow],
+    *,
+    target_section: str,
+) -> int | None:
+    target_parts = _section_path_parts(target_section)
+    best_match: tuple[int, int] | None = None
+    for row in section_rows:
+        parts = _section_path_parts(str(row["section"]))
+        if not parts or len(parts) > len(target_parts):
+            continue
+        if target_parts[: len(parts)] != parts:
+            continue
+        candidate = (len(parts), int(row["section_number"]))
+        if best_match is None or candidate[0] > best_match[0]:
+            best_match = candidate
+    return best_match[1] if best_match is not None else None
+
+
+def _build_section_summary(
+    db: Database, book_id: int, *, expand_depth: int | None = None
+) -> _SectionSummary | None:
     chunk_records = db.chunk_records(book_id)
     if not chunk_records:
         return None
@@ -1989,12 +2069,12 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
     est_words = round(total_chars / 5) if total_chars else 0
     read_time = _estimate_read_time(est_words)
 
-    section_rows: list[_SectionRow] = []
+    raw_section_rows: list[_SectionRow] = []
     for idx, sec in enumerate(sections, start=1):
         chars = int(sec["chars"])
         est_words_for_section = round(chars / 5)
         opening_line = _select_section_opening_line(sec["opening_candidates"])
-        section_rows.append(
+        raw_section_rows.append(
             {
                 "section_number": idx,
                 "section": str(sec["path"]) or str(sec["heading"]),
@@ -2011,6 +2091,15 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
             }
         )
 
+    visible_section_rows: list[_SectionRow]
+    if expand_depth is not None:
+        visible_section_rows = _collapse_section_rows(
+            raw_section_rows,
+            expand_depth=expand_depth,
+        )
+    else:
+        visible_section_rows = [cast(_SectionRow, dict(section)) for section in raw_section_rows]
+
     opening_section_num: int | None = None
     opening_position: int | None = None
     opening_rows = _opening_rows(db, book_id, 1)
@@ -2022,10 +2111,10 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
             opening_rows[0].div3,
             opening_rows[0].div4,
         )
-        for section in section_rows:
-            if section["section"] == opening_section:
-                opening_section_num = section["section_number"]
-                break
+        opening_section_num = _visible_section_number(
+            visible_section_rows,
+            target_section=opening_section,
+        )
 
     opening_example_rows = opening_rows or chunk_records
     search_query = _quick_action_search_query(opening_example_rows)
@@ -2041,7 +2130,7 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
 
     view_all_cmd = f"gutenbit view {book_id} --all"
 
-    return {
+    summary: _SectionSummary = {
         "book": {
             "id": book_id,
             "title": title,
@@ -2057,12 +2146,13 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
             "chunks_total": total_chunks,
             "chunk_counts": kind_counts,
             "sections_total": total_sections,
+            "sections_shown": len(visible_section_rows),
             "paragraphs_total": total_paragraphs,
             "chars_total": total_chars,
             "est_words": est_words,
             "est_read_time": read_time,
         },
-        "sections": section_rows,
+        "sections": visible_section_rows,
         "quick_actions": {
             "search": search_cmd,
             "view_first_section": first_section_cmd,
@@ -2070,6 +2160,7 @@ def _build_section_summary(db: Database, book_id: int) -> _SectionSummary | None
             "view_all": view_all_cmd,
         },
     }
+    return summary
 
 
 def _section_summary_json_payload(summary: _SectionSummary) -> dict[str, Any]:
@@ -2091,8 +2182,8 @@ def _section_summary_json_payload(summary: _SectionSummary) -> dict[str, Any]:
     }
 
 
-def _render_section_summary(db: Database, book_id: int) -> int:
-    summary = _build_section_summary(db, book_id)
+def _render_section_summary(db: Database, book_id: int, *, expand_depth: int) -> int:
+    summary = _build_section_summary(db, book_id, expand_depth=expand_depth)
     if summary is None:
         _display().error(_no_chunks_display_message(db, book_id))
         return 1
@@ -2130,9 +2221,10 @@ def _view_action_hints(book_id: int, summary: _SectionSummary | None) -> dict[st
 
 def _cmd_toc(args: argparse.Namespace) -> int:
     as_json = getattr(args, "json", False)
+    expand_depth = _toc_expand_depth(args.expand)
     with Database(args.db) as db:
         if as_json:
-            summary = _build_section_summary(db, args.book)
+            summary = _build_section_summary(db, args.book, expand_depth=expand_depth)
             if summary is None:
                 return _command_error(
                     "toc",
@@ -2145,11 +2237,12 @@ def _cmd_toc(args: argparse.Namespace) -> int:
                 ok=True,
                 data={
                     JSON_BOOK_ID_KEY: args.book,
+                    "expand": args.expand,
                     "toc": _section_summary_json_payload(summary),
                 },
             )
             return 0
-        return _render_section_summary(db, args.book)
+        return _render_section_summary(db, args.book, expand_depth=expand_depth)
 
 
 def _cmd_view(args: argparse.Namespace) -> int:
