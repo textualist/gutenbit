@@ -191,6 +191,6 @@ text = db.text(1342)
 print(text[:500])
 ```
 
-## What just happened
+## How it works
 
 The pipeline has four stages. The catalog provides book metadata and IDs. The downloader prefers official mirror HTML and falls back to the main site's HTML zip when needed. The chunker parses the HTML using its table of contents as a structural map, turning each paragraph into a discrete chunk with a position and a place in the book's heading hierarchy. The database stores chunks in SQLite with FTS5 indexing for fast full-text search with BM25 ranking.
