@@ -502,8 +502,7 @@ def test_pre_blocks_are_collected_as_text_chunks():
     assert [paragraph.div1 for paragraph in paragraphs] == ["BOOK II", "BOOK II"]
     assert paragraphs[0].content == "Starting from Paumanok"
     assert (
-        paragraphs[1].content
-        == "Starting from fish-shape Paumanok where I was born,\n"
+        paragraphs[1].content == "Starting from fish-shape Paumanok where I was born,\n"
         "  Well-begotten, and rais’d by a perfect mother,"
     )
 
