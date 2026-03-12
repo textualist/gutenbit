@@ -825,7 +825,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="gutenbit",
         formatter_class=fmt,
-        description="Project Gutenberg ETL — download, chunk, and search public-domain books.",
+        description=(
+            "Fast local search across public-domain literary works. "
+            "Find, browse, and search books from your terminal."
+        ),
         epilog="""\
 typical workflow:
   1. gutenbit catalog --author "Austen, Jane"                       # find Pride and Prejudice
@@ -835,8 +838,8 @@ typical workflow:
   5. gutenbit view 1342 --section 1 --forward 5                     # jump into chapter 1
   6. gutenbit search "truth universally acknowledged" --book 1342 --phrase
 
-chunk kinds:  heading, text
-section hierarchy:  level1 > level2 > level3 > level4  (compacted from shallowest heading)
+Gutenbit is an open-source project not affiliated with Project Gutenberg.
+It is for individual downloads, not bulk downloading.
 
 CLI-managed data is stored under .gutenbit/ (default database: .gutenbit/gutenbit.db).""",
     )
