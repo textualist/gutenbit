@@ -64,10 +64,10 @@ gutenbit add 2600 --delay 2.0
 |------|-------------|
 | `BOOK_IDS` | One or more Project Gutenberg IDs (positional) |
 | `--delay SECONDS` | Pause between downloads (default: 2.0) |
-| `--refresh` | Ignore the local catalog cache and redownload it now |
+| `--refresh` | Ignore the local catalog cache, redownload it now, and reprocess matching stored books |
 | `--json` | Output as JSON |
 
-Books already stored at the current chunker version are skipped. IDs that map to a different canonical edition are remapped automatically.
+Books already stored at the current chunker version are skipped unless you pass `--refresh`, which also refreshes the catalog cache before reprocessing the requested book IDs. IDs that map to a different canonical edition are remapped automatically.
 
 ## books
 
