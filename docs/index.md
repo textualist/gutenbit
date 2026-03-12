@@ -67,8 +67,8 @@ if book is not None:
 ## Next steps
 
 - [Getting Started](getting-started.md) walks through a complete workflow.
-- [Python API](python-api.md) covers the library in full.
 - [CLI](cli.md) documents every subcommand and flag.
+- [Python API](python-api.md) covers the library in full.
 - [Concepts](concepts.md) explains how chunking, divisions, and search work.
 - [API Reference](reference/index.md) has auto-generated module documentation.
 

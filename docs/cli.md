@@ -2,6 +2,8 @@
 
 The `gutenbit` command-line tool provides seven subcommands that follow a natural workflow: find books, add them, explore their structure, read text, and search.
 
+Start with `gutenbit --help` for the workflow overview, then use `gutenbit COMMAND --help` for command-specific flags and examples.
+
 ## Installation
 
 gutenbit is not published on PyPI yet, so start by running the CLI directly from GitHub:

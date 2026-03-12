@@ -61,6 +61,21 @@ def test_readme_orders_cli_then_python_then_documentation():
     assert readme.index("## Documentation") < readme.index("## Project Gutenberg Access")
 
 
+def test_readme_documentation_links_order_cli_before_python_api():
+    readme = (REPO_ROOT / "README.md").read_text()
+    assert readme.index("[CLI](docs/cli.md)") < readme.index("[Python API](docs/python-api.md)")
+
+
+def test_docs_home_next_steps_order_cli_before_python_api():
+    home = (REPO_ROOT / "docs" / "index.md").read_text()
+    assert home.index("- [CLI](cli.md)") < home.index("- [Python API](python-api.md)")
+
+
+def test_mkdocs_nav_orders_cli_before_python_api():
+    mkdocs = (REPO_ROOT / "mkdocs.yml").read_text()
+    assert mkdocs.index("- CLI: cli.md") < mkdocs.index("- Python API: python-api.md")
+
+
 @pytest.mark.parametrize("command", DOCUMENTED_COMMANDS)
 def test_documented_cli_commands_parse(command: str):
     parser = _build_parser()
