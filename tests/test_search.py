@@ -12,6 +12,7 @@ import zipfile
 import httpx
 import pytest
 
+from gutenbit._http import gutenberg_request_headers
 from gutenbit.catalog import (
     BookRecord,
     Catalog,
@@ -1656,10 +1657,13 @@ def test_catalog_fetch_enforces_english_text_policy_and_canonical_ids(tmp_path, 
 
     compressed = gzip.compress(csv_payload.encode("utf-8"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
-    monkeypatch.setattr(
-        "gutenbit.catalog.httpx.get",
-        lambda *_args, **_kwargs: _FakeResponse(compressed),
-    )
+    calls: list[dict[str, object]] = []
+
+    def _fake_get(*_args, **kwargs: object) -> _FakeResponse:
+        calls.append(kwargs)
+        return _FakeResponse(compressed)
+
+    monkeypatch.setattr("gutenbit.catalog.httpx.get", _fake_get)
 
     catalog = Catalog.fetch()
     assert [book.id for book in catalog.records] == [100, 200]
@@ -1672,6 +1676,13 @@ def test_catalog_fetch_enforces_english_text_policy_and_canonical_ids(tmp_path, 
     assert alias.id == 100
     assert catalog.get(300) is None
     assert catalog.get(400) is None
+    assert calls == [
+        {
+            "follow_redirects": True,
+            "headers": gutenberg_request_headers(),
+            "timeout": 60.0,
+        }
+    ]
 
 
 def test_catalog_fetch_uses_fresh_cache_without_network(tmp_path, monkeypatch):

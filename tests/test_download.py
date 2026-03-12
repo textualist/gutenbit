@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import io
 import zipfile
+from typing import cast
 
 import httpx
 import pytest
 
+from gutenbit._http import gutenberg_request_headers
 from gutenbit.download import (
     ALEPH_PGLAF_HOST,
     GUTENBERG_PGLAF_HOST,
@@ -58,11 +60,11 @@ def test_mirror_html_url_construction_examples():
 
 
 def test_download_html_prefers_aleph_pglaf_html(monkeypatch):
-    calls: list[str] = []
+    calls: list[tuple[str, dict[str, object]]] = []
     aleph_url = _mirror_html_url(ALEPH_PGLAF_HOST, 1342)
 
-    def _fake_get(url: str, **_kwargs: object) -> _FakeResponse:
-        calls.append(url)
+    def _fake_get(url: str, **kwargs: object) -> _FakeResponse:
+        calls.append((url, kwargs))
         if url == aleph_url:
             return _FakeResponse(text="<html>Aleph PGLAF</html>")
         raise AssertionError(f"Unexpected URL: {url}")
@@ -72,17 +74,26 @@ def test_download_html_prefers_aleph_pglaf_html(monkeypatch):
     html = download_html(1342)
 
     assert html == "<html>Aleph PGLAF</html>"
-    assert calls == [aleph_url]
+    assert calls == [
+        (
+            aleph_url,
+            {
+                "follow_redirects": True,
+                "headers": gutenberg_request_headers(),
+                "timeout": MIRROR_TIMEOUT,
+            },
+        )
+    ]
     assert get_last_download_source() == ALEPH_PGLAF_HOST
 
 
 def test_download_html_falls_back_to_gutenberg_pglaf_html(monkeypatch):
-    calls: list[str] = []
+    calls: list[tuple[str, dict[str, object]]] = []
     aleph_url = _mirror_html_url(ALEPH_PGLAF_HOST, 84)
     gutenberg_url = _mirror_html_url(GUTENBERG_PGLAF_HOST, 84)
 
-    def _fake_get(url: str, **_kwargs: object) -> _FakeResponse:
-        calls.append(url)
+    def _fake_get(url: str, **kwargs: object) -> _FakeResponse:
+        calls.append((url, kwargs))
         if url == aleph_url:
             raise _http_status_error(url, 404)
         if url == gutenberg_url:
@@ -94,18 +105,35 @@ def test_download_html_falls_back_to_gutenberg_pglaf_html(monkeypatch):
     html = download_html(84)
 
     assert html == "<html>Gutenberg PGLAF</html>"
-    assert calls == [aleph_url, gutenberg_url]
+    assert calls == [
+        (
+            aleph_url,
+            {
+                "follow_redirects": True,
+                "headers": gutenberg_request_headers(),
+                "timeout": MIRROR_TIMEOUT,
+            },
+        ),
+        (
+            gutenberg_url,
+            {
+                "follow_redirects": True,
+                "headers": gutenberg_request_headers(),
+                "timeout": MIRROR_TIMEOUT,
+            },
+        ),
+    ]
     assert get_last_download_source() == GUTENBERG_PGLAF_HOST
 
 
 def test_download_html_falls_back_to_main_site_zip(monkeypatch):
-    calls: list[str] = []
+    calls: list[tuple[str, dict[str, object]]] = []
     aleph_url = _mirror_html_url(ALEPH_PGLAF_HOST, 84)
     gutenberg_url = _mirror_html_url(GUTENBERG_PGLAF_HOST, 84)
     main_site_url = _main_site_html_zip_url(84)
 
-    def _fake_get(url: str, **_kwargs: object) -> _FakeResponse:
-        calls.append(url)
+    def _fake_get(url: str, **kwargs: object) -> _FakeResponse:
+        calls.append((url, kwargs))
         if url in {aleph_url, gutenberg_url}:
             raise _http_status_error(url, 404)
         if url == main_site_url:
@@ -117,12 +145,38 @@ def test_download_html_falls_back_to_main_site_zip(monkeypatch):
     html = download_html(84)
 
     assert html == "<html>Main ZIP</html>"
-    assert calls == [aleph_url, gutenberg_url, main_site_url]
+    assert calls == [
+        (
+            aleph_url,
+            {
+                "follow_redirects": True,
+                "headers": gutenberg_request_headers(),
+                "timeout": MIRROR_TIMEOUT,
+            },
+        ),
+        (
+            gutenberg_url,
+            {
+                "follow_redirects": True,
+                "headers": gutenberg_request_headers(),
+                "timeout": MIRROR_TIMEOUT,
+            },
+        ),
+        (
+            main_site_url,
+            {
+                "follow_redirects": True,
+                "headers": gutenberg_request_headers(),
+                "timeout": MAIN_SITE_ZIP_TIMEOUT,
+            },
+        ),
+    ]
     assert get_last_download_source() == "www.gutenberg.org"
 
 
 def test_download_html_uses_short_mirror_timeouts_before_main_zip(monkeypatch):
     timeouts: dict[str, httpx.Timeout] = {}
+    headers: dict[str, dict[str, str]] = {}
     aleph_url = _mirror_html_url(ALEPH_PGLAF_HOST, 84)
     gutenberg_url = _mirror_html_url(GUTENBERG_PGLAF_HOST, 84)
     main_site_url = _main_site_html_zip_url(84)
@@ -131,6 +185,9 @@ def test_download_html_uses_short_mirror_timeouts_before_main_zip(monkeypatch):
         timeout = kwargs.get("timeout")
         assert isinstance(timeout, httpx.Timeout)
         timeouts[url] = timeout
+        request_headers = kwargs.get("headers")
+        assert isinstance(request_headers, dict)
+        headers[url] = cast(dict[str, str], request_headers)
         if url in {aleph_url, gutenberg_url}:
             raise _http_status_error(url, 404)
         if url == main_site_url:
@@ -145,6 +202,9 @@ def test_download_html_uses_short_mirror_timeouts_before_main_zip(monkeypatch):
     assert timeouts[aleph_url] == MIRROR_TIMEOUT
     assert timeouts[gutenberg_url] == MIRROR_TIMEOUT
     assert timeouts[main_site_url] == MAIN_SITE_ZIP_TIMEOUT
+    assert headers[aleph_url] == gutenberg_request_headers()
+    assert headers[gutenberg_url] == gutenberg_request_headers()
+    assert headers[main_site_url] == gutenberg_request_headers()
 
 
 def test_download_html_raises_when_zip_has_no_html(monkeypatch):
@@ -164,3 +224,10 @@ def test_download_html_raises_when_zip_has_no_html(monkeypatch):
     with pytest.raises(ValueError, match="No HTML file found in zip for book 10"):
         download_html(10)
     assert get_last_download_source() is None
+
+
+def test_gutenberg_request_headers_identify_the_project():
+    headers = gutenberg_request_headers()
+
+    assert headers["User-Agent"].startswith("gutenbit/")
+    assert "https://gutenbit.textualist.org" in headers["User-Agent"]
