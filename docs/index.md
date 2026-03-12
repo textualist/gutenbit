@@ -12,26 +12,34 @@
 
 ## Install
 
-gutenbit is not published on PyPI yet, so the quickest way to try it is to run it directly from the GitHub repo:
+Install the latest stable release from PyPI:
+
+```bash
+uv tool install gutenbit
+```
+
+Then run `gutenbit --help`. For one-off use without a persistent install:
+
+```bash
+uvx gutenbit --help
+```
+
+gutenbit stores its database and catalog cache in a `.gutenbit/` folder. Stable releases are published to PyPI from `vX.Y.Z` tags, while installs from the default branch remain development builds.
+
+To try an unreleased development build from GitHub instead:
 
 ```bash
 uvx --from git+https://github.com/textualist/gutenbit gutenbit --help
-```
-
-If you want to keep it installed for repeated use:
-
-```bash
 uv tool install git+https://github.com/textualist/gutenbit
 ```
 
-Then run `gutenbit --help`. Remove it later with `uv tool uninstall gutenbit`.
-gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
-Installs from the default branch are development builds. Stable releases are the tagged GitHub releases in the `vX.Y.Z` format.
-To use `gutenbit` as a project dependency instead of a standalone CLI tool:
+To use `gutenbit` as a project dependency instead of a standalone CLI tool, prefer PyPI:
 
 ```bash
-uv add git+https://github.com/textualist/gutenbit
+uv add gutenbit
 ```
+
+Use `uv add git+https://github.com/textualist/gutenbit` only when you specifically need an unreleased branch or commit.
 
 ## CLI
 

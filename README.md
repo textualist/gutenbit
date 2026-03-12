@@ -4,26 +4,34 @@ Fast local search across public-domain literary works. Find, browse, and search 
 
 ## Install
 
-gutenbit is not published on PyPI yet, so the quickest way to try it is to run it directly from the GitHub repo:
+Install the latest stable release from PyPI:
+
+```bash
+uv tool install gutenbit
+```
+
+Then run `gutenbit --help`. For one-off use without a persistent install:
+
+```bash
+uvx gutenbit --help
+```
+
+gutenbit stores its database and catalog cache in a `.gutenbit/` folder. Stable releases are published to PyPI from `vX.Y.Z` tags, while installs from the default branch remain development builds.
+
+To try an unreleased development build from GitHub instead:
 
 ```bash
 uvx --from git+https://github.com/textualist/gutenbit gutenbit --help
-```
-
-If you want to keep it installed for repeated use:
-
-```bash
 uv tool install git+https://github.com/textualist/gutenbit
 ```
 
-Then run `gutenbit --help`. Remove it later with `uv tool uninstall gutenbit`.
-gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
-Installs from the default branch are development builds. Stable releases are the tagged GitHub releases in the `vX.Y.Z` format.
-To use `gutenbit` as a project dependency instead of a standalone CLI tool:
+To use `gutenbit` as a project dependency instead of a standalone CLI tool, prefer PyPI:
 
 ```bash
-uv add git+https://github.com/textualist/gutenbit
+uv add gutenbit
 ```
+
+Use `uv add git+https://github.com/textualist/gutenbit` only when you specifically need an unreleased branch or commit.
 
 ## CLI
 
@@ -76,7 +84,7 @@ uv run ty check                  # type check
 
 ## Releases
 
-Versioning is tag-driven via `hatch-vcs`. Merging to `main` does not create a release or require a manual version bump, and installs from `main` are development builds. Cut a release by creating a GitHub tag or release such as `v0.1.6` on the target `main` commit; the release workflow will build and attach the wheel and sdist to GitHub Releases, and the docs workflow will publish the tagged docs build to the public site. Pushes to `main` still validate docs, but they do not publish them. Do not edit version strings in source files. See [RELEASING.md](RELEASING.md).
+Versioning is tag-driven via `hatch-vcs`. Merging to `main` does not create a release or require a manual version bump, and installs from `main` are development builds. Cut a release by creating a tag such as `v0.1.6` on the target `main` commit; the release workflow will build the wheel and sdist, validate their metadata, smoke-test the installed wheel, wait for approval on the `pypi` GitHub Actions environment, publish to PyPI with trusted publishing, and then attach the same verified artifacts to GitHub Releases. The docs workflow still publishes the tagged docs build to the public site. Pushes to `main` validate docs but do not publish them. Do not edit version strings in source files. See [RELEASING.md](RELEASING.md).
 
 ## License
 
