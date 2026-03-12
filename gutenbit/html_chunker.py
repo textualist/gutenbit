@@ -57,7 +57,7 @@ _STRUCTURAL_KEYWORD_ALIASES = {
     "scena": "scene",
     "scoena": "scene",
 }
-CHUNKER_VERSION = 22
+CHUNKER_VERSION = 23
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
@@ -405,7 +405,7 @@ def _parse_toc_sections(
     # false matches like "CHAPTER I" / "CHAPTER II".
     if len(sections) >= 2 and sections[1].heading_text.startswith(sections[0].heading_text + " "):
         sections = sections[1:]
-    return _merge_bare_heading_pairs(sections)
+    return _respect_heading_rank_nesting(_merge_bare_heading_pairs(sections))
 
 
 # Matches a structural heading pattern anywhere in text (keyword + number).
@@ -546,6 +546,54 @@ def _merge_adjacent_duplicate_sections(sections: list[_Section]) -> list[_Sectio
             continue
         merged.append(section)
     return merged
+
+
+def _respect_heading_rank_nesting(sections: list[_Section]) -> list[_Section]:
+    """Raise levels when heading ranks show a section was flattened too far."""
+    if len(sections) < 2:
+        return sections
+
+    new_levels = [section.level for section in sections]
+    changed = False
+
+    for idx, section in enumerate(sections):
+        if section.heading_rank is None:
+            continue
+
+        parent: _Section | None = None
+        for previous in reversed(sections[:idx]):
+            if previous.heading_rank is None or previous.heading_rank >= section.heading_rank:
+                continue
+            if not _is_refinement_heading(previous.heading_text):
+                continue
+            parent = previous
+            break
+
+        if parent is None:
+            continue
+
+        if new_levels[idx] > parent.level:
+            continue
+
+        if _heading_keyword(section.heading_text) == _heading_keyword(parent.heading_text):
+            continue
+
+        new_levels[idx] = min(4, parent.level + 1)
+        changed = True
+
+    if not changed:
+        return sections
+
+    return [
+        _Section(
+            section.anchor_id,
+            section.heading_text,
+            new_levels[idx],
+            section.body_anchor,
+            section.heading_rank,
+        )
+        for idx, section in enumerate(sections)
+    ]
 
 
 def _parse_heading_sections(
@@ -710,7 +758,7 @@ def _parse_heading_sections(
         )
         i += 1
 
-    return _drop_leading_repeated_title_sections(sections)
+    return _respect_heading_rank_nesting(_drop_leading_repeated_title_sections(sections))
 
 
 def _refine_toc_sections(
