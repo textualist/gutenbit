@@ -64,7 +64,8 @@ _STRUCTURAL_KEYWORD_ALIASES = {
     "scena": "scene",
     "scoena": "scene",
 }
-CHUNKER_VERSION = 26
+HTML_PARSER_BACKEND = "lxml"
+CHUNKER_VERSION = 27
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
@@ -183,7 +184,7 @@ def chunk_html(html: str) -> list[Chunk]:
 
     Each ``<p>`` element becomes its own chunk. Returns chunks in document order.
     """
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(html, HTML_PARSER_BACKEND)
     tag_positions = _tag_positions(soup)
     subtree_end_positions = _build_subtree_end_positions(soup, tag_positions)
     bounds = _find_gutenberg_bounds(soup, tag_positions, subtree_end_positions)
@@ -928,7 +929,7 @@ def _extract_heading_text(heading_el: Tag) -> str:
         return ""
 
     # Slow path: re-parse only when we need to modify the tree.
-    heading_copy = BeautifulSoup(str(heading_el), "html.parser")
+    heading_copy = BeautifulSoup(str(heading_el), HTML_PARSER_BACKEND)
     for pagenum in heading_copy.select("span.pagenum"):
         pagenum.decompose()
 
