@@ -10,13 +10,13 @@ Try the latest stable release from PyPI without a persistent install:
 uvx gutenbit --help
 ```
 
-If you want a persistent `gutenbit` command:
+Or install it like this and then run `gutenbit --help`:
 
 ```bash
 uv tool install gutenbit
 ```
 
-gutenbit stores its database and catalog cache in a `.gutenbit/` folder. Stable releases are published to PyPI from `vX.Y.Z` tags.
+gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
 
 ## CLI walkthrough
 
