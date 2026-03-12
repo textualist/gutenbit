@@ -1,6 +1,6 @@
-# Releasing Gutenbit
+# Releasing gutenbit
 
-Gutenbit uses tag-driven versioning via `hatch-vcs`. Do not edit version strings in source files.
+gutenbit uses tag-driven versioning via `hatch-vcs`. Do not edit version strings in source files.
 
 ## Procedure
 

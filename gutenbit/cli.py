@@ -842,7 +842,7 @@ typical workflow:
   5. gutenbit view 1342 --section 1 --forward 5                     # jump into chapter 1
   6. gutenbit search "truth universally acknowledged" --book 1342 --phrase
 
-Gutenbit is an open-source project not affiliated with Project Gutenberg.
+gutenbit is an open-source project not affiliated with Project Gutenberg.
 It is for individual downloads, not bulk downloading.
 
 CLI-managed data is stored under .gutenbit/ (default database: .gutenbit/gutenbit.db).""",

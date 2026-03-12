@@ -4,7 +4,7 @@ The `gutenbit` command-line tool provides seven subcommands that follow a natura
 
 ## Installation
 
-Gutenbit is not published on PyPI yet, so start by running the CLI directly from GitHub:
+gutenbit is not published on PyPI yet, so start by running the CLI directly from GitHub:
 
 ```bash
 uvx --from git+https://github.com/textualist/gutenbit gutenbit --help
@@ -17,14 +17,14 @@ uv tool install git+https://github.com/textualist/gutenbit
 ```
 
 Then run `gutenbit --help`. Remove it later with `uv tool uninstall gutenbit`.
-Gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
+gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
 Installs from the default branch are development builds. Stable releases are the tagged GitHub releases in the `vX.Y.Z` format.
 
 All CLI-managed state lives under `.gutenbit/` by default: the database is `.gutenbit/gutenbit.db`, and the catalog cache is stored under `.gutenbit/cache/`. Use `--db PATH` to store the database elsewhere. All commands support `--json` for machine-readable output.
 
 ## Project Gutenberg Access
 
-Gutenbit is an open-source project not affiliated with Project Gutenberg. It is for individual downloads, not bulk downloading. It prefers official mirrors and uses the main site only as a zip fallback, with a default `2.0` second delay between downloads. Gutenbit also sends an identifying default `User-Agent` on Gutenberg and PGLAF requests: `gutenbit/<version> (+https://gutenbit.textualist.org)`. Review the [Robot Access Policy](https://www.gutenberg.org/policy/robot_access.html) and [Terms of Use](https://www.gutenberg.org/policy/terms_of_use.html).
+gutenbit is an open-source project not affiliated with Project Gutenberg. It is for individual downloads, not bulk downloading. It prefers official mirrors and uses the main site only as a zip fallback, with a default `2.0` second delay between downloads. gutenbit also sends an identifying default `User-Agent` on Gutenberg and PGLAF requests: `gutenbit/<version> (+https://gutenbit.textualist.org)`. Review the [Robot Access Policy](https://www.gutenberg.org/policy/robot_access.html) and [Terms of Use](https://www.gutenberg.org/policy/terms_of_use.html).
 
 ## catalog
 

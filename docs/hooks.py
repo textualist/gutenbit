@@ -9,6 +9,6 @@ from typing import Any
 def on_config(config: Any, **_: Any) -> Any:
     """Inject the package version into the repository label."""
     package_version = version("gutenbit")
-    base_name = config.get("repo_name") or "Gutenbit"
+    base_name = config.get("repo_name") or "gutenbit"
     config["repo_name"] = f"{base_name} v{package_version}"
     return config

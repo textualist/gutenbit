@@ -4,7 +4,7 @@ This page explains the internal model that shapes gutenbit's output. Understandi
 
 ## Pipeline
 
-Gutenbit processes books in four stages:
+gutenbit processes books in four stages:
 
 1. **Catalog.** A CSV feed from Project Gutenberg provides metadata for every book: title, author, subjects, language, and Gutenberg ID. The catalog is filtered to English text and deduplicated so each work has one canonical ID.
 
@@ -59,7 +59,7 @@ Each chunk has a `kind` field:
 
 ## Corpus policy
 
-Gutenbit enforces a fixed corpus policy during catalog fetching:
+gutenbit enforces a fixed corpus policy during catalog fetching:
 
 - **Language:** English only (`en`).
 - **Media type:** Text only.
