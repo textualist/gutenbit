@@ -905,8 +905,7 @@ examples:
     _add_catalog_cache_args(
         add,
         help_text=(
-            "ignore the catalog cache, redownload it now, "
-            "and reprocess matching stored books"
+            "ignore the catalog cache, redownload it now, and reprocess matching stored books"
         ),
     )
     _add_global_args(add)
