@@ -34,3 +34,9 @@
 .md-typeset code {
   border-radius: 4px;
 }
+
+/* Keep only the release tag in the repo metadata pill. */
+.md-source__fact--stars,
+.md-source__fact--forks {
+  display: none;
+}
