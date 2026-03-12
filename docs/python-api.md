@@ -8,6 +8,8 @@ Because the project is not published on PyPI yet, add it from GitHub when using 
 uv add git+https://github.com/textualist/gutenbit
 ```
 
+Installs from the default branch are development builds. Stable releases are the tagged GitHub releases in the `vX.Y.Z` format.
+
 ```python
 from gutenbit import Catalog, BookRecord, Database, SearchResult, Chunk, chunk_html
 ```
