@@ -1,12 +1,9 @@
 """gutenbit — Download, parse, and store Project Gutenberg texts."""
 
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as package_version
-
 try:
-    __version__ = package_version("gutenbit")
-except PackageNotFoundError:  # pragma: no cover - only used from an uninstalled checkout
-    __version__ = "0.1.5.dev0"
+    from ._version import __version__
+except ImportError:  # pragma: no cover - only used from an unbuilt source checkout
+    __version__ = "0.dev0+unknown"
 
 from gutenbit.catalog import BookRecord, Catalog
 from gutenbit.db import Database, SearchResult

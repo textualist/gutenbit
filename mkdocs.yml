@@ -1,9 +1,9 @@
 site_name: Gutenbit
 site_description: Fast local search across Project Gutenberg's literary works.
-site_url: https://keinan1.github.io/gutenbit/
+site_url: https://gutenbit.textualist.org
 
 repo_name: Gutenbit
-repo_url: https://github.com/keinan1/gutenbit
+repo_url: https://github.com/textualist/gutenbit
 
 theme:
   name: material

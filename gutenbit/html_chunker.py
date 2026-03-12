@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from bs4 import BeautifulSoup, NavigableString, Tag
@@ -1005,12 +1005,8 @@ def _refined_candidate_section(
     if _is_title_like_heading(candidate.heading_text):
         if candidate.heading_rank is None or toc_section.heading_rank is None:
             return None
-        if (
-            candidate.heading_rank != toc_section.heading_rank + 1
-            and not (
-                allow_tail_title_like
-                and _TAIL_SECTION_HEADING_RE.match(candidate.heading_text)
-            )
+        if candidate.heading_rank != toc_section.heading_rank + 1 and not (
+            allow_tail_title_like and _TAIL_SECTION_HEADING_RE.match(candidate.heading_text)
         ):
             return None
         return _Section(
@@ -1048,10 +1044,7 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
 
         for next_idx in range(idx + 1, len(sections)):
             next_section = sections[next_idx]
-            if (
-                _is_collection_title(next_section)
-                and next_section.level == section.level
-            ):
+            if _is_collection_title(next_section) and next_section.level == section.level:
                 break
             if _heading_keyword(next_section.heading_text) in _BROAD_KEYWORDS:
                 container_title_indices_by_level[section.level].append(idx)
@@ -1071,8 +1064,10 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
         for idx in title_indices:
             new_levels[idx] = max(1, sections[idx].level - 1)
         for index_pos, idx in enumerate(title_indices):
-            next_idx = title_indices[index_pos + 1] if index_pos + 1 < len(title_indices) else len(
-                sections
+            next_idx = (
+                title_indices[index_pos + 1]
+                if index_pos + 1 < len(title_indices)
+                else len(sections)
             )
             for section_idx in range(idx + 1, next_idx):
                 new_levels[section_idx] += 1
@@ -1090,7 +1085,7 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
 
 
 def _leading_title_cluster_start_index(
-    items: list[_Section | _HeadingRow],
+    items: Sequence[_Section | _HeadingRow],
     *,
     first_front_matter_idx: int,
 ) -> int:
@@ -1101,7 +1096,7 @@ def _leading_title_cluster_start_index(
 
 
 def _post_front_matter_repeat_title_keys(
-    items: list[_Section | _HeadingRow],
+    items: Sequence[_Section | _HeadingRow],
     *,
     first_front_matter_idx: int,
 ) -> set[str]:
@@ -1629,10 +1624,9 @@ def _broad_heading_with_enumerated_child(
     current_heading_text: str,
     next_heading_text: str,
 ) -> bool:
-    return (
-        _heading_keyword(current_heading_text) in _BROAD_KEYWORDS
-        and _starts_with_enumerated_heading_prefix(next_heading_text)
-    )
+    return _heading_keyword(
+        current_heading_text
+    ) in _BROAD_KEYWORDS and _starts_with_enumerated_heading_prefix(next_heading_text)
 
 
 def _is_ignorable_fallback_heading(heading_text: str) -> bool:
@@ -1820,10 +1814,7 @@ def _is_deep_rank_bare_numeral_heading(
         next_row=next_row,
         doc_index=doc_index,
         predicate=_is_deep_rank_bare_numeral_candidate,
-    ) or (
-        not _heading_keyword(previous_kept_heading)
-        and row_index in bare_numeral_run_indices
-    )
+    ) or (not _heading_keyword(previous_kept_heading) and row_index in bare_numeral_run_indices)
 
 
 def _is_deep_rank_bare_numeral_candidate(row: _HeadingRow) -> bool:
@@ -1980,8 +1971,7 @@ def _normalized_heading_continuation(
         return None
     if _is_short_uppercase_heading_candidate(next_row) and (
         dramatic_context_active
-        or
-        (
+        or (
             previous_kept_heading is not None
             and _DRAMATIC_CONTEXT_HEADING_RE.search(previous_kept_heading)
         )

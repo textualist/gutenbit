@@ -1,6 +1,6 @@
 [project]
 name = "gutenbit"
-version = "0.1.5.dev0"
+dynamic = ["version"]
 description = "Fast local search across public-domain literary works"
 readme = "README.md"
 license = "MIT"
@@ -30,10 +30,10 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://keinan1.github.io/gutenbit/"
-Homepage = "https://keinan1.github.io/gutenbit/"
-Issues = "https://github.com/keinan1/gutenbit/issues"
-Repository = "https://github.com/keinan1/gutenbit"
+Documentation = "https://gutenbit.textualist.org"
+Homepage = "https://gutenbit.textualist.org"
+Issues = "https://github.com/textualist/gutenbit/issues"
+Repository = "https://github.com/textualist/gutenbit"
 
 [project.scripts]
 gutenbit = "gutenbit.cli:_entry_point"
@@ -49,8 +49,18 @@ docs = [
 ]
 
 [build-system]
-requires = ["hatchling>=1.27"]
+requires = ["hatchling>=1.27", "hatch-vcs>=0.5"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+tag-pattern = '^v(?P<version>\d+\.\d+\.\d+)$'
+
+[tool.hatch.version.raw-options]
+version_scheme = "no-guess-dev"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "gutenbit/_version.py"
 
 [tool.ruff]
 target-version = "py311"

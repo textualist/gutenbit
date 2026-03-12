@@ -20,6 +20,7 @@ from gutenbit._cache import (
     read_cache_bytes,
     write_bytes_atomic,
 )
+from gutenbit._http import gutenberg_request_headers
 
 CATALOG_URL = "https://www.gutenberg.org/cache/epub/feeds/pg_catalog.csv.gz"
 _CATALOG_CACHE_TTL_SECONDS = 2 * 60 * 60
@@ -71,6 +72,7 @@ class CatalogFetchInfo:
     source: Literal["cache", "downloaded", "stale_cache"]
     cache_path: Path
     cache_age_seconds: float | None = None
+
 
 def _policy_cache_key(policy: CatalogPolicy) -> str:
     langs = "-".join(sorted(policy.allowed_language_codes)) or "none"
@@ -268,6 +270,7 @@ class Catalog:
             response = httpx.get(
                 CATALOG_URL,
                 follow_redirects=True,
+                headers=gutenberg_request_headers(),
                 timeout=60.0,
             )
             response.raise_for_status()

@@ -11,6 +11,8 @@ from typing import Literal
 
 import httpx
 
+from gutenbit._http import gutenberg_request_headers
+
 MAIN_SITE_HTML_ZIP_URL = "https://www.gutenberg.org/cache/epub/{id}/pg{id}-h.zip"
 MIRROR_HTML_URL = "https://{host}/cache/epub/{id}/pg{id}-images.html"
 ALEPH_PGLAF_HOST = "aleph.pglaf.org"
@@ -82,6 +84,7 @@ def _fetch_response(candidate: _DownloadCandidate) -> httpx.Response:
     response = httpx.get(
         candidate.url,
         follow_redirects=True,
+        headers=gutenberg_request_headers(),
         timeout=_request_timeout(candidate),
     )
     response.raise_for_status()

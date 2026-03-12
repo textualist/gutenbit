@@ -101,6 +101,14 @@ def test_help_shows_pride_and_prejudice_workflow():
     assert 'gutenbit search "truth universally acknowledged" --book 1342 --phrase' in rendered
 
 
+def test_delete_subcommand_is_rejected():
+    code, _out, err = _run_cli("delete", "1")
+
+    assert code == 2
+    assert "invalid choice: 'delete'" in err
+    assert "remove" in err
+
+
 def test_books_creates_default_db_under_project_state_dir(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 

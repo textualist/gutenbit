@@ -4,12 +4,13 @@ from io import StringIO
 from gutenbit.cli import _build_section_summary, _passage_payload
 from gutenbit.display import (
     CliDisplay,
+    _footer_title,
     _toc_rows,
     format_search_footer_stats,
     format_search_summary_count,
     format_summary_stats,
 )
-from tests.test_search import _make_db
+from tests.test_search import _make_db, _make_nested_sections_db
 
 
 def test_format_summary_stats_uses_consistent_ordering():
@@ -121,6 +122,8 @@ def test_rich_search_results_use_visual_header(tmp_path):
     assert "Search" in rendered
     assert 'Query "Ishmael" · rank · 1 shown' in rendered
     assert "query='Ishmael'" not in rendered
+    assert "Book ID 1 · Section CHAPTER 1 · Section No. 1 · Position 1 · Score 1.20" in rendered
+    assert " · No. 1 · " not in rendered
     assert "Score 1.20" in rendered
     assert "Score 1.20\n\nCall me Ishmael." in rendered
     assert "Call me Ishmael." in rendered
@@ -150,14 +153,17 @@ def test_rich_passage_separates_title_from_metadata(tmp_path):
             "view_all": "gutenbit view 1 --all",
             "search": 'gutenbit search "Ishmael" --book 1',
         },
+        footer_stats=format_summary_stats(paragraphs=1, words=3, read="1m"),
     )
 
     rendered = out.getvalue()
     assert "View" in rendered
     assert "Moby Dick" in rendered
     assert "title=Moby Dick" not in rendered
-    assert "Book ID 1 · Section CHAPTER 1 · No. 1 · Position 0 · Forward 3" in rendered
+    assert "Book ID 1 · Section CHAPTER 1 · Section No. 1 · Position 0 · Forward 3" in rendered
+    assert " · No. 1 · " not in rendered
     assert "Forward 3\n\nCHAPTER 1" in rendered
+    assert "Moby Dick · id 1 · section CHAPTER 1 · 1 paragraph · 3 words · 1m read" in rendered
     assert "\nNext\n" in rendered
     assert "gutenbit toc 1" in rendered
     assert 'gutenbit search "Ishmael" --book 1' in rendered
@@ -184,12 +190,12 @@ def test_plain_passage_shows_footer_stats(tmp_path):
     )
 
     rendered = out.getvalue()
-    assert "0 paragraphs · - words · - read" in rendered
+    assert "Moby Dick · id 1 · section CHAPTER 1 · 0 paragraphs · - words · - read" in rendered
 
 
 def test_rich_section_summary_uses_simple_section_layout(tmp_path):
     db = _make_db(tmp_path)
-    summary = _build_section_summary(db, 1)
+    summary = _build_section_summary(db, 1, expand_depth=2)
     assert summary is not None
     out = StringIO()
 
@@ -201,11 +207,45 @@ def test_rich_section_summary_uses_simple_section_layout(tmp_path):
     assert "CHAPTER 1" in rendered
     assert "Position" in rendered
     assert "Words" in rendered
-    assert "2 sections · 3 paragraphs · 151 words · 756 chars · 1m read" in rendered
+    assert (
+        "Moby Dick · id 1 · 2/2 sections shown · 1/1 level "
+        "· 3 paragraphs · 151 words · 1m read" in rendered
+    )
     assert "\nNext\n" in rendered
+    assert "gutenbit toc 1 --expand all" in rendered
     assert 'gutenbit search "Ishmael" --book 1' in rendered
     assert "gutenbit view 1 --position 0 --forward 20" in rendered
     assert "gutenbit view 1 --all" in rendered
+    assert rendered.index("gutenbit toc 1 --expand all") < rendered.index(
+        'gutenbit search "Ishmael" --book 1'
+    )
+
+
+def test_rich_section_summary_shows_visible_section_count_when_collapsed(tmp_path):
+    db = _make_nested_sections_db(tmp_path)
+    summary = _build_section_summary(db, 13, expand_depth=2)
+    assert summary is not None
+    out = StringIO()
+
+    CliDisplay(stdout=out, interactive=True, color=False, width=100).section_summary(summary)
+
+    rendered = out.getvalue()
+    assert "Nested Sections Play · id 13 · 5/9 sections shown · 2/3 levels" in rendered
+
+
+def test_rich_section_summary_footer_truncates_long_title(tmp_path):
+    db = _make_db(tmp_path)
+    summary = _build_section_summary(db, 1, expand_depth=2)
+    assert summary is not None
+    summary = deepcopy(summary)
+    long_title = "The Astonishingly Long and Needlessly Detailed Maritime Chronicle"
+    summary["book"]["title"] = long_title
+    out = StringIO()
+
+    CliDisplay(stdout=out, interactive=True, color=False, width=100).section_summary(summary)
+
+    rendered = out.getvalue()
+    assert f"{_footer_title(long_title)} · id 1" in rendered
 
 
 def test_rich_section_summary_indents_long_nested_section_paths(tmp_path):

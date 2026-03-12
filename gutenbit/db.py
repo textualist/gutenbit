@@ -120,6 +120,7 @@ def _normalize_div_segment(value: str) -> str:
     cleaned = _DIV_PUNCT_SPACING_RE.sub(r"\1", cleaned)
     return _DIV_TRAILING_PUNCT_RE.sub("", cleaned)
 
+
 def _div_parts_match(query: list[str], row: list[str]) -> bool:
     """Check if *query* segments match the leading segments of *row*.
 
@@ -264,9 +265,7 @@ class Database:
     # Ingest
     # ------------------------------------------------------------------
 
-    def ingest(
-        self, books: list[BookRecord], *, delay: float = 1.0, force: bool = False
-    ) -> None:
+    def ingest(self, books: list[BookRecord], *, delay: float = 1.0, force: bool = False) -> None:
         """Download, chunk, and store books.
 
         Enforces package ingestion boundaries: English text records only, with
@@ -296,8 +295,8 @@ class Database:
         for book in canonical_books:
             self._ingest_book(book, delay=delay, force=force, state=states.get(book.id))
 
-    def delete_book(self, book_id: int) -> bool:
-        """Delete a stored book and all associated rows. Returns False if missing."""
+    def remove_book(self, book_id: int) -> bool:
+        """Remove a stored book and all associated rows. Returns False if missing."""
         row = self._conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone()
         if row is None:
             return False
@@ -357,8 +356,7 @@ class Database:
         }
         placeholders = ",".join("?" * len(book_ids))
         rows = self._conn.execute(
-            "SELECT book_id, chunker_version FROM texts "
-            f"WHERE book_id IN ({placeholders})",
+            f"SELECT book_id, chunker_version FROM texts WHERE book_id IN ({placeholders})",
             book_ids,
         ).fetchall()
         for row in rows:

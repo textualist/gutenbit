@@ -7,22 +7,23 @@ This guide walks through a complete workflow: find a book, download it, explore 
 Gutenbit is not published on PyPI yet, so start by trying the CLI directly from GitHub:
 
 ```bash
-uvx --from git+https://github.com/keinan1/gutenbit gutenbit --help
+uvx --from git+https://github.com/textualist/gutenbit gutenbit --help
 ```
 
 Install it persistently once you want a normal `gutenbit` command:
 
 ```bash
-uv tool install git+https://github.com/keinan1/gutenbit
+uv tool install git+https://github.com/textualist/gutenbit
 ```
 
 Then run `gutenbit --help`. Remove it later with `uv tool uninstall gutenbit`.
 Gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
+Installs from the default branch are development builds. Stable releases are the tagged GitHub releases in the `vX.Y.Z` format.
 
 If you want to use the Python package inside a `uv` project instead of installing the CLI globally:
 
 ```bash
-uv add git+https://github.com/keinan1/gutenbit
+uv add git+https://github.com/textualist/gutenbit
 ```
 
 ## CLI walkthrough
@@ -63,7 +64,13 @@ View the table of contents with numbered sections:
 gutenbit toc 1342
 ```
 
-Each section number can be used with `view --section` to jump directly to that part of the book.
+By default, `toc` shows two heading levels. Use `--expand 1`, `--expand 3`, or `--expand all` to collapse further or reveal the full nested structure.
+
+```bash
+gutenbit toc 100 --expand all
+```
+
+Each section number can be used with `view --section` to jump directly to that part of the book. When deeper levels are collapsed, the visible lowest-level rows include the stats for the hidden descendants beneath them.
 
 ### Read text
 
@@ -85,6 +92,8 @@ Read a full section:
 gutenbit view 1342 --section 1 --all
 ```
 
+If the selected section has nested subsections, `--all` includes the entire subtree. For example, selecting an act includes all of its scenes.
+
 Read from an exact chunk position:
 
 ```bash
@@ -98,7 +107,7 @@ gutenbit view 1342 --position 1 --radius 2
 gutenbit view 1342 --section 1 --radius 2
 ```
 
-Use `--forward` for forward reading, `--radius` for a surrounding passage window, and `--all` for a full book or section. `--all` does not apply to `--position`.
+Use `--forward` for forward reading, `--radius` for a surrounding passage window, and `--all` for a full book or selected section subtree. `--all` does not apply to `--position`.
 
 ### Search
 

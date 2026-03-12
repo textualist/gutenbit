@@ -5,8 +5,10 @@ Gutenbit exposes four public classes and one function from its top-level package
 Because the project is not published on PyPI yet, add it from GitHub when using it as a library:
 
 ```bash
-uv add git+https://github.com/keinan1/gutenbit
+uv add git+https://github.com/textualist/gutenbit
 ```
+
+Installs from the default branch are development builds. Stable releases are the tagged GitHub releases in the `vX.Y.Z` format.
 
 ```python
 from gutenbit import Catalog, BookRecord, Database, SearchResult, Chunk, chunk_html
@@ -249,7 +251,7 @@ stale_books = db.stale_books()     # stored books that need reprocessing
 book = db.book(1342)               # BookRecord or None
 db.has_text(1342)                  # True if stored
 db.has_current_text(1342)          # True if stored at current chunker version
-db.delete_book(1342)               # returns True if deleted, False if not found
+db.remove_book(1342)               # returns True if removed, False if not found
 ```
 
 ## Chunking HTML directly
