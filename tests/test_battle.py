@@ -284,6 +284,31 @@ def test_leviathan_refines_toc_subsections_within_chapters():
     assert prudence.div3 == "Prudence"
 
 
+def test_leviathan_keeps_bellarmines_books_nested_within_chapter_xlii():
+    headings = _headings(3207)
+
+    first_book = next(heading for heading in headings if heading.content == "The First Book")
+    fourth_book = next(heading for heading in headings if heading.content == "The Fourth Book")
+    chapter_xliii = next(
+        heading
+        for heading in headings
+        if heading.content
+        == "CHAPTER XLIII. OF WHAT IS NECESSARY FOR A MANS RECEPTION INTO THE KINGDOME OF HEAVEN"
+    )
+
+    assert first_book.div1 == "PART III. OF A CHRISTIAN COMMON-WEALTH"
+    assert first_book.div2 == "CHAPTER XLII. OF POWER ECCLESIASTICALL"
+    assert first_book.div3 == "The First Book"
+    assert fourth_book.div2 == "CHAPTER XLII. OF POWER ECCLESIASTICALL"
+    assert fourth_book.div3 == "The Fourth Book"
+    assert chapter_xliii.div1 == "PART III. OF A CHRISTIAN COMMON-WEALTH"
+    assert (
+        chapter_xliii.div2
+        == "CHAPTER XLIII. OF WHAT IS NECESSARY FOR A MANS RECEPTION INTO THE KINGDOME OF HEAVEN"
+    )
+    assert chapter_xliii.div3 == ""
+
+
 def test_moby_dick_keeps_etymology_and_extracts_before_chapter_one():
     heading_texts = [heading.content for heading in _headings(15)]
 
