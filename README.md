@@ -58,7 +58,7 @@ if book is not None:
 
 ## Documentation
 
-Full documentation: [Getting Started](docs/getting-started.md) | [Python API](docs/python-api.md) | [CLI](docs/cli.md) | [Concepts](docs/concepts.md)
+Full documentation: [Getting Started](docs/getting-started.md) | [CLI](docs/cli.md) | [Python API](docs/python-api.md) | [Concepts](docs/concepts.md)
 
 ## Project Gutenberg Access
 

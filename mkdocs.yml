@@ -52,7 +52,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - Python API: python-api.md
   - CLI: cli.md
+  - Python API: python-api.md
   - Concepts: concepts.md
   - API Reference: reference/

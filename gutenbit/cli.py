@@ -77,6 +77,14 @@ _SENTENCE_END_RE = re.compile(r'[.!?]["\')\]]*$')
 _DISPLAY_CACHE: tuple[int, int, CliDisplay] | None = None
 
 
+class _CliHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Format help with slightly wider columns for cleaner CLI output."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs.setdefault("max_help_position", 30)
+        super().__init__(*args, **kwargs)
+
+
 def _display() -> CliDisplay:
     global _DISPLAY_CACHE
     stdout = sys.stdout
@@ -825,32 +833,35 @@ def _toc_expand_depth(expand: str) -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    fmt = argparse.RawDescriptionHelpFormatter
+    fmt = _CliHelpFormatter
     p = argparse.ArgumentParser(
         prog="gutenbit",
         formatter_class=fmt,
         description=(
-            "Fast local search across public-domain literary works. "
-            "Find, browse, and search books from your terminal."
+            "Find, store, inspect, read, and search Project Gutenberg books from your terminal."
         ),
         epilog="""\
-typical workflow:
-  1. gutenbit catalog --author "Austen, Jane"                       # find Pride and Prejudice
-  2. gutenbit add 1342                                              # download & store it
-  3. gutenbit toc 1342                                              # inspect numbered sections
-  4. gutenbit view 1342                                             # read the opening
-  5. gutenbit view 1342 --section 1 --forward 5                     # jump into chapter 1
-  6. gutenbit search "truth universally acknowledged" --book 1342 --phrase
+quick start:
+  1. gutenbit catalog --author "Austen, Jane"                   # find Pride and Prejudice
+  2. gutenbit add 1342                                          # download and store it
+  3. gutenbit toc 1342                                          # inspect numbered sections
+  4. gutenbit view 1342                                         # read the opening
+  5. gutenbit search "truth universally acknowledged" --book 1342 --phrase
+
+learn more:
+  gutenbit COMMAND --help    detailed help for one command
 
 gutenbit is an open-source project not affiliated with Project Gutenberg.
 It is for individual downloads, not bulk downloading.
 
-CLI-managed data is stored under .gutenbit/ (default database: .gutenbit/gutenbit.db).""",
+By default, gutenbit stores its SQLite database and catalog cache in
+.gutenbit/ in the current directory (default database: .gutenbit/gutenbit.db).""",
     )
+    p._optionals.title = "global options"
     p.add_argument("--db", default=DEFAULT_DB, help="SQLite database path (default: %(default)s)")
     p.add_argument("--version", action="version", version=f"%(prog)s {_package_version()}")
     p.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
-    sub = p.add_subparsers(dest="command")
+    sub = p.add_subparsers(dest="command", title="commands", metavar="COMMAND")
 
     # --- catalog ---
     cat = sub.add_parser(
@@ -894,7 +905,13 @@ examples:
   gutenbit add 2600 --refresh           # refresh the catalog and reprocess the book
   gutenbit add 2600 --delay 2.0         # polite crawling""",
     )
-    add.add_argument("book_ids", nargs="+", type=int, help="Project Gutenberg book IDs")
+    add.add_argument(
+        "book_ids",
+        nargs="+",
+        metavar="BOOK_ID",
+        type=int,
+        help="Project Gutenberg book IDs",
+    )
     add.add_argument(
         "--delay",
         type=float,
@@ -927,7 +944,13 @@ examples:
 
 if a book ID is not present, a warning is printed and exit code is 1.""",
     )
-    de.add_argument("book_ids", nargs="+", type=int, help="Project Gutenberg book IDs")
+    de.add_argument(
+        "book_ids",
+        nargs="+",
+        metavar="BOOK_ID",
+        type=int,
+        help="Project Gutenberg book IDs",
+    )
     de.add_argument("--json", action="store_true", help="output as JSON")
     _add_global_args(de)
 
@@ -1017,7 +1040,11 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
      narrow searches with --book and --section. Search uses text chunks
      by default; use --kind heading or --kind all when needed.""",
     )
-    se.add_argument("query", help="search query (plain text by default; see --raw, --phrase)")
+    se.add_argument(
+        "query",
+        metavar="QUERY",
+        help="search query (plain text by default; see --raw, --phrase)",
+    )
     query_group = se.add_mutually_exclusive_group()
     query_group.add_argument(
         "--phrase",
@@ -1033,6 +1060,7 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
         "--order",
         choices=["rank", "first", "last"],
         default="rank",
+        metavar="ORDER",
         help=(
             "search result order: rank (BM25); "
             "first (book asc + position asc); "
@@ -1046,6 +1074,7 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
         "--kind",
         choices=["text", "heading", "all"],
         default="text",
+        metavar="KIND",
         help="chunk kind to search (default: %(default)s)",
     )
     se.add_argument(
@@ -1093,11 +1122,12 @@ examples:
 section numbers in this output can be passed to:
   gutenbit view 2600 --section <NUMBER>""",
     )
-    tc.add_argument("book", type=int, help="Project Gutenberg book ID")
+    tc.add_argument("book", metavar="BOOK_ID", type=int, help="Project Gutenberg book ID")
     tc.add_argument(
         "--expand",
         choices=["1", "2", "3", "4", "all"],
         default=DEFAULT_TOC_EXPAND,
+        metavar="DEPTH",
         help="show heading levels up to this depth (default: 2; use 'all' for every level)",
     )
     tc.add_argument("--json", action="store_true", help="output as JSON")
@@ -1133,7 +1163,7 @@ selectors (choose at most one):
   --position <n> | --section <SECTION_SELECTOR>
 """,
     )
-    vw.add_argument("book", type=int, help="Project Gutenberg book ID")
+    vw.add_argument("book", metavar="BOOK_ID", type=int, help="Project Gutenberg book ID")
     vw.add_argument("--position", type=int, help="select the passage at this exact position")
     vw.add_argument(
         "--section",
