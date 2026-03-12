@@ -2134,6 +2134,54 @@ def test_ingest_reprocesses_stale_chunker_version(tmp_path, monkeypatch):
     assert ingested_ids == [889]
 
 
+def test_add_refresh_flag_reprocesses_current_book(tmp_path, monkeypatch):
+    record = BookRecord(
+        id=890,
+        title="Refresh Me",
+        authors="Test Author",
+        language="en",
+        subjects="",
+        locc="",
+        bookshelves="",
+        issued="",
+        type="Text",
+    )
+    seen: dict[str, object] = {}
+
+    def _fake_fetch(**kwargs):
+        seen["catalog_refresh"] = kwargs["refresh"]
+        return Catalog([record])
+
+    monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(_fake_fetch))
+    monkeypatch.setattr(
+        Database,
+        "text_states",
+        lambda _self, _book_ids: {890: TextState(has_text=True, has_current_text=True)},
+    )
+    ingested_ids: list[int] = []
+
+    def _capture_ingest(_self, book, *, delay, force, state):
+        seen["force"] = force
+        ingested_ids.append(book.id)
+        return True
+
+    monkeypatch.setattr(Database, "_ingest_book", _capture_ingest)
+
+    code, out, _err = _run_cli(
+        tmp_path / "refresh.db",
+        "add",
+        "890",
+        "--refresh",
+        "--delay",
+        "0",
+    )
+    assert code == 0
+    assert seen["catalog_refresh"] is True
+    assert seen["force"] is True
+    assert "processing 890: Refresh Me (forced)" in out
+    assert ingested_ids == [890]
+
+
 def test_ingest_book_reports_progress_stages(tmp_path, monkeypatch):
     events: list[str] = []
     sleeps: list[float] = []

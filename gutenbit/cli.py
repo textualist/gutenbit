@@ -718,11 +718,15 @@ def _add_global_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_catalog_cache_args(parser: argparse.ArgumentParser) -> None:
+def _add_catalog_cache_args(
+    parser: argparse.ArgumentParser,
+    *,
+    help_text: str = "ignore the catalog cache and redownload it now",
+) -> None:
     parser.add_argument(
         "--refresh",
         action="store_true",
-        help="ignore the catalog cache and redownload it now",
+        help=help_text,
     )
 
 
@@ -881,13 +885,13 @@ all filters use case-insensitive substring matching (AND logic).""",
         description=(
             "Download books from Project Gutenberg by ID, parse HTML into chunks, "
             "and store everything in the SQLite database. Already-downloaded books "
-            "are skipped."
+            "are skipped unless --refresh forces a re-download and reprocessing."
         ),
         epilog="""\
 examples:
   gutenbit add 2600                     # War and Peace
   gutenbit add 46 730 967               # multiple books
-  gutenbit add 2600 --refresh           # redownload the catalog first
+  gutenbit add 2600 --refresh           # refresh the catalog and reprocess the book
   gutenbit add 2600 --delay 2.0         # polite crawling""",
     )
     add.add_argument("book_ids", nargs="+", type=int, help="Project Gutenberg book IDs")
@@ -898,7 +902,13 @@ examples:
         help="seconds between downloads (default: %(default)s)",
     )
     add.add_argument("--json", action="store_true", help="output as JSON")
-    _add_catalog_cache_args(add)
+    _add_catalog_cache_args(
+        add,
+        help_text=(
+            "ignore the catalog cache, redownload it now, "
+            "and reprocess matching stored books"
+        ),
+    )
     _add_global_args(add)
 
     # --- remove ---
@@ -1416,6 +1426,7 @@ def _cmd_add(args: argparse.Namespace) -> int:
             as_json=as_json,
             display=display,
             failure_action="add",
+            force=args.refresh,
         )
 
     if as_json:
