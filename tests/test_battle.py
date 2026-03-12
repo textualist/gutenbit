@@ -347,6 +347,27 @@ def test_brothers_karamazov_keeps_books_nested_within_parts():
     assert epilogue_chapter.div3 == ""
 
 
+def test_decameron_does_not_nest_days_under_proem():
+    headings = _headings(23700)
+
+    proem = next(heading for heading in headings if heading.content == "Proem")
+    day_one = next(heading for heading in headings if heading.content == "Day the First")
+    first_story = next(heading for heading in headings if heading.content == "THE FIRST STORY")
+    conclusion = next(
+        heading for heading in headings if heading.content == "Conclusion of the Author"
+    )
+
+    assert proem.div1 == "Proem"
+    assert proem.div2 == ""
+    assert day_one.div1 == "Day the First"
+    assert day_one.div2 == ""
+    assert first_story.div1 == "Day the First"
+    assert first_story.div2 == "THE FIRST STORY"
+    assert first_story.div3 == ""
+    assert conclusion.div1 == "Conclusion of the Author"
+    assert conclusion.div2 == ""
+
+
 def test_moby_dick_keeps_etymology_and_extracts_before_chapter_one():
     heading_texts = [heading.content for heading in _headings(15)]
 

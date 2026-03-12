@@ -245,6 +245,39 @@ def test_same_rank_part_and_book_headings_stay_nested():
     assert headings[7].div3 == "Chapter I. In The Servants’ Quarters"
 
 
+def test_more_prominent_heading_run_is_not_nested_under_proem():
+    html = _make_html("""
+    <p><a href="#proem" class="pginternal"><b>PROEM.</b></a></p>
+    <p><b><a href="#day1" class="pginternal">DAY THE FIRST</a></b></p>
+    <p><a href="#story1" class="pginternal">THE FIRST STORY</a></p>
+    <p><b><a href="#conclusion" class="pginternal">CONCLUSION OF THE AUTHOR</a></b></p>
+    <h2><a id="proem"></a>Proem</h2>
+    <p>Proem text.</p>
+    <h1><a id="day1"></a>Day the First</h1>
+    <p>Day introduction.</p>
+    <h2><a id="story1"></a>THE FIRST STORY</h2>
+    <p>Story text.</p>
+    <h1><a id="conclusion"></a>Conclusion of the Author</h1>
+    <p>Conclusion text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert [h.content for h in headings] == [
+        "Proem",
+        "Day the First",
+        "THE FIRST STORY",
+        "Conclusion of the Author",
+    ]
+    assert headings[0].div1 == "Proem"
+    assert headings[0].div2 == ""
+    assert headings[1].div1 == "Day the First"
+    assert headings[1].div2 == ""
+    assert headings[2].div1 != "Proem"
+    assert headings[3].div1 == "Conclusion of the Author"
+    assert headings[3].div2 == ""
+
+
 def test_body_headings_refine_partial_toc():
     html = _make_html("""
     <table><tbody>

@@ -64,7 +64,7 @@ _STRUCTURAL_KEYWORD_ALIASES = {
     "scena": "scene",
     "scoena": "scene",
 }
-CHUNKER_VERSION = 24
+CHUNKER_VERSION = 25
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
@@ -217,6 +217,7 @@ def chunk_html(html: str) -> list[Chunk]:
 
     sections = _normalize_collection_titles(sections)
     sections = _nest_broad_subdivisions(sections)
+    sections = _promote_more_prominent_heading_runs(sections)
     sections = _merge_adjacent_duplicate_sections(sections)
 
     # Compact levels so the shallowest level maps to div1.
@@ -1184,6 +1185,70 @@ def _nest_broad_subdivisions(sections: list[_Section]) -> list[_Section]:
                 if shifted_level != current_level:
                     new_levels[inner_idx] = shifted_level
                     changed = True
+
+    if not changed:
+        return sections
+
+    return [
+        _Section(
+            section.anchor_id,
+            section.heading_text,
+            new_levels[idx],
+            section.body_anchor,
+            section.heading_rank,
+        )
+        for idx, section in enumerate(sections)
+    ]
+
+
+def _promote_more_prominent_heading_runs(sections: list[_Section]) -> list[_Section]:
+    """Promote runs whose heading rank outranks their assigned parent.
+
+    Some books place opening matter like ``Proem`` in ``h2`` and then start the
+    real top-level work structure in ``h1``. If the later run is currently
+    nested under that lower-rank opener, lift the run until its first section
+    becomes a sibling of the false parent.
+    """
+    if len(sections) < 2:
+        return sections
+
+    new_levels = [section.level for section in sections]
+    changed = False
+    idx = 0
+
+    while idx < len(sections):
+        current_level = new_levels[idx]
+        current_rank = sections[idx].heading_rank
+        if current_level <= 1 or current_rank is None:
+            idx += 1
+            continue
+
+        parent_idx: int | None = None
+        for previous_idx in range(idx - 1, -1, -1):
+            if new_levels[previous_idx] < current_level:
+                parent_idx = previous_idx
+                break
+
+        if parent_idx is None:
+            idx += 1
+            continue
+
+        parent_rank = sections[parent_idx].heading_rank
+        parent_level = new_levels[parent_idx]
+        if parent_rank is None or current_rank >= parent_rank:
+            idx += 1
+            continue
+
+        shift = current_level - parent_level
+        run_end = idx
+        while run_end < len(sections) and new_levels[run_end] > parent_level:
+            promoted_level = max(1, new_levels[run_end] - shift)
+            if promoted_level != new_levels[run_end]:
+                new_levels[run_end] = promoted_level
+                changed = True
+            run_end += 1
+
+        idx = run_end
 
     if not changed:
         return sections
