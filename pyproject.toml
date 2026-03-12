@@ -14,6 +14,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -22,6 +23,7 @@ classifiers = [
     "Topic :: Database",
     "Topic :: Text Processing :: Indexing",
     "Topic :: Utilities",
+    "Typing :: Typed",
 ]
 dependencies = [
     "beautifulsoup4>=4.12",
@@ -34,6 +36,7 @@ dependencies = [
 Documentation = "https://gutenbit.textualist.org"
 Homepage = "https://gutenbit.textualist.org"
 Issues = "https://github.com/textualist/gutenbit/issues"
+Releases = "https://github.com/textualist/gutenbit/releases"
 Repository = "https://github.com/textualist/gutenbit"
 
 [project.scripts]

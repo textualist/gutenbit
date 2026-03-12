@@ -6,11 +6,13 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-publish:
+  build-and-verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Check out repository
@@ -26,11 +28,57 @@ jobs:
       - name: Build distributions
         run: uv build
 
+      - name: Check distribution metadata
+        run: uvx --from twine twine check --strict dist/*
+
       - name: Smoke test installed wheel
         run: |
           wheel=$(echo dist/*.whl)
           uvx --refresh --from "$wheel" gutenbit --help
           uvx --refresh --from "$wheel" gutenbit --version
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-dists
+          path: dist/*
+          if-no-files-found: error
+
+  publish-pypi:
+    runs-on: ubuntu-latest
+    needs: build-and-verify
+    environment:
+      name: pypi
+      url: https://pypi.org/p/gutenbit
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v6
+        with:
+          name: release-dists
+          path: dist
+
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.13.0
+        with:
+          print-hash: true
+
+  publish-github-release:
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-verify
+      - publish-pypi
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v6
+        with:
+          name: release-dists
+          path: dist
 
       - name: Publish release assets
         uses: softprops/action-gh-release@v2

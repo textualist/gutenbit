@@ -8,9 +8,14 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build-and-smoke-test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Check out repository
@@ -25,6 +30,9 @@ jobs:
 
       - name: Build distributions
         run: uv build
+
+      - name: Check distribution metadata
+        run: uvx --from twine twine check --strict dist/*
 
       - name: Smoke test installed wheel
         run: |
