@@ -18,6 +18,7 @@ uv tool install git+https://github.com/textualist/gutenbit
 
 Then run `gutenbit --help`. Remove it later with `uv tool uninstall gutenbit`.
 Gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
+Installs from the default branch are development builds. Stable releases are the tagged GitHub releases in the `vX.Y.Z` format.
 
 If you want to use the Python package inside a `uv` project instead of installing the CLI globally:
 

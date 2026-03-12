@@ -7,6 +7,7 @@ from typing import cast
 import httpx
 import pytest
 
+from gutenbit import __version__
 from gutenbit._http import gutenberg_request_headers
 from gutenbit.download import (
     ALEPH_PGLAF_HOST,
@@ -205,6 +206,12 @@ def test_download_html_uses_short_mirror_timeouts_before_main_zip(monkeypatch):
     assert headers[aleph_url] == gutenberg_request_headers()
     assert headers[gutenberg_url] == gutenberg_request_headers()
     assert headers[main_site_url] == gutenberg_request_headers()
+
+
+def test_gutenberg_request_headers_include_runtime_version():
+    headers = gutenberg_request_headers()
+
+    assert headers["User-Agent"] == f"gutenbit/{__version__} (+https://gutenbit.textualist.org)"
 
 
 def test_download_html_raises_when_zip_has_no_html(monkeypatch):

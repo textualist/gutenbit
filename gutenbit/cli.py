@@ -812,7 +812,7 @@ def _package_version() -> str:
         try:
             from gutenbit import __version__
         except ImportError:
-            return "0+unknown"
+            return "0.dev0+unknown"
         return __version__
 
 
