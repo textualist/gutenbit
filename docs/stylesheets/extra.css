@@ -169,6 +169,16 @@
   line-height: 1.6;
 }
 
+/* Keep the navigation and TOC panels scrollable without persistent scrollbar chrome. */
+.md-sidebar__scrollwrap {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.md-sidebar__scrollwrap::-webkit-scrollbar {
+  display: none;
+}
+
 @media screen and (max-width: 76.234375em) {
   .md-header__button.md-logo .identity-wordmark {
     --identity-wordmark-size: 23px;
