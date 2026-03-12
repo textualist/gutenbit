@@ -101,6 +101,43 @@ def test_help_shows_pride_and_prejudice_workflow():
     assert 'gutenbit search "truth universally acknowledged" --book 1342 --phrase' in rendered
 
 
+def test_help_uses_command_placeholder_instead_of_choice_braces():
+    out = io.StringIO()
+    err = io.StringIO()
+
+    with (
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(err),
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        cli_main(["--help"])
+
+    assert excinfo.value.code == 0
+    assert err.getvalue() == ""
+    rendered = out.getvalue()
+    assert "COMMAND ..." in rendered
+    assert "{catalog,add,remove,books,search,toc,view}" not in rendered
+    assert "commands:" in rendered
+    assert "gutenbit COMMAND --help" in rendered
+
+
+@pytest.mark.parametrize(
+    ("argv", "forbidden", "expected"),
+    [
+        (("search", "-h"), "{rank,first,last}", "--order ORDER"),
+        (("search", "-h"), "{text,heading,all}", "--kind KIND"),
+        (("toc", "-h"), "{1,2,3,4,all}", "--expand DEPTH"),
+    ],
+)
+def test_choice_help_uses_named_metavars(argv, forbidden, expected):
+    code, out, err = _run_cli(*argv)
+
+    assert code == 0
+    assert err == ""
+    assert forbidden not in out
+    assert expected in out
+
+
 def test_delete_subcommand_is_rejected():
     code, _out, err = _run_cli("delete", "1")
 
