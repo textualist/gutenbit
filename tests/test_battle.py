@@ -66,11 +66,11 @@ def test_shakespeare_anthology_nests_acts_and_scenes_under_work_titles():
     alls_well_scene = next(
         heading
         for heading in headings
-        if heading.content == "Scene I. Rossillon. A room in the Countess’s palace"
+        if heading.content == "Scene I. Rossillon. A room in the Countess’s palace."
     )
     assert alls_well_scene.div1 == "ALL’S WELL THAT ENDS WELL"
     assert alls_well_scene.div2 == "ACT I"
-    assert alls_well_scene.div3 == "Scene I. Rossillon. A room in the Countess’s palace"
+    assert alls_well_scene.div3 == "Scene I. Rossillon. A room in the Countess’s palace."
 
     sonnets = next(heading for heading in headings if heading.content == "THE SONNETS")
     assert sonnets.div1 == "THE SONNETS"
@@ -239,11 +239,11 @@ def test_canterbury_keeps_troilus_books_and_skips_garbage_headings():
     troilus_index = heading_texts.index("TROILUS AND CRESSIDA")
     assert heading_texts[troilus_index : troilus_index + 6] == [
         "TROILUS AND CRESSIDA",
-        "THE FIRST BOOK",
-        "THE SECOND BOOK",
-        "THE THIRD BOOK",
+        "THE FIRST BOOK.",
+        "THE SECOND BOOK.",
+        "THE THIRD BOOK.",
         "THE FOURTH BOOK",
-        "THE FIFTH BOOK",
+        "THE FIFTH BOOK.",
     ]
     assert "act iv" not in heading_texts
     assert "scene v" not in heading_texts
@@ -255,13 +255,13 @@ def test_inferno_skips_stray_front_matter_numeral_sections():
     heading_texts = [heading.content for heading in headings]
 
     assert heading_texts[:7] == [
-        "PREFACE",
-        "FLORENCE AND DANTE",
-        "GIOTTO’S PORTRAIT OF DANTE",
-        "CANTO I",
-        "CANTO II",
-        "CANTO III",
-        "CANTO IV",
+        "PREFACE.",
+        "FLORENCE AND DANTE.",
+        "GIOTTO’S PORTRAIT OF DANTE.",
+        "CANTO I.",
+        "CANTO II.",
+        "CANTO III.",
+        "CANTO IV.",
     ]
     assert not any(text in {"II", "III", "IV", "V", "VI"} for text in heading_texts[:10])
 
@@ -414,7 +414,7 @@ def test_souls_of_black_folk_keeps_numbered_chapters():
 def test_moby_dick_keeps_etymology_and_extracts_before_chapter_one():
     heading_texts = [heading.content for heading in _headings(15)]
 
-    assert heading_texts[:4] == ["ETYMOLOGY", "EXTRACTS", "CHAPTER I", "CHAPTER II"]
+    assert heading_texts[:4] == ["ETYMOLOGY.", "EXTRACTS.", "CHAPTER I.", "CHAPTER II."]
 
 
 def test_dracula_keeps_the_final_note_section():
@@ -426,7 +426,7 @@ def test_dracula_keeps_the_final_note_section():
 def test_middlemarch_keeps_the_finale_section():
     heading_texts = [heading.content for heading in _headings(145)]
 
-    assert heading_texts[-2:] == ["FINALE", "THE END"]
+    assert heading_texts[-2:] == ["FINALE.", "THE END"]
 
 
 def test_jane_eyre_keeps_preface_and_note_before_chapter_one():
@@ -445,7 +445,7 @@ def test_les_miserables_keeps_preface_and_final_letter():
 def test_christmas_carol_keeps_preface_before_stave_one():
     heading_texts = [heading.content for heading in _headings(46)]
 
-    assert heading_texts[:3] == ["PREFACE", "STAVE ONE", "STAVE TWO"]
+    assert heading_texts[:3] == ["PREFACE", "STAVE ONE.", "STAVE TWO."]
 
 
 def test_tom_sawyer_keeps_preface_before_chapter_one():
@@ -458,9 +458,9 @@ def test_gulliver_keeps_both_prefatory_sections_before_part_one():
     heading_texts = [heading.content for heading in _headings(829)]
 
     assert heading_texts[:3] == [
-        "THE PUBLISHER TO THE READER",
-        "A LETTER FROM CAPTAIN GULLIVER TO HIS COUSIN SYMPSON",
-        "PART I. A VOYAGE TO LILLIPUT",
+        "THE PUBLISHER TO THE READER.",
+        "A LETTER FROM CAPTAIN GULLIVER TO HIS COUSIN SYMPSON.",
+        "PART I. A VOYAGE TO LILLIPUT.",
     ]
 
 
@@ -519,3 +519,203 @@ def test_candide_keeps_front_matter_headings_and_skips_attribution_noise():
         "I",
     ]
     assert "INTRODUCTION BY PHILIP LITTELL" not in heading_texts
+
+
+def test_tom_jones_keeps_book_subtitle_and_final_chapter_closer():
+    headings = _headings(6593)
+
+    book_three = next(
+        heading
+        for heading in headings
+        if heading.content
+        == "THE READER MAY PICK UP SOME HINTS CONCERNING THE EDUCATION OF CHILDREN."
+    )
+    chapter_one = next(
+        heading
+        for heading in headings
+        if heading.content == "Chapter i. — Containing little or nothing."
+    )
+    chapter_last = next(heading for heading in headings if heading.content == "Chapter the last.")
+    conclusion = next(
+        heading for heading in headings if heading.content == "In which the history is concluded."
+    )
+
+    assert book_three.div1.startswith("BOOK III.")
+    assert (
+        book_three.div2
+        == "THE READER MAY PICK UP SOME HINTS CONCERNING THE EDUCATION OF CHILDREN."
+    )
+    assert chapter_one.div1.startswith("BOOK III.")
+    assert chapter_one.div2 == "Chapter i. — Containing little or nothing."
+    assert chapter_last.div1 == "BOOK XVIII."
+    assert chapter_last.div2 == "Chapter the last."
+    assert conclusion.div1 == "BOOK XVIII."
+    assert conclusion.div2 == "Chapter the last."
+    assert conclusion.div3 == "In which the history is concluded."
+
+
+def test_moonstone_keeps_prologue_periods_and_epilogue_statements():
+    headings = _headings(155)
+
+    storming = next(
+        heading
+        for heading in headings
+        if heading.content == "THE STORMING OF SERINGAPATAM (1799):"
+    )
+    first_period = next(heading for heading in headings if heading.content == "FIRST PERIOD")
+    chapter_one = next(
+        heading
+        for heading in headings
+        if heading.content == "CHAPTER I" and heading.div1 == "FIRST PERIOD"
+    )
+    epilogue = next(heading for heading in headings if heading.content == "EPILOGUE.")
+    murthwaite = next(
+        heading
+        for heading in headings
+        if heading.content == "THE STATEMENT OF MR. MURTHWAITE. (1850.)"
+    )
+
+    assert storming.div1 == "PROLOGUE"
+    assert storming.div2 == "THE STORMING OF SERINGAPATAM (1799):"
+    assert first_period.div1 == "FIRST PERIOD"
+    assert first_period.div2 == ""
+    assert chapter_one.div1 == "FIRST PERIOD"
+    assert chapter_one.div2 == "CHAPTER I"
+    assert epilogue.div1 == "EPILOGUE."
+    assert murthwaite.div1 == "EPILOGUE."
+    assert murthwaite.div2 == "THE STATEMENT OF MR. MURTHWAITE. (1850.)"
+
+
+def test_descent_of_man_preserves_terminal_parentheses_in_insect_orders():
+    headings = _headings(2300)
+
+    diptera = next(heading for heading in headings if heading.content == "ORDER, DIPTERA (FLIES).")
+    coleoptera = next(
+        heading for heading in headings if heading.content == "ORDER, COLEOPTERA (BEETLES)."
+    )
+    heading_texts = {heading.content for heading in headings}
+
+    assert "ORDER, DIPTERA (FLIES" not in heading_texts
+    assert "ORDER, COLEOPTERA (BEETLES" not in heading_texts
+    assert diptera.div1 == "PART II. SEXUAL SELECTION."
+    assert diptera.div2 == "CHAPTER X. SECONDARY SEXUAL CHARACTERS OF INSECTS."
+    assert diptera.div3 == "ORDER, DIPTERA (FLIES)."
+    assert coleoptera.div2 == "CHAPTER X. SECONDARY SEXUAL CHARACTERS OF INSECTS."
+    assert coleoptera.div3 == "ORDER, COLEOPTERA (BEETLES)."
+
+
+def test_koran_preserves_terminal_brackets_in_sura_headings():
+    heading_texts = [heading.content for heading in _headings(2800)]
+
+    assert "SURA LXXIV.-THE ENWRAPPED1 [II.]" in heading_texts
+    assert "SURA LXXIII. THE ENFOLDED1 [III.]" in heading_texts
+    assert "SURA XCIII.1-THE BRIGHTNESS [IV.]" in heading_texts
+    assert "SURA LXXIV.-THE ENWRAPPED1 [II" not in heading_texts
+    assert "SURA LXXIII. THE ENFOLDED1 [III" not in heading_texts
+    assert "SURA XCIII.1-THE BRIGHTNESS [IV" not in heading_texts
+
+
+def test_tristram_shandy_keeps_chapters_nested_within_each_volume():
+    headings = _headings(1079)
+    volume_titles = [
+        heading.content for heading in headings if "TRISTRAM SHANDY" in heading.content
+    ]
+    chapter_ones = [heading for heading in headings if heading.content == "C H A P. I"]
+    chapter_seventy_eight = next(
+        heading for heading in headings if heading.content == "Chapter the Seventy-eighth"
+    )
+
+    assert volume_titles == [
+        "THE LIFE and OPINIONS OF TRISTRAM SHANDY, Gent.",
+        "THE LIFE AND OPINIONS OF TRISTRAM SHANDY, GENTLEMAN Volume the Second",
+        "THE LIFE AND OPINIONS OF TRISTRAM SHANDY, GENTLEMAN ——— Volume the Third ———",
+        "THE LIFE AND OPINIONS OF TRISTRAM SHANDY, GENTLEMAN ——— Volume the Fourth ———",
+    ]
+    assert len(chapter_ones) == 4
+    assert [heading.div1 for heading in chapter_ones] == volume_titles
+    assert all(heading.div2 == "C H A P. I" for heading in chapter_ones)
+    assert chapter_seventy_eight.div1 == volume_titles[-1]
+    assert chapter_seventy_eight.div2 == "Chapter the Seventy-eighth"
+
+
+def test_frederick_douglass_keeps_preface_letter_and_appendix():
+    heading_texts = [heading.content for heading in _headings(23)]
+
+    assert heading_texts[:5] == [
+        "PREFACE",
+        "LETTER FROM WENDELL PHILLIPS, ESQ.",
+        "FREDERICK DOUGLASS.",
+        "CHAPTER I",
+        "CHAPTER II",
+    ]
+    assert heading_texts[-1] == "APPENDIX"
+
+
+def test_walden_keeps_chapters_under_walden_and_civil_disobedience_separate():
+    headings = _headings(205)
+
+    walden = next(heading for heading in headings if heading.content == "WALDEN")
+    economy = next(heading for heading in headings if heading.content == "Economy")
+    conclusion = next(heading for heading in headings if heading.content == "Conclusion")
+    civil_disobedience = next(
+        heading for heading in headings if heading.content == "ON THE DUTY OF CIVIL DISOBEDIENCE"
+    )
+
+    assert walden.div1 == "WALDEN"
+    assert walden.div2 == ""
+    assert economy.div1 == "WALDEN"
+    assert economy.div2 == "Economy"
+    assert conclusion.div1 == "WALDEN"
+    assert conclusion.div2 == "Conclusion"
+    assert civil_disobedience.div1 == "ON THE DUTY OF CIVIL DISOBEDIENCE"
+    assert civil_disobedience.div2 == ""
+
+
+def test_waste_land_keeps_only_the_five_poem_sections():
+    heading_texts = [heading.content for heading in _headings(1321)]
+
+    assert heading_texts == [
+        "I. THE BURIAL OF THE DEAD",
+        "II. A GAME OF CHESS",
+        "III. THE FIRE SERMON",
+        "IV. DEATH BY WATER",
+        "V. WHAT THE THUNDER SAID",
+    ]
+
+
+def test_scarlet_letter_keeps_custom_house_before_the_novel():
+    heading_texts = [heading.content for heading in _headings(33)]
+
+    assert heading_texts[:4] == [
+        "THE CUSTOM-HOUSE",
+        "THE SCARLET LETTER",
+        "I. THE PRISON DOOR",
+        "II. THE MARKET-PLACE",
+    ]
+    assert heading_texts[-1] == "XXIV. CONCLUSION"
+
+
+def test_uncle_toms_cabin_keeps_chapters_nested_within_both_volumes():
+    headings = _headings(203)
+    heading_texts = [heading.content for heading in headings]
+    opening_chapter = next(
+        heading
+        for heading in headings
+        if heading.content == "CHAPTER I In Which the Reader Is Introduced to a Man of Humanity"
+    )
+    closing_chapter = next(
+        heading for heading in headings if heading.content == "CHAPTER XLV Concluding Remarks"
+    )
+
+    assert heading_texts[:3] == [
+        "VOLUME I",
+        "CHAPTER I In Which the Reader Is Introduced to a Man of Humanity",
+        "CHAPTER II The Mother",
+    ]
+    assert "VOLUME II" in heading_texts
+    assert opening_chapter.div1 == "VOLUME I"
+    assert (
+        opening_chapter.div2 == "CHAPTER I In Which the Reader Is Introduced to a Man of Humanity"
+    )
+    assert closing_chapter.div1 == "VOLUME II"
+    assert closing_chapter.div2 == "CHAPTER XLV Concluding Remarks"

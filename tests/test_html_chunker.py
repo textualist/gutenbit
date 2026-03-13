@@ -386,14 +386,14 @@ def test_scene_one_toc_link_pointing_to_act_anchor_emits_both_levels():
     assert [h.content for h in headings] == [
         "PLAY TITLE",
         "ACT I",
-        "Scene I. Hall",
-        "SCENE II. Garden",
+        "Scene I. Hall.",
+        "SCENE II. Garden.",
     ]
     assert headings[1].div1 == "ACT I"
     assert headings[2].div1 == "ACT I"
-    assert headings[2].div2 == "Scene I. Hall"
+    assert headings[2].div2 == "Scene I. Hall."
     assert paragraphs[0].div1 == "ACT I"
-    assert paragraphs[0].div2 == "Scene I. Hall"
+    assert paragraphs[0].div2 == "Scene I. Hall."
 
 
 def test_collection_titles_promote_to_top_level_when_repeated():
@@ -421,10 +421,10 @@ def test_collection_titles_promote_to_top_level_when_repeated():
     assert [h.content for h in headings] == [
         "PLAY ONE",
         "ACT I",
-        "Scene I. Hall",
+        "Scene I. Hall.",
         "PLAY TWO",
         "ACT I",
-        "Scene I. Garden",
+        "Scene I. Garden.",
         "POEM THREE",
     ]
     assert headings[0].div1 == "PLAY ONE"
@@ -432,7 +432,7 @@ def test_collection_titles_promote_to_top_level_when_repeated():
     assert headings[1].div2 == "ACT I"
     assert headings[2].div1 == "PLAY ONE"
     assert headings[2].div2 == "ACT I"
-    assert headings[2].div3 == "Scene I. Hall"
+    assert headings[2].div3 == "Scene I. Hall."
     assert headings[3].div1 == "PLAY TWO"
     assert headings[4].div1 == "PLAY TWO"
     assert headings[4].div2 == "ACT I"
@@ -565,7 +565,7 @@ def test_illustration_links_ignored():
     headings = [c for c in chunks if c.kind == "heading"]
 
     assert len(headings) == 1
-    assert headings[0].content == "STAVE ONE"
+    assert headings[0].content == "STAVE ONE."
 
 
 def test_page_number_links_ignored():
@@ -741,7 +741,7 @@ def test_heading_with_pagenum_span():
     chunks = chunk_html(html)
     headings = [c for c in chunks if c.kind == "heading"]
     assert len(headings) == 1
-    assert headings[0].content == "CHAPTER I"
+    assert headings[0].content == "CHAPTER I."
 
 
 def test_heading_from_img_alt():
@@ -753,7 +753,24 @@ def test_heading_from_img_alt():
     chunks = chunk_html(html)
     headings = [c for c in chunks if c.kind == "heading"]
     assert len(headings) == 1
-    assert headings[0].content == "CHAPTER I"
+    assert headings[0].content == "CHAPTER I."
+
+
+def test_emitted_headings_preserve_terminal_parentheses_and_brackets():
+    html = _make_html("""
+    <p class="toc"><a href="#diptera" class="pginternal">ORDER, DIPTERA (FLIES).</a></p>
+    <p class="toc"><a href="#sura" class="pginternal">SURA LXXIV.-THE ENWRAPPED1 [II.]</a></p>
+    <h2><a id="diptera"></a>ORDER, DIPTERA (FLIES).</h2>
+    <p>Flies paragraph.</p>
+    <h2><a id="sura"></a>SURA LXXIV.-THE ENWRAPPED1 [II.]</h2>
+    <p>Sura paragraph.</p>
+    """)
+    headings = [chunk for chunk in chunk_html(html) if chunk.kind == "heading"]
+
+    assert [heading.content for heading in headings] == [
+        "ORDER, DIPTERA (FLIES).",
+        "SURA LXXIV.-THE ENWRAPPED1 [II.]",
+    ]
 
 
 def test_heading_text_preferred_over_img_alt_caption():
@@ -884,11 +901,34 @@ def test_heading_scan_skips_front_contents_cluster_and_merges_split_headings():
 
     assert [h.content for h in headings] == [
         "BOOK III OF WORDS",
-        "CHAPTER I OF WORDS OR LANGUAGE IN GENERAL",
+        "CHAPTER I. OF WORDS OR LANGUAGE IN GENERAL",
     ]
     assert headings[0].div1 == "BOOK III OF WORDS"
     assert headings[1].div1 == "BOOK III OF WORDS"
-    assert headings[1].div2 == "CHAPTER I OF WORDS OR LANGUAGE IN GENERAL"
+    assert headings[1].div2 == "CHAPTER I. OF WORDS OR LANGUAGE IN GENERAL"
+
+
+def test_heading_scan_merged_split_headings_preserve_terminal_brackets_and_parentheses():
+    html = _make_html("""
+    <h3>CHAPTER I.</h3>
+    <h4>THE STORMING OF SERINGAPATAM (1799):</h4>
+    <p>Storming paragraph.</p>
+    <h3>CHAPTER II.</h3>
+    <h4>SURA LXXIV.-THE ENWRAPPED1 [II.]</h4>
+    <p>Sura paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == [
+        "CHAPTER I. THE STORMING OF SERINGAPATAM (1799):",
+        "CHAPTER II. SURA LXXIV.-THE ENWRAPPED1 [II.]",
+    ]
+    assert headings[0].div1 == "CHAPTER I. THE STORMING OF SERINGAPATAM (1799):"
+    assert headings[1].div1 == "CHAPTER II. SURA LXXIV.-THE ENWRAPPED1 [II.]"
+    assert paragraphs[0].div1 == "CHAPTER I. THE STORMING OF SERINGAPATAM (1799):"
+    assert paragraphs[1].div1 == "CHAPTER II. SURA LXXIV.-THE ENWRAPPED1 [II.]"
 
 
 def test_heading_scan_keeps_part_headings_separate_from_numbered_child_sections():
@@ -1008,7 +1048,7 @@ def test_heading_scan_strips_synopsis_from_book_heading():
 
     assert [h.content for h in headings] == [
         "BOOK IV OF KNOWLEDGE AND PROBABILITY",
-        "CHAPTER I",
+        "CHAPTER I.",
     ]
     assert paragraphs[0].div1 == "BOOK IV OF KNOWLEDGE AND PROBABILITY"
     assert paragraphs[0].content == "Book-level synopsis paragraph."
@@ -1420,9 +1460,9 @@ def test_title_like_toc_sections_keep_trailing_book_headings_and_skip_letter_mar
     assert headings == [
         "THE ASSEMBLY OF FOWLS",
         "TROILUS AND CRESSIDA",
-        "THE FIRST BOOK",
-        "THE SECOND BOOK",
-        "CHAUCER'S A. B. C",
+        "THE FIRST BOOK.",
+        "THE SECOND BOOK.",
+        "CHAUCER'S A. B. C.",
         "A GOODLY BALLAD OF CHAUCER",
     ]
 
@@ -1446,10 +1486,10 @@ def test_heading_scan_skips_deep_rank_bare_numeral_subheads():
     headings = [c.content for c in chunks if c.kind == "heading"]
 
     assert headings == [
-        "PREFACE",
-        "FLORENCE AND DANTE",
-        "GIOTTO'S PORTRAIT OF DANTE",
-        "CANTO I",
+        "PREFACE.",
+        "FLORENCE AND DANTE.",
+        "GIOTTO'S PORTRAIT OF DANTE.",
+        "CANTO I.",
     ]
 
 
@@ -1608,10 +1648,10 @@ def test_heading_scan_starts_from_front_matter_before_shallower_chapters():
     headings = [c.content for c in chunks if c.kind == "heading"]
     paragraphs = [c for c in chunks if c.kind == "text"]
 
-    assert headings == ["ETYMOLOGY", "EXTRACTS", "CHAPTER I"]
-    assert paragraphs[0].div1 == "ETYMOLOGY"
-    assert paragraphs[1].div1 == "EXTRACTS"
-    assert paragraphs[2].div1 == "CHAPTER I"
+    assert headings == ["ETYMOLOGY.", "EXTRACTS.", "CHAPTER I."]
+    assert paragraphs[0].div1 == "ETYMOLOGY."
+    assert paragraphs[1].div1 == "EXTRACTS."
+    assert paragraphs[2].div1 == "CHAPTER I."
 
 
 def test_singular_note_heading_is_preserved_as_a_section():

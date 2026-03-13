@@ -1455,7 +1455,7 @@ def test_chunks_by_div_ignores_trailing_punctuation(tmp_path):
     db.close()
 
     assert len(rows) == 1
-    assert rows[0].div1 == "STAVE ONE"
+    assert rows[0].div1 == "STAVE ONE."
 
 
 def test_chunks_by_div_is_case_and_punctuation_spacing_insensitive(tmp_path):
@@ -1463,7 +1463,7 @@ def test_chunks_by_div_is_case_and_punctuation_spacing_insensitive(tmp_path):
     db._store(_BOOK3, chunk_html(_BOOK3_HTML))
     rows = db.chunks_by_div(3, "stave one", kinds=["heading"])
     assert len(rows) >= 1
-    assert rows[0].div1 == "STAVE ONE"
+    assert rows[0].div1 == "STAVE ONE."
     db.close()
 
 
@@ -2601,7 +2601,7 @@ def test_search_json_heading_kind_output(tmp_path):
     assert data["filters"]["kind"] == "heading"
     assert data["total_results"] == 1
     assert data["items"][0]["kind"] == "heading"
-    assert data["items"][0]["content"] == "STAVE ONE"
+    assert data["items"][0]["content"] == "STAVE ONE."
 
 
 def test_search_json_empty(tmp_path):
