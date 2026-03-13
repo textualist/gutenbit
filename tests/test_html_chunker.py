@@ -1314,6 +1314,56 @@ def test_toc_refines_title_like_h3_subheads_inside_chapters():
     assert dreams_paragraph.div3 == "Dreams"
 
 
+def test_late_title_like_body_heading_stays_within_current_toc_chapter():
+    html = _make_html("""
+    <p><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <p><a href="#ch2" class="pginternal">CHAPTER II</a></p>
+    <h3><a id="ch1"></a>CHAPTER I</h3>
+    <p>Opening chapter paragraph.</p>
+    <h2>Song of the Road</h2>
+    <p>Song paragraph.</p>
+    <h3><a id="ch2"></a>CHAPTER II</h3>
+    <p>Second chapter paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert [h.content for h in headings] == ["CHAPTER I", "Song of the Road", "CHAPTER II"]
+    assert headings[0].div1 == "CHAPTER I"
+    assert headings[0].div2 == ""
+    assert headings[1].div1 == "CHAPTER I"
+    assert headings[1].div2 == "Song of the Road"
+    assert headings[2].div1 == "CHAPTER II"
+    assert headings[2].div2 == ""
+    assert paragraphs[1].div1 == "CHAPTER I"
+    assert paragraphs[1].div2 == "Song of the Road"
+    assert paragraphs[2].div1 == "CHAPTER II"
+    assert paragraphs[2].div2 == ""
+
+
+def test_exact_match_h3_toc_links_skip_title_page_credit_noise():
+    html = _make_html("""
+    <table><tbody>
+      <tr><td><a href="#by" class="pginternal">by</a></td></tr>
+      <tr><td><a href="#author" class="pginternal">Wilkie Collins</a></td></tr>
+      <tr><td><a href="#ch1" class="pginternal">CHAPTER I</a></td></tr>
+      <tr><td><a href="#ch2" class="pginternal">CHAPTER II</a></td></tr>
+    </tbody></table>
+    <h2>THE WOMAN IN WHITE</h2>
+    <h3><a id="by"></a>by</h3>
+    <h3><a id="author"></a>Wilkie Collins</h3>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Chapter one intro.</p>
+    <h2><a id="ch2"></a>CHAPTER II</h2>
+    <p>Chapter two paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == ["CHAPTER I", "CHAPTER II"]
+
+
 # ------------------------------------------------------------------
 # Paragraph heading fallback
 # ------------------------------------------------------------------
