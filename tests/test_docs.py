@@ -76,6 +76,24 @@ def test_mkdocs_nav_orders_cli_before_python_api():
     assert mkdocs.index("- CLI: cli.md") < mkdocs.index("- Python API: python-api.md")
 
 
+def test_docs_theme_uses_committed_logo_asset():
+    mkdocs = (REPO_ROOT / "mkdocs.yml").read_text()
+    assert "logo: assets/images/gb-star-logo.png" in mkdocs
+    assert (REPO_ROOT / "docs" / "assets" / "images" / "gb-star-logo.png").exists()
+
+
+def test_docs_header_uses_theme_logo_without_custom_overrides():
+    assert not (REPO_ROOT / "docs" / "overrides" / "partials" / "header.html").exists()
+    assert not (REPO_ROOT / "docs" / "overrides" / "partials" / "site-brand.html").exists()
+
+
+def test_docs_header_brand_css_uses_theme_logo_and_hides_header_text():
+    extra_css = (REPO_ROOT / "docs" / "stylesheets" / "extra.css").read_text()
+    assert ".md-header__button.md-logo img" in extra_css
+    assert ".md-header__title .md-ellipsis" in extra_css
+    assert ".md-header__button.md-logo .identity-wordmark" not in extra_css
+
+
 @pytest.mark.parametrize("command", DOCUMENTED_COMMANDS)
 def test_documented_cli_commands_parse(command: str):
     parser = _build_parser()
