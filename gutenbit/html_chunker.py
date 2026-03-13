@@ -1017,6 +1017,8 @@ def _is_title_like_heading(heading_text: str) -> bool:
         return False
     if _STANDALONE_STRUCTURAL_RE.search(heading_text):
         return False
+    if _PLAIN_NUMBER_HEADING_RE.fullmatch(heading_text):
+        return False
     if _is_dialogue_speaker_heading(heading_text):
         return False
     return not _is_non_structural_heading_text(heading_text)
@@ -1063,6 +1065,14 @@ def _refined_candidate_section(
     if _is_title_like_heading(candidate.heading_text):
         if candidate.heading_rank is None or toc_section.heading_rank is None:
             return None
+        if candidate.heading_rank < toc_section.heading_rank:
+            return _Section(
+                candidate.anchor_id,
+                candidate.heading_text,
+                _rank_relative_level(candidate, toc_section),
+                candidate.body_anchor,
+                candidate.heading_rank,
+            )
         if candidate.heading_rank != toc_section.heading_rank + 1 and not (
             allow_tail_title_like and _TAIL_SECTION_HEADING_RE.match(candidate.heading_text)
         ):
@@ -1078,6 +1088,14 @@ def _refined_candidate_section(
     if not _is_refinement_heading(candidate.heading_text):
         return None
     if _is_title_like_heading(toc_section.heading_text):
+        if candidate.heading_text and _PLAIN_NUMBER_HEADING_RE.fullmatch(candidate.heading_text):
+            return _Section(
+                candidate.anchor_id,
+                candidate.heading_text,
+                min(4, toc_section.level + 1),
+                candidate.body_anchor,
+                candidate.heading_rank,
+            )
         return candidate
     return candidate if candidate.level > toc_section.level else None
 
@@ -1527,12 +1545,23 @@ def _is_toc_context_link(link: Tag) -> bool:
         residue = _container_residue_without_link_text(container)
         if _NON_ALNUM_RE.sub("", residue) == "":
             return True
+
+    heading_container = link.find_parent(_HEADING_TAGS)
+    if heading_container is None:
+        return False
+    if len(heading_container.find_all("a", class_="pginternal")) >= 2:
+        return True
+
+    for previous_heading in heading_container.find_all_previous(_HEADING_TAGS, limit=3):
+        text = _clean_heading_text(_extract_heading_text(previous_heading)).lower()
+        if text in {"contents", "table of contents"}:
+            return True
     return False
 
 
 def _toc_context_text(link: Tag) -> str:
     """Return nearby non-link TOC text for a link, if any."""
-    for name in ("tr", "p", "li", "div"):
+    for name in ("tr", "p", "li", "div", "h1", "h2", "h3", "h4", "h5", "h6"):
         container = link.find_parent(name)
         if container is None:
             continue
@@ -1875,6 +1904,8 @@ def _is_toc_section_heading(
 ) -> bool:
     """Return True when a TOC entry points at a real structural section."""
     if is_emphasized or heading_rank <= 2:
+        return True
+    if heading_rank <= 3 and _same_heading_text(link_text, heading_text):
         return True
     if _BRACKETED_NUMERIC_HEADING_RE.fullmatch(heading_text):
         return True

@@ -519,3 +519,37 @@ def test_candide_keeps_front_matter_headings_and_skips_attribution_noise():
         "I",
     ]
     assert "INTRODUCTION BY PHILIP LITTELL" not in heading_texts
+
+
+def test_woman_in_white_uses_contents_structure_and_skips_title_page_noise():
+    headings = _headings(583)
+    heading_texts = [heading.content for heading in headings]
+
+    assert "by" not in heading_texts
+    assert "Wilkie Collins" not in heading_texts
+
+    hartright = next(
+        heading for heading in headings if heading.content == "THE STORY BEGUN BY WALTER HARTRIGHT"
+    )
+    opening_chapter = next(
+        heading
+        for heading in headings
+        if heading.content == "III" and heading.div2 == "THE STORY BEGUN BY WALTER HARTRIGHT"
+    )
+    second_epoch = next(heading for heading in headings if heading.content == "THE SECOND EPOCH")
+    michelson = next(
+        heading for heading in headings if heading.content == "THE STORY CONTINUED BY ELIZA MICHELSON"
+    )
+    final_narrative = next(
+        heading
+        for heading in headings
+        if heading.content == "THE STORY CONCLUDED BY WALTER HARTRIGHT"
+    )
+
+    assert hartright.div1 == ""
+    assert hartright.div2 == "THE STORY BEGUN BY WALTER HARTRIGHT"
+    assert opening_chapter.div2 == "THE STORY BEGUN BY WALTER HARTRIGHT"
+    assert opening_chapter.div3 == "III"
+    assert second_epoch.div1 == "THE SECOND EPOCH"
+    assert michelson.div1 == "THE SECOND EPOCH"
+    assert final_narrative.div1 == "THE SECOND EPOCH"
