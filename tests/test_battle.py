@@ -627,3 +627,16 @@ def test_tristram_shandy_keeps_chapters_nested_within_each_volume():
     assert all(heading.div2 == "C H A P. I" for heading in chapter_ones)
     assert chapter_seventy_eight.div1 == volume_titles[-1]
     assert chapter_seventy_eight.div2 == "Chapter the Seventy-eighth"
+
+
+def test_frederick_douglass_keeps_preface_letter_and_appendix():
+    heading_texts = [heading.content for heading in _headings(23)]
+
+    assert heading_texts[:5] == [
+        "PREFACE",
+        "LETTER FROM WENDELL PHILLIPS, ESQ",
+        "FREDERICK DOUGLASS",
+        "CHAPTER I",
+        "CHAPTER II",
+    ]
+    assert heading_texts[-1] == "APPENDIX"
