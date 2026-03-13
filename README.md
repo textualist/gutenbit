@@ -1,6 +1,17 @@
-<img src="assets/brand/gutenbit-brand.png" alt="gutenbit brand mark" width="220">
+<p align="center">
+  <br>
+  <img src="assets/brand/gutenbit-brand-readme.png" alt="gutenbit brand mark" width="230">
+  <br>
+  <br>
+  <em>A command line tool for fast local search across public-domain literary works.<br>Find, browse and search books from your terminal.</em>
+</p>
 
-gutenbit is a command line tool for fast local search across public-domain literary works. Find, browse, and search books from your terminal or Python script.
+<p align="center">
+  <a href="https://pypi.org/project/gutenbit/"><img src="https://img.shields.io/pypi/v/gutenbit?color=%2334D058" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/gutenbit/"><img src="https://img.shields.io/badge/python-3.11%2B-%2334D058" alt="Python 3.11+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/textualist/gutenbit" alt="License"></a>
+  <a href="https://gutenbit.textualist.org"><img src="https://img.shields.io/badge/docs-site-%2334D058" alt="Docs site"></a>
+</p>
 
 ## CLI Install
 
