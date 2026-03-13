@@ -220,6 +220,11 @@ def chunk_html(html: str) -> list[Chunk]:
     sections = _nest_broad_subdivisions(sections)
     sections = _promote_more_prominent_heading_runs(sections)
     sections = _merge_adjacent_duplicate_sections(sections)
+    sections, tail_stop_pos = _trim_trailing_sections_at_tail_boundary(
+        sections,
+        doc_index=doc_index,
+        bounds=bounds,
+    )
 
     # Compact levels so the shallowest level maps to div1.
     # e.g. chapter-only books (min_level=2) shift chapters to div1.
@@ -257,13 +262,6 @@ def chunk_html(html: str) -> list[Chunk]:
             chunks.append(Chunk(pos, "", "", "", "", text, "text"))
             pos += 1
 
-    # Find a tail boundary: the first non-structural heading (e.g. FOOTNOTES,
-    # NOTES) that appears after the last section.  This prevents endnotes from
-    # being lumped into the last chapter.
-    tail_anchor = _find_non_structural_boundary_after(
-        sections[-1].body_anchor, tag_positions=tag_positions, bounds=bounds
-    )
-
     # Body sections.
     for i, section in enumerate(sections):
         # Update division tracking.
@@ -287,11 +285,8 @@ def chunk_html(html: str) -> list[Chunk]:
             next_heading = sections[i + 1].body_anchor.find_parent(_HEADING_TAGS)
             next_stop = next_heading or sections[i + 1].body_anchor
             stop_pos_val = tag_positions.get(id(next_stop))
-        elif tail_anchor is not None:
-            tail_heading = tail_anchor.find_parent(_HEADING_TAGS)
-            is_heading_tag = tail_heading and tail_heading.name in _HEADING_TAGS
-            tail_stop = tail_heading if is_heading_tag else tail_anchor
-            stop_pos_val = tag_positions.get(id(tail_stop))
+        elif tail_stop_pos is not None:
+            stop_pos_val = tail_stop_pos
 
         if start_pos_val is not None:
             for text in _paragraphs_in_range(
@@ -864,29 +859,118 @@ _TAIL_BOUNDARY_HEADING_RE = re.compile(
     r"^(?:footnotes?|endnotes?|notes\b|transcriber'?s?\s+note|editor'?s?\s+note)",
     re.IGNORECASE,
 )
+_TAIL_BOUNDARY_PARAGRAPH_RE = re.compile(
+    r"^index\.?(?:\s*[-—–:]\s*|\s*$)",
+    re.IGNORECASE,
+)
+_TERMINAL_CLOSER_HEADINGS = frozenset({"the end", "finis"})
+
+
+def _trim_trailing_sections_at_tail_boundary(
+    sections: list[_Section],
+    *,
+    doc_index: _DocumentIndex,
+    bounds: _ContentBounds,
+) -> tuple[list[_Section], int | None]:
+    """Trim trailing sections when inline apparatus starts before them."""
+    if not sections:
+        return sections, None
+
+    tail_stop_pos: int | None = None
+    for idx, section in enumerate(sections):
+        next_pos: int | None = None
+        if idx + 1 < len(sections):
+            next_heading = sections[idx + 1].body_anchor.find_parent(_HEADING_TAGS)
+            next_stop = next_heading or sections[idx + 1].body_anchor
+            next_pos = doc_index.tag_positions.get(id(next_stop))
+
+        boundary = _find_non_structural_boundary_after(
+            section.body_anchor,
+            doc_index=doc_index,
+            bounds=bounds,
+            stop_pos=next_pos,
+        )
+        if boundary is None:
+            continue
+
+        boundary_pos = _tag_position(boundary, doc_index.tag_positions)
+        if boundary_pos is None:
+            continue
+
+        if idx + 1 < len(sections):
+            trailing_sections = sections[idx + 1 :]
+            if not all(
+                _is_terminal_closer_heading(section.heading_text) for section in trailing_sections
+            ):
+                continue
+            return sections[: idx + 1], boundary_pos
+        tail_stop_pos = boundary_pos
+
+    return sections, tail_stop_pos
 
 
 def _find_non_structural_boundary_after(
     anchor: Tag,
     *,
-    tag_positions: dict[int, int],
+    doc_index: _DocumentIndex,
     bounds: _ContentBounds,
+    stop_pos: int | None = None,
 ) -> Tag | None:
-    """Find the first apparatus heading after *anchor* (e.g. FOOTNOTES, NOTES).
+    """Find the first apparatus boundary after *anchor*.
 
-    Returns the heading tag itself so its position can be used as a stop boundary
-    for paragraph collection.  Uses a restrictive pattern to avoid false positives
-    on narrative headings like a singular "NOTE" epilogue.
+    Returns the earliest heading or paragraph tag that starts clearly
+    non-structural back matter. Uses restrictive patterns to avoid false
+    positives on narrative headings like a singular "NOTE" epilogue.
     """
+    tag_positions = doc_index.tag_positions
+    start_pos = _tag_position(anchor, tag_positions)
+    if start_pos is None:
+        return None
+
+    heading_candidate: Tag | None = None
+    heading_pos: int | None = None
     for el in anchor.find_all_next(_HEADING_TAGS):
         if not isinstance(el, Tag):
             continue
+        pos = _tag_position(el, tag_positions)
+        if pos is None:
+            continue
+        if stop_pos is not None and pos >= stop_pos:
+            break
         if not _tag_within_bounds(el, tag_positions, bounds):
             continue
         heading_text = _clean_heading_text(_extract_heading_text(el))
         if heading_text and _TAIL_BOUNDARY_HEADING_RE.match(heading_text):
-            return el
-    return None
+            heading_candidate = el
+            heading_pos = pos
+            break
+
+    paragraph_candidate: Tag | None = None
+    paragraph_pos: int | None = None
+    lo = bisect_right(doc_index.paragraph_positions, start_pos)
+    hi = (
+        bisect_left(doc_index.paragraph_positions, stop_pos)
+        if stop_pos is not None
+        else len(doc_index.paragraphs)
+    )
+    for paragraph in doc_index.paragraphs[lo:hi]:
+        if paragraph.is_toc:
+            continue
+        if _TAIL_BOUNDARY_PARAGRAPH_RE.match(paragraph.text):
+            paragraph_candidate = paragraph.tag
+            paragraph_pos = paragraph.position
+            break
+
+    if heading_pos is None:
+        return paragraph_candidate
+    if paragraph_pos is None:
+        return heading_candidate
+    return paragraph_candidate if paragraph_pos < heading_pos else heading_candidate
+
+
+def _is_terminal_closer_heading(heading_text: str) -> bool:
+    """Return True for exact closing markers that should not survive back matter."""
+    return _clean_heading_text(heading_text).lower() in _TERMINAL_CLOSER_HEADINGS
 
 
 def _find_next_heading(

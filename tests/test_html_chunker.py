@@ -1694,3 +1694,20 @@ def test_chunk_kinds():
     chunks = chunk_html(html)
     kinds = {c.kind for c in chunks}
     assert kinds == {"heading", "text"}
+
+
+def test_inline_index_paragraph_stops_last_section_and_drops_trailing_closer():
+    html = _make_html("""
+    <p><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Chapter paragraph.</p>
+    <p>INDEX. — Abbot, C., on the battles of seals.</p>
+    <p>Abductor of the fifth metatarsal, presence of, in man.</p>
+    <h3>THE END.</h3>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    paragraphs = [c.content for c in chunks if c.kind == "text"]
+
+    assert headings == ["CHAPTER I"]
+    assert paragraphs == ["Chapter paragraph."]
