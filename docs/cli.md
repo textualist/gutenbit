@@ -226,7 +226,7 @@ gutenbit view 1342 --section 1 --radius 2       # surrounding passage around sec
 | `--radius N` | Surrounding passage to include on each side of the selected center passage |
 | `--json` | Output as JSON |
 
-Use `--section` or `--position`, not both. `--forward`, `--radius`, and `--all` are mutually exclusive in `view`. Use `--all` for a whole book or selected section subtree; choosing a parent section such as a play or act includes its nested descendants. `--all` does not apply to `--position`. Run `toc` first to see available section numbers. TOC labels preserve the source heading punctuation; section matching still tolerates missing trailing punctuation in the selector.
+Use `--section` or `--position`, not both. `--forward`, `--radius`, and `--all` are mutually exclusive in `view`. Use `--all` for a whole book or selected section subtree; choosing a parent section such as a play or act includes its nested descendants. `--all` does not apply to `--position`. Run `toc` first to see available section numbers.
 
 ## JSON output
 
