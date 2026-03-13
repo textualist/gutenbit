@@ -580,3 +580,29 @@ def test_tom_jones_keeps_book_subtitle_and_final_chapter_closer():
     assert conclusion.div1 == "BOOK XVIII"
     assert conclusion.div2 == "Chapter the last"
     assert conclusion.div3 == "In which the history is concluded"
+
+
+def test_moonstone_keeps_prologue_periods_and_epilogue_statements():
+    headings = _headings(155)
+
+    storming = next(
+        heading for heading in headings if heading.content == "THE STORMING OF SERINGAPATAM (1799"
+    )
+    first_period = next(heading for heading in headings if heading.content == "FIRST PERIOD")
+    chapter_one = next(
+        heading for heading in headings if heading.content == "CHAPTER I" and heading.div1 == "FIRST PERIOD"
+    )
+    epilogue = next(heading for heading in headings if heading.content == "EPILOGUE")
+    murthwaite = next(
+        heading for heading in headings if heading.content == "THE STATEMENT OF MR. MURTHWAITE. (1850"
+    )
+
+    assert storming.div1 == "PROLOGUE"
+    assert storming.div2 == "THE STORMING OF SERINGAPATAM (1799"
+    assert first_period.div1 == "FIRST PERIOD"
+    assert first_period.div2 == ""
+    assert chapter_one.div1 == "FIRST PERIOD"
+    assert chapter_one.div2 == "CHAPTER I"
+    assert epilogue.div1 == "EPILOGUE"
+    assert murthwaite.div1 == "EPILOGUE"
+    assert murthwaite.div2 == "THE STATEMENT OF MR. MURTHWAITE. (1850"
