@@ -698,3 +698,27 @@ def test_turn_of_the_screw_keeps_all_roman_numeral_chapters_under_the_title():
     assert first_chapter.div2 == "I"
     assert last_chapter.div1 == "THE TURN OF THE SCREW"
     assert last_chapter.div2 == "XXIV"
+
+
+def test_uncle_toms_cabin_keeps_chapters_nested_within_both_volumes():
+    headings = _headings(203)
+    heading_texts = [heading.content for heading in headings]
+    opening_chapter = next(
+        heading
+        for heading in headings
+        if heading.content == "CHAPTER I In Which the Reader Is Introduced to a Man of Humanity"
+    )
+    closing_chapter = next(
+        heading for heading in headings if heading.content == "CHAPTER XLV Concluding Remarks"
+    )
+
+    assert heading_texts[:3] == [
+        "VOLUME I",
+        "CHAPTER I In Which the Reader Is Introduced to a Man of Humanity",
+        "CHAPTER II The Mother",
+    ]
+    assert "VOLUME II" in heading_texts
+    assert opening_chapter.div1 == "VOLUME I"
+    assert opening_chapter.div2 == "CHAPTER I In Which the Reader Is Introduced to a Man of Humanity"
+    assert closing_chapter.div1 == "VOLUME II"
+    assert closing_chapter.div2 == "CHAPTER XLV Concluding Remarks"
