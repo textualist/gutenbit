@@ -125,6 +125,9 @@ _FRONT_MATTER_ATTRIBUTION_HEADING_RE = re.compile(
     r"^(?:introduction|preface|foreword|afterword)\s+by\b",
     re.IGNORECASE,
 )
+_ATTRIBUTION_MARKER_HEADINGS = frozenset(
+    {"by", "translated by", "edited by", "illustrated by"}
+)
 _FRONT_MATTER_HEADINGS = frozenset(
     {
         "contents",
@@ -372,6 +375,13 @@ def _parse_toc_sections(
         if not heading_text:
             continue
         if _is_non_structural_heading_text(heading_text):
+            continue
+        if _same_heading_text(link_text, heading_text) and _is_toc_credit_heading(
+            heading_text,
+            heading_el=heading_el,
+            tag_positions=tag_positions,
+            bounds=bounds,
+        ):
             continue
         if used_fallback_heading and not _toc_entry_matches_heading(link_text, heading_text):
             continue
@@ -970,6 +980,8 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
     lowered = text.lower()
     if lowered in _FRONT_MATTER_HEADINGS:
         return True
+    if lowered in _ATTRIBUTION_MARKER_HEADINGS:
+        return True
     if _PAGE_HEADING_RE.match(text):
         return True
     if _FRONT_MATTER_ATTRIBUTION_RE.match(text):
@@ -1066,10 +1078,12 @@ def _refined_candidate_section(
         if candidate.heading_rank is None or toc_section.heading_rank is None:
             return None
         if candidate.heading_rank < toc_section.heading_rank:
+            # Late title-like headings can refine the current TOC section,
+            # but they cannot become that section's parent.
             return _Section(
                 candidate.anchor_id,
                 candidate.heading_text,
-                _rank_relative_level(candidate, toc_section),
+                min(4, max(toc_section.level + 1, _rank_relative_level(candidate, toc_section))),
                 candidate.body_anchor,
                 candidate.heading_rank,
             )
@@ -1277,11 +1291,16 @@ def _promote_more_prominent_heading_runs(sections: list[_Section]) -> list[_Sect
         if parent_rank is None or current_rank >= parent_rank:
             idx += 1
             continue
+        if _is_refinement_heading(sections[parent_idx].heading_text):
+            idx += 1
+            continue
 
         shift = current_level - parent_level
         run_end = idx
         while run_end < len(sections) and new_levels[run_end] > parent_level:
             promoted_level = max(1, new_levels[run_end] - shift)
+            if run_end == idx and _is_title_like_heading(sections[parent_idx].heading_text):
+                promoted_level = max(1, promoted_level - 1)
             if promoted_level != new_levels[run_end]:
                 new_levels[run_end] = promoted_level
                 changed = True
@@ -1899,6 +1918,95 @@ def _is_refinement_heading(heading_text: str) -> bool:
     if _STANDALONE_STRUCTURAL_RE.search(heading_text):
         return True
     return _PLAIN_NUMBER_HEADING_RE.fullmatch(heading_text) is not None
+
+
+def _is_toc_credit_heading(
+    heading_text: str,
+    *,
+    heading_el: Tag,
+    tag_positions: dict[int, int],
+    bounds: _ContentBounds,
+) -> bool:
+    """Return True for TOC-linked title-page credit lines like ``by`` or author names."""
+    text = " ".join(heading_text.split()).strip()
+    lowered = text.lower()
+    if lowered in _ATTRIBUTION_MARKER_HEADINGS:
+        return True
+    if _FRONT_MATTER_ATTRIBUTION_RE.match(text):
+        return True
+    if _FRONT_MATTER_ATTRIBUTION_HEADING_RE.match(text):
+        return True
+    return _looks_like_person_name_heading(text) and _has_preceding_attribution_marker(
+        heading_el,
+        tag_positions=tag_positions,
+        bounds=bounds,
+    )
+
+
+def _looks_like_person_name_heading(heading_text: str) -> bool:
+    if _heading_keyword(heading_text):
+        return False
+    if _STANDALONE_STRUCTURAL_RE.search(heading_text):
+        return False
+
+    words = heading_text.split()
+    if not 2 <= len(words) <= 4:
+        return False
+
+    disallowed = {"a", "an", "and", "by", "for", "in", "of", "on", "or", "the", "to", "with"}
+    saw_name_word = False
+    for word in words:
+        lowered = word.lower().strip(".")
+        if lowered in disallowed:
+            return False
+
+        normalized = word.strip(".")
+        if not normalized:
+            return False
+        if len(normalized) == 1 and word.endswith("."):
+            saw_name_word = True
+            continue
+        if normalized.isdigit() or _ROMAN_NUMERAL_RE.fullmatch(normalized):
+            return False
+        if not re.fullmatch(r"[A-Za-z]+(?:['-][A-Za-z]+)*", normalized):
+            return False
+
+        letters = "".join(char for char in normalized if char.isalpha())
+        if not letters:
+            return False
+        if letters != letters.upper() and not (
+            letters[0].isupper() and letters[1:].islower()
+        ):
+            return False
+        saw_name_word = True
+
+    return saw_name_word
+
+
+def _has_preceding_attribution_marker(
+    heading_el: Tag,
+    *,
+    tag_positions: dict[int, int],
+    bounds: _ContentBounds,
+) -> bool:
+    for previous_heading in heading_el.find_all_previous(_HEADING_TAGS, limit=4):
+        if not isinstance(previous_heading, Tag):
+            continue
+        if not _tag_within_bounds(previous_heading, tag_positions, bounds):
+            continue
+        previous_text = _clean_heading_text(_extract_heading_text(previous_heading))
+        if not previous_text:
+            continue
+        previous_lowered = previous_text.lower()
+        if previous_lowered in _ATTRIBUTION_MARKER_HEADINGS:
+            return True
+        if _heading_keyword(previous_text):
+            return False
+        if _FALLBACK_START_HEADING_RE.match(previous_text):
+            return False
+        if _STANDALONE_STRUCTURAL_RE.search(previous_text):
+            return False
+    return False
 
 
 def _is_toc_section_heading(
