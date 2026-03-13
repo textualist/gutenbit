@@ -1,8 +1,8 @@
-# gutenbit
+<img src="assets/brand/gutenbit-brand.png" alt="gutenbit brand mark" width="220">
 
-Fast local search across public-domain literary works. Find, browse, and search books from your terminal or Python script.
+gutenbit is a command line tool for fast local search across public-domain literary works. Find, browse, and search books from your terminal or Python script.
 
-## Install
+## CLI Install
 
 Try the latest stable release from PyPI without a persistent install:
 
@@ -18,16 +18,28 @@ uv tool install gutenbit
 
 gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
 
-## CLI
+## CLI Example
+
+Find a book in the Project Gutenberg catalog and download it locally. Sections are parsed automatically during import.
 
 ```bash
-gutenbit catalog --author "Austen, Jane"                              # find Pride and Prejudice
-gutenbit add 1342                                                     # download and store it
-gutenbit toc 1342                                                     # inspect numbered sections (default: 2 levels)
-gutenbit view 1342                                                    # read the opening
-gutenbit view 1342 --section 1 --forward 5                            # jump into chapter 1
+gutenbit catalog --author "Austen, Jane"
+gutenbit add 1342
+```
+
+Inspect the table of contents, read the opening, or jump into a section.
+
+```bash
+gutenbit toc 1342
+gutenbit view 1342
+gutenbit view 1342 --section 1 --forward 5
+```
+
+Search within the book and read exact matches or nearby context.
+
+```bash
 gutenbit search "truth universally acknowledged" --book 1342 --phrase
-gutenbit search "bennet" --book 1342 --limit 3 --radius 1             # read hits in context
+gutenbit search "bennet" --book 1342 --limit 3 --radius 1
 ```
 
 All commands support `--json` for machine-readable output.
@@ -35,6 +47,12 @@ CLI-managed state is stored under `.gutenbit/` by default, including the databas
 `.gutenbit/gutenbit.db` and the catalog cache under `.gutenbit/cache/`.
 
 ## Python
+
+gutenbit can also be used as a python module. Add it to your project with:
+
+```bash
+uv add gutenbit
+```
 
 ```python
 from gutenbit import Catalog, Database
