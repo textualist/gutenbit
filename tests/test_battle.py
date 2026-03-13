@@ -606,3 +606,24 @@ def test_moonstone_keeps_prologue_periods_and_epilogue_statements():
     assert epilogue.div1 == "EPILOGUE"
     assert murthwaite.div1 == "EPILOGUE"
     assert murthwaite.div2 == "THE STATEMENT OF MR. MURTHWAITE. (1850"
+
+
+def test_tristram_shandy_keeps_chapters_nested_within_each_volume():
+    headings = _headings(1079)
+    volume_titles = [heading.content for heading in headings if "TRISTRAM SHANDY" in heading.content]
+    chapter_ones = [heading for heading in headings if heading.content == "C H A P. I"]
+    chapter_seventy_eight = next(
+        heading for heading in headings if heading.content == "Chapter the Seventy-eighth"
+    )
+
+    assert volume_titles == [
+        "THE LIFE and OPINIONS OF TRISTRAM SHANDY, Gent",
+        "THE LIFE AND OPINIONS OF TRISTRAM SHANDY, GENTLEMAN Volume the Second",
+        "THE LIFE AND OPINIONS OF TRISTRAM SHANDY, GENTLEMAN ——— Volume the Third ———",
+        "THE LIFE AND OPINIONS OF TRISTRAM SHANDY, GENTLEMAN ——— Volume the Fourth ———",
+    ]
+    assert len(chapter_ones) == 4
+    assert [heading.div1 for heading in chapter_ones] == volume_titles
+    assert all(heading.div2 == "C H A P. I" for heading in chapter_ones)
+    assert chapter_seventy_eight.div1 == volume_titles[-1]
+    assert chapter_seventy_eight.div2 == "Chapter the Seventy-eighth"
