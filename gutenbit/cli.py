@@ -1109,9 +1109,8 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
         formatter_class=fmt,
         help="show structural table of contents for a book",
         description=(
-            "Show a compact structural summary of one book, auto-adding it first "
-            "when needed and following canonical ID remaps. Section numbering "
-            "is included for ergonomic section selection in `view`. "
+            "Show a compact structural summary of one stored book, including "
+            "section numbering for easy section selection in `view`. "
             "Use --expand to control how many heading levels the table shows."
         ),
         epilog="""\
