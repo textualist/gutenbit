@@ -99,6 +99,29 @@ def _cli_state_dir() -> Path:
     return Path.home() / STATE_DIR_NAME
 
 
+def _resolved_cli_path(path: str | Path) -> Path:
+    """Resolve a CLI path the same way Database() will interpret it."""
+    return Path(path).expanduser().resolve()
+
+
+def _collapse_home_path(path: Path) -> str:
+    """Render paths under the home directory with a leading tilde."""
+    home = Path.home()
+    try:
+        relative = path.relative_to(home)
+    except ValueError:
+        return str(path)
+    return str(Path("~") / relative) if relative.parts else "~"
+
+
+def _display_cli_path(path: str | Path) -> str:
+    """Render a user-facing path without turning ``~/...`` into ``<cwd>/~/...``."""
+    raw = str(path)
+    if raw.startswith("~"):
+        return _collapse_home_path(_resolved_cli_path(path))
+    return raw
+
+
 def _catalog_cache_dir() -> Path:
     return _cli_state_dir() / "cache"
 
@@ -1433,7 +1456,7 @@ def _cmd_add(args: argparse.Namespace) -> int:
 
     if not books:
         data = {
-            "db": str(Path(args.db).resolve()),
+            "db": str(_resolved_cli_path(args.db)),
             "catalog_source": catalog.fetch_info.source if catalog.fetch_info else "unknown",
             "catalog_cache_path": (
                 str(catalog.fetch_info.cache_path) if catalog.fetch_info else ""
@@ -1480,7 +1503,7 @@ def _cmd_add(args: argparse.Namespace) -> int:
             result_rows.append(result)
 
         data = {
-            "db": str(Path(args.db).resolve()),
+            "db": str(_resolved_cli_path(args.db)),
             "catalog_source": catalog.fetch_info.source if catalog.fetch_info else "unknown",
             "catalog_cache_path": (
                 str(catalog.fetch_info.cache_path) if catalog.fetch_info else ""
@@ -1505,10 +1528,10 @@ def _cmd_add(args: argparse.Namespace) -> int:
 
     if errors:
         display.error(
-            f"Completed with {len(errors)} failure(s). Database: {Path(args.db).resolve()}"
+            f"Completed with {len(errors)} failure(s). Database: {_display_cli_path(args.db)}"
         )
         return 1
-    display.success(f"Done. Database: {Path(args.db).resolve()}")
+    display.success(f"Done. Database: {_display_cli_path(args.db)}")
     return 0
 
 
@@ -1540,7 +1563,8 @@ def _cmd_books(args: argparse.Namespace) -> int:
     with Database(args.db) as db:
         books = db.books()
         if args.update:
-            db_path = str(Path(args.db).resolve())
+            db_path = str(_resolved_cli_path(args.db))
+            db_display_path = _display_cli_path(args.db)
             stored_count = len(books)
             selected_books = books if args.force else db.stale_books()
             selected_count = len(selected_books)
@@ -1608,7 +1632,9 @@ def _cmd_books(args: argparse.Namespace) -> int:
                         display.status(f"  {book.id}: {_single_line(book.title)}")
                 else:
                     display.status(
-                        f"All {stored_count} stored book(s) are current. Database: {db_path}"
+                        "All "
+                        f"{stored_count} stored book(s) are current. "
+                        f"Database: {db_display_path}"
                     )
                 return 0
 
@@ -1635,7 +1661,9 @@ def _cmd_books(args: argparse.Namespace) -> int:
                     )
                 else:
                     display.success(
-                        f"All {stored_count} stored book(s) are current. Database: {db_path}"
+                        "All "
+                        f"{stored_count} stored book(s) are current. "
+                        f"Database: {db_display_path}"
                     )
                 return 0
 
@@ -1692,12 +1720,12 @@ def _cmd_books(args: argparse.Namespace) -> int:
                 display.error(
                     "Completed with "
                     f"{failed_count} failure(s). Updated {updated_count} book(s); "
-                    f"{skipped_current} already current. Database: {db_path}"
+                    f"{skipped_current} already current. Database: {db_display_path}"
                 )
                 return 1
             display.success(
                 f"Done. Updated {updated_count} book(s); "
-                f"{skipped_current} already current. Database: {db_path}"
+                f"{skipped_current} already current. Database: {db_display_path}"
             )
             return 0
 
@@ -1721,7 +1749,7 @@ def _cmd_books(args: argparse.Namespace) -> int:
             },
         )
         return 0
-    display.books(books, db_path=args.db)
+    display.books(books, db_path=_display_cli_path(args.db))
     return 0
 
 
@@ -1747,14 +1775,15 @@ def _cmd_remove(args: argparse.Namespace) -> int:
                 results.append({"book_id": book_id, "status": "removed"})
                 if not as_json:
                     display.success(
-                        f"Removed {_book_id_ref(book_id, capitalize=False)} from {args.db}."
+                        f"Removed {_book_id_ref(book_id, capitalize=False)} "
+                        f"from {_display_cli_path(args.db)}."
                     )
     if as_json:
         _print_json_envelope(
             "remove",
             ok=not any_missing,
             data={
-                "db": str(Path(args.db).resolve()),
+                "db": str(_resolved_cli_path(args.db)),
                 "removed_count": removed_count,
                 "missing_count": len(args.book_ids) - removed_count,
                 "results": results,

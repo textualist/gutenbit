@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from gutenbit.catalog import BookRecord
+from gutenbit.cli import _display_cli_path
 from gutenbit.cli import main as cli_main
 from gutenbit.db import Database
 from gutenbit.html_chunker import chunk_html
@@ -127,6 +128,14 @@ def test_help_uses_command_placeholder_instead_of_choice_braces():
     assert "stores its SQLite database and catalog cache in" in rendered
 
 
+def test_display_cli_path_preserves_relative_and_home_relative_paths():
+    assert _display_cli_path(".gutenbit/gutenbit.db") == ".gutenbit/gutenbit.db"
+    assert _display_cli_path("~/.gutenbit/gutenbit.db") == "~/.gutenbit/gutenbit.db"
+    assert _display_cli_path(Path.home() / ".gutenbit" / "gutenbit.db") == str(
+        Path.home() / ".gutenbit" / "gutenbit.db"
+    )
+
+
 @pytest.mark.parametrize(
     ("argv", "forbidden", "expected"),
     [
@@ -184,3 +193,121 @@ def test_default_cli_db_does_not_auto_discover_legacy_root_db(tmp_path, monkeypa
     assert explicit_code == 0
     assert explicit_err == ""
     assert f"1 book(s) stored in {legacy_db}" in explicit_out
+
+
+def test_books_output_preserves_home_relative_db_path(monkeypatch):
+    class _FakeDatabase:
+        def __init__(self, path: str) -> None:
+            self.path = path
+
+        def __enter__(self) -> _FakeDatabase:
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def books(self) -> list[BookRecord]:
+            return [_BOOK]
+
+    monkeypatch.setattr("gutenbit.cli.Database", _FakeDatabase)
+
+    code, out, err = _run_cli("--db", "~/.gutenbit/gutenbit.db", "books")
+
+    assert code == 0
+    assert err == ""
+    assert "1 book(s) stored in ~/.gutenbit/gutenbit.db" in out
+
+
+def test_books_update_output_preserves_home_relative_db_path(monkeypatch):
+    class _FakeDatabase:
+        def __init__(self, path: str) -> None:
+            self.path = path
+
+        def __enter__(self) -> _FakeDatabase:
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def books(self) -> list[BookRecord]:
+            return [_BOOK]
+
+        def stale_books(self) -> list[BookRecord]:
+            return []
+
+    monkeypatch.setattr("gutenbit.cli.Database", _FakeDatabase)
+
+    code, out, err = _run_cli("--db", "~/.gutenbit/gutenbit.db", "books", "--update")
+
+    assert code == 0
+    assert err == ""
+    assert "All 1 stored book(s) are current. Database: ~/.gutenbit/gutenbit.db" in out
+
+
+def test_add_done_output_preserves_home_relative_db_path(monkeypatch):
+    class _FakeCatalog:
+        fetch_info = None
+
+        def get(self, book_id: int) -> BookRecord | None:
+            if book_id == _BOOK.id:
+                return _BOOK
+            return None
+
+    class _FakeDatabase:
+        def __init__(self, path: str) -> None:
+            self.path = path
+
+        def __enter__(self) -> _FakeDatabase:
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+    def _fake_load_catalog(_args, *, display, as_json):
+        return _FakeCatalog()
+
+    def _fake_process_books_for_ingest(
+        _db,
+        books: list[BookRecord],
+        *,
+        delay: float,
+        as_json: bool,
+        display,
+        failure_action: str,
+        force: bool = False,
+        show_skipped_current: bool = True,
+    ) -> tuple[dict[int, str], list[str]]:
+        return ({book.id: "added" for book in books}, [])
+
+    monkeypatch.setattr("gutenbit.cli.Database", _FakeDatabase)
+    monkeypatch.setattr("gutenbit.cli._load_catalog", _fake_load_catalog)
+    monkeypatch.setattr("gutenbit.cli._process_books_for_ingest", _fake_process_books_for_ingest)
+
+    code, out, err = _run_cli("--db", "~/.gutenbit/gutenbit.db", "add", "1")
+
+    assert code == 0
+    assert err == ""
+    assert "Done. Database: ~/.gutenbit/gutenbit.db" in out
+
+
+def test_remove_output_preserves_home_relative_db_path(monkeypatch):
+    class _FakeDatabase:
+        def __init__(self, path: str) -> None:
+            self.path = path
+
+        def __enter__(self) -> _FakeDatabase:
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def remove_book(self, book_id: int) -> bool:
+            return book_id == _BOOK.id
+
+    monkeypatch.setattr("gutenbit.cli.Database", _FakeDatabase)
+
+    code, out, err = _run_cli("--db", "~/.gutenbit/gutenbit.db", "remove", "1")
+
+    assert code == 0
+    assert err == ""
+    assert "Removed book ID 1 from ~/.gutenbit/gutenbit.db." in out
