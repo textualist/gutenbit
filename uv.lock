@@ -381,6 +381,7 @@ name = "gutenbit"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
+    { name = "click" },
     { name = "httpx" },
     { name = "lxml" },
     { name = "rich" },
@@ -407,6 +408,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12" },
+    { name = "click", specifier = ">=8.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "lxml", specifier = ">=5.3" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6,<2" },

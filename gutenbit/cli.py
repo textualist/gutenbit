@@ -7,6 +7,7 @@ import logging
 import re
 import sqlite3
 import sys
+import traceback
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -19,6 +20,7 @@ from gutenbit.db import (
     ChunkRecord,
     Database,
     IngestProgressCallback,
+    SearchOrder,
     TextState,
     _div_parts_match,
     _normalize_div_segment,
@@ -1176,11 +1178,11 @@ def _cmd_add(
     if not book_ids:
         raise click.UsageError("At least one BOOK_ID is required.")
 
-    invalid_ids = [bid for bid in book_ids if bid <= 0]
+    invalid_ids: list[int] = [bid for bid in book_ids if bid <= 0]
     if invalid_ids:
         return _command_error(
             "add",
-            f"Book IDs must be positive integers, got: {', '.join(map(str, invalid_ids))}",
+            f"Book IDs must be positive integers, got: {', '.join(str(bid) for bid in invalid_ids)}",
             as_json=as_json,
             data={"invalid_ids": invalid_ids},
         )
@@ -1249,9 +1251,9 @@ def _cmd_add(
             warnings=warnings,
         )
 
-    with Database(effective_db) as db:
+    with Database(effective_db) as db_conn:
         canonical_statuses, errors = _process_books_for_ingest(
-            db,
+            db_conn,
             books,
             delay=delay,
             as_json=as_json,
@@ -1383,13 +1385,13 @@ def _cmd_books(
     elif delay < 0:
         return _command_error("books", "--delay must be >= 0.", as_json=as_json)
 
-    with Database(effective_db) as db:
-        books = db.books()
+    with Database(effective_db) as db_conn:
+        books = db_conn.books()
         if update:
             db_path = str(_resolved_cli_path(effective_db))
             db_display_path = _display_cli_path(effective_db)
             stored_count = len(books)
-            selected_books = books if force else db.stale_books()
+            selected_books = books if force else db_conn.stale_books()
             selected_count = len(selected_books)
             skipped_current = 0 if force else stored_count - selected_count
 
@@ -1494,7 +1496,7 @@ def _cmd_books(
                 display.status(f"Checking {stored_count} stored book(s)...")
 
             statuses, errors = _process_books_for_ingest(
-                db,
+                db_conn,
                 selected_books,
                 delay=delay,
                 as_json=as_json,
@@ -1610,9 +1612,9 @@ def _cmd_remove(
     removed_count = 0
     results: list[dict[str, Any]] = []
     errors: list[str] = []
-    with Database(effective_db) as db:
+    with Database(effective_db) as db_conn:
         for book_id in book_ids:
-            removed = db.remove_book(book_id)
+            removed = db_conn.remove_book(book_id)
             if not removed:
                 message = f"No book found for id {book_id}."
                 errors.append(message)
@@ -1775,6 +1777,7 @@ def _cmd_search(
     div_path: str | None = None
     section_arg: str | None = section
 
+    search_order = cast(SearchOrder, order)
     warnings: list[str] = []
     with Database(effective_db) as db_conn:
         section_number_for = _section_number_lookup(db_conn)
@@ -1863,7 +1866,7 @@ def _cmd_search(
                     book_id=search_book_id,
                     kind=search_kind,
                     div_path=search_div_path,
-                    order=order,
+                    order=search_order,
                     limit=limit,
                 )
                 total_results = search_page.total_results
@@ -2911,7 +2914,22 @@ def main(argv: list[str] | None = None) -> int:
         _display().error("\nInterrupted.")
         return 130
     except Exception as exc:
-        _display().error(f"Error: {exc}", err=True)
+        ctx = click.get_current_context(silent=True)
+        verbose = False
+        as_json = False
+        command = "gutenbit"
+        if ctx is not None:
+            verbose = ctx.params.get("verbose", False) or (ctx.obj or {}).get(
+                "verbose", False
+            )
+            as_json = ctx.params.get("json_output", False)
+            command = ctx.info_name or command
+        if verbose:
+            traceback.print_exc()
+        if as_json:
+            _print_json_envelope(command, ok=False, errors=[str(exc)])
+        else:
+            _display().error(f"Error: {exc}", err=True)
         return 1
 
 
