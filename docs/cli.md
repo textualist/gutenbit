@@ -183,7 +183,10 @@ Use `--phrase` to auto-wrap the entire query as an exact phrase without manual q
 
 ## toc
 
-Show the structural table of contents for a stored book, with numbered sections. By default the table shows two heading levels; use `--expand` to collapse further or reveal all nested levels.
+Show the structural table of contents for a book, with numbered sections. If the
+book is not stored yet, `toc` adds it automatically first and follows canonical
+ID remaps. By default the table shows two heading levels; use `--expand` to
+collapse further or reveal all nested levels.
 
 ```bash
 gutenbit toc 1342

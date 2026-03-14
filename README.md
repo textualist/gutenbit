@@ -38,7 +38,8 @@ gutenbit catalog --author "Austen, Jane"
 gutenbit add 1342
 ```
 
-Inspect the table of contents, read the opening, or jump into a section.
+Inspect the table of contents, read the opening, or jump into a section. If a
+book is missing locally, `gutenbit toc <id>` adds it automatically first.
 
 ```bash
 gutenbit toc 1342

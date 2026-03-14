@@ -56,7 +56,9 @@ View the table of contents with numbered sections:
 gutenbit toc 1342
 ```
 
-By default, `toc` shows two heading levels. Use `--expand 1`, `--expand 3`, or `--expand all` to collapse further or reveal the full nested structure.
+If the book is not stored yet, `toc` adds it automatically first. By default,
+`toc` shows two heading levels. Use `--expand 1`, `--expand 3`, or `--expand
+all` to collapse further or reveal the full nested structure.
 
 ```bash
 gutenbit toc 100 --expand all
