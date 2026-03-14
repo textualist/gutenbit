@@ -185,20 +185,22 @@ def chunk_html(html: str) -> list[Chunk]:
     Each ``<p>`` element becomes its own chunk. Returns chunks in document order.
     """
     soup = BeautifulSoup(html, HTML_PARSER_BACKEND)
-    tag_positions = _tag_positions(soup)
-    subtree_end_positions = _build_subtree_end_positions(soup, tag_positions)
+    tag_positions, subtree_end_positions = _build_tag_and_subtree_positions(soup)
     bounds = _find_gutenberg_bounds(soup, tag_positions, subtree_end_positions)
     paragraphs, paragraph_positions = _build_paragraph_index(soup, tag_positions, bounds)
+    headings, heading_positions = _build_heading_index(soup, tag_positions)
     doc_index = _DocumentIndex(
         tag_positions=tag_positions,
         subtree_end_positions=subtree_end_positions,
         paragraphs=paragraphs,
         paragraph_positions=paragraph_positions,
+        headings=headings,
+        heading_positions=heading_positions,
     )
 
     # Build section list from TOC links and refine with body headings when the
     # TOC is a coarse but valid subsequence of the body structure.
-    toc_sections = _parse_toc_sections(soup, tag_positions=tag_positions, bounds=bounds)
+    toc_sections = _parse_toc_sections(soup, doc_index=doc_index, bounds=bounds)
     if toc_sections:
         heading_sections = _parse_heading_sections(
             soup,
@@ -314,10 +316,11 @@ def chunk_html(html: str) -> list[Chunk]:
 def _parse_toc_sections(
     soup: BeautifulSoup,
     *,
-    tag_positions: dict[int, int],
+    doc_index: _DocumentIndex,
     bounds: _ContentBounds,
 ) -> list[_Section]:
     """Extract section list from TOC ``pginternal`` links."""
+    tag_positions = doc_index.tag_positions
     toc_links = soup.select("a.pginternal")
     sections: list[_Section] = []
     used_headings: set[int] = set()
@@ -330,7 +333,7 @@ def _parse_toc_sections(
             continue
         raw_link_text = _clean_heading_text(" ".join(link.get_text().split()))
         link_text = raw_link_text
-        if not _is_structural_toc_link(link, raw_link_text):
+        if not _is_structural_toc_link(link, raw_link_text, doc_index=doc_index):
             context_text = _toc_context_text(link)
             if not (
                 _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text)
@@ -915,37 +918,47 @@ def _extract_heading_text(heading_el: Tag) -> str:
     """
     has_pagenum = heading_el.find("span", class_="pagenum") is not None
     has_br = heading_el.find("br") is not None
-    has_img = heading_el.find("img") is not None
 
     # Fast path: no special elements to strip or replace.
     if not has_pagenum and not has_br:
         text = " ".join(heading_el.get_text().split()).strip()
         if text:
             return text
-        if has_img:
-            img = heading_el.find("img", alt=True)
-            if img:
-                return " ".join(str(img["alt"]).split()).strip()
+        img = heading_el.find("img", alt=True)
+        if img:
+            return " ".join(str(img["alt"]).split()).strip()
         return ""
 
-    # Slow path: re-parse only when we need to modify the tree.
-    heading_copy = BeautifulSoup(str(heading_el), HTML_PARSER_BACKEND)
-    for pagenum in heading_copy.select("span.pagenum"):
-        pagenum.decompose()
-
-    root = heading_copy.find(_HEADING_TAGS) or heading_copy
-
-    for br in root.find_all("br"):
-        br.replace_with(" ")
-
-    text = " ".join(root.get_text().split()).strip()
+    # Walk the tree directly instead of re-parsing with BeautifulSoup.
+    parts: list[str] = []
+    _collect_heading_parts(heading_el, parts)
+    text = " ".join("".join(parts).split()).strip()
     if text:
         return text
 
-    img = root.find("img", alt=True)
+    img = heading_el.find("img", alt=True)
     if img:
         return " ".join(str(img["alt"]).split()).strip()
     return ""
+
+
+def _collect_heading_parts(node: Tag, parts: list[str]) -> None:
+    """Collect text parts from a heading, skipping pagenum spans and replacing <br> with space."""
+    for child in node.children:
+        if isinstance(child, NavigableString):
+            parts.append(str(child))
+        elif isinstance(child, Tag):
+            if child.name == "br":
+                parts.append(" ")
+            elif child.name == "span" and "pagenum" in (child.get("class") or []):
+                continue
+            elif child.name == "img":
+                alt_value = child.get("alt")
+                alt_text = " ".join(str(alt_value or "").split()).strip()
+                if alt_text:
+                    parts.append(alt_text)
+            else:
+                _collect_heading_parts(child, parts)
 
 
 def _clean_heading_text(heading_text: str) -> str:
@@ -1355,6 +1368,15 @@ class _IndexedParagraph:
 
 
 @dataclass(frozen=True, slots=True)
+class _IndexedHeading:
+    """A heading tag with its pre-computed position and cleaned text."""
+
+    tag: Tag
+    position: int
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class _DocumentIndex:
     """Precomputed tag and paragraph indices for one HTML document."""
 
@@ -1362,6 +1384,30 @@ class _DocumentIndex:
     subtree_end_positions: dict[int, int]
     paragraphs: list[_IndexedParagraph]
     paragraph_positions: list[int]
+    headings: list[_IndexedHeading]
+    heading_positions: list[int]
+
+
+def _build_heading_index(
+    soup: BeautifulSoup,
+    tag_positions: dict[int, int],
+) -> tuple[list[_IndexedHeading], list[int]]:
+    """Pre-collect all heading tags with positions and cleaned text.
+
+    Builds a sorted list once so previous-heading lookups use bisect
+    instead of backward DOM traversals.
+    """
+    result: list[_IndexedHeading] = []
+    positions: list[int] = []
+    for heading in soup.find_all(_HEADING_TAGS):
+        pos = tag_positions.get(id(heading))
+        if pos is None:
+            continue
+        text = _clean_heading_text(_extract_heading_text(heading))
+        if text:
+            result.append(_IndexedHeading(heading, pos, text))
+            positions.append(pos)
+    return result, positions
 
 
 def _build_paragraph_index(
@@ -1377,9 +1423,35 @@ def _build_paragraph_index(
     body = soup.find("body")
     if not body:
         return [], []
+
+    # Single-pass collection: iterate descendants once to find paragraphs and
+    # track which contain pagenum spans, img tags, or pginternal links,
+    # avoiding multiple find_all + find_parent traversals.
+    paragraphs_with_pagenum: set[int] = set()
+    paragraphs_with_img: set[int] = set()
+    paragraphs_with_pginternal: set[int] = set()
+    blocks: list[Tag] = []
+    for tag in body.descendants:
+        if not isinstance(tag, Tag):
+            continue
+        if tag.name in ("p", "pre"):
+            blocks.append(tag)
+        elif tag.name == "span" and "pagenum" in (tag.get("class") or []):
+            p = tag.find_parent(["p", "pre"])
+            if p is not None:
+                paragraphs_with_pagenum.add(id(p))
+        elif tag.name == "img":
+            p = tag.find_parent(["p", "pre"])
+            if p is not None:
+                paragraphs_with_img.add(id(p))
+        elif tag.name == "a" and "pginternal" in (tag.get("class") or []):
+            p = tag.find_parent("p")
+            if p is not None:
+                paragraphs_with_pginternal.add(id(p))
+
     result: list[_IndexedParagraph] = []
     positions: list[int] = []
-    for block in body.find_all(["p", "pre"]):
+    for block in blocks:
         pos = tag_positions.get(id(block))
         if pos is None or not bounds.contains(pos):
             continue
@@ -1387,8 +1459,12 @@ def _build_paragraph_index(
             text = _extract_preformatted_text(block)
             is_toc = False
         else:
-            text = _extract_paragraph_text(block)
-            is_toc = _is_toc_paragraph(block)
+            has_pagenum = id(block) in paragraphs_with_pagenum
+            has_img = id(block) in paragraphs_with_img
+            text = _extract_paragraph_text(block, has_pagenum=has_pagenum, has_img=has_img)
+            is_toc = _is_toc_paragraph(
+                block, has_pginternal=id(block) in paragraphs_with_pginternal
+            )
         if text:
             result.append(_IndexedParagraph(block, pos, text, is_toc))
             positions.append(pos)
@@ -1429,15 +1505,25 @@ def _paragraphs_in_range(
     return paragraphs
 
 
-def _extract_paragraph_text(paragraph: Tag) -> str:
+def _extract_paragraph_text(
+    paragraph: Tag,
+    *,
+    has_pagenum: bool | None = None,
+    has_img: bool | None = None,
+) -> str:
     """Get clean paragraph text, preserving drop-cap img ``alt`` text.
 
     Strips ``<span class="pagenum">`` page-number markers and replaces
     ``<img>`` tags with their ``alt`` text.
+
+    When *has_pagenum* / *has_img* are provided, skip per-paragraph find()
+    calls (already pre-indexed by the caller).
     """
     # Fast path: most paragraphs have no pagenum spans or images.
-    has_pagenum = paragraph.find("span", class_="pagenum") is not None
-    has_img = paragraph.find("img") is not None
+    if has_pagenum is None:
+        has_pagenum = paragraph.find("span", class_="pagenum") is not None
+    if has_img is None:
+        has_img = paragraph.find("img") is not None
 
     if not has_pagenum and not has_img:
         return " ".join(paragraph.get_text().split()).strip()
@@ -1490,8 +1576,10 @@ def _container_residue_without_link_text(container: Tag) -> str:
     return " ".join(residue.split()).strip()
 
 
-def _is_toc_paragraph(paragraph: Tag) -> bool:
+def _is_toc_paragraph(paragraph: Tag, *, has_pginternal: bool | None = None) -> bool:
     """Return True for TOC/navigation paragraphs."""
+    if has_pginternal is not None and not has_pginternal:
+        return False
     links = paragraph.find_all("a", class_="pginternal")
     if not links:
         return False
@@ -1557,8 +1645,19 @@ def _looks_enumerated_toc_entry(text: str) -> bool:
     return _ROMAN_NUMERAL_RE.fullmatch(first_token) is not None or first_token.isdigit()
 
 
-def _previous_heading_text(link: Tag) -> str:
-    """Return the nearest preceding heading text, if any."""
+def _previous_heading_text(link: Tag, *, doc_index: _DocumentIndex | None = None) -> str:
+    """Return the nearest preceding heading text, if any.
+
+    When *doc_index* is provided, uses the precomputed heading index with
+    bisect for O(log n) lookup instead of O(n) backward DOM traversal.
+    """
+    if doc_index is not None:
+        link_pos = doc_index.tag_positions.get(id(link))
+        if link_pos is not None and doc_index.heading_positions:
+            idx = bisect_left(doc_index.heading_positions, link_pos) - 1
+            if idx >= 0:
+                return doc_index.headings[idx].text
+        return ""
     for heading in link.find_all_previous(_HEADING_TAGS):
         if not isinstance(heading, Tag):
             continue
@@ -1568,12 +1667,14 @@ def _previous_heading_text(link: Tag) -> str:
     return ""
 
 
-def _is_structural_toc_link(link: Tag, link_text: str | None = None) -> bool:
+def _is_structural_toc_link(
+    link: Tag, link_text: str | None = None, *, doc_index: _DocumentIndex | None = None
+) -> bool:
     """Return True for TOC links that can map to actual section headings."""
     if not _is_toc_context_link(link):
         return False
 
-    previous_heading = _front_matter_heading_key(_previous_heading_text(link))
+    previous_heading = _front_matter_heading_key(_previous_heading_text(link, doc_index=doc_index))
     if previous_heading in _FRONT_MATTER_HEADINGS and previous_heading not in {
         "contents",
         "table of contents",
@@ -2277,6 +2378,45 @@ def _tag_positions(soup: BeautifulSoup) -> dict[int, int]:
     return {id(tag): idx for idx, tag in enumerate(soup.find_all(True))}
 
 
+def _build_tag_and_subtree_positions(
+    soup: BeautifulSoup,
+) -> tuple[dict[int, int], dict[int, int]]:
+    """Build tag_positions and subtree_end_positions in a single DFS pass.
+
+    Replaces separate calls to ``_tag_positions`` + ``_build_subtree_end_positions``
+    to avoid traversing the DOM twice.
+    """
+    tag_positions: dict[int, int] = {}
+    end_positions: dict[int, int] = {}
+    counter = 0
+    stack: list[tuple[BeautifulSoup | Tag, bool]] = [(soup, False)]
+    while stack:
+        node, visited = stack.pop()
+        if not visited:
+            # Pre-order: assign document position.
+            if isinstance(node, Tag) and node is not soup:
+                tag_positions[id(node)] = counter
+                counter += 1
+            stack.append((node, True))
+            for child in reversed(node.contents):
+                if isinstance(child, Tag):
+                    stack.append((child, False))
+            continue
+
+        # Post-order: compute subtree end position.
+        end_pos = tag_positions.get(id(node))
+        for child in node.contents:
+            if not isinstance(child, Tag):
+                continue
+            child_end = end_positions.get(id(child))
+            if child_end is not None and (end_pos is None or child_end > end_pos):
+                end_pos = child_end
+        if end_pos is not None:
+            end_positions[id(node)] = end_pos
+
+    return tag_positions, end_positions
+
+
 def _tag_position(tag: Tag, tag_positions: dict[int, int]) -> int | None:
     return tag_positions.get(id(tag))
 
@@ -2296,11 +2436,9 @@ def _find_gutenberg_bounds(
     """Locate START/END delimiter bounds in document order."""
 
     def _find_marker_parent(marker_re: re.Pattern[str]) -> Tag | None:
-        marker_text = soup.find(
-            string=lambda text: (
-                isinstance(text, str) and marker_re.search(" ".join(text.split())) is not None
-            )
-        )
+        # Use compiled regex directly — avoids a Python lambda call on
+        # every text node in the document.
+        marker_text = soup.find(string=marker_re)
         if marker_text is None:
             return None
         return marker_text.parent if isinstance(marker_text.parent, Tag) else None
