@@ -159,32 +159,16 @@
 }
 
 @media screen and (max-width: 76.234375em) {
-  .md-header__button.md-logo img {
-    height: 2.25rem;
-  }
-}
-
-@media screen and (max-width: 59.984375em) {
   .md-header__button.md-logo {
-    margin-left: 0.25rem;
-    margin-right: 0.55rem;
+    display: none;
   }
 
-  .md-header__button.md-logo img {
-    height: 2.1rem;
+  .md-header__title .md-ellipsis {
+    visibility: visible;
   }
 }
 
 @media screen and (max-width: 44.984375em) {
-  .md-header__button.md-logo {
-    margin-left: 0.2rem;
-    margin-right: 0.5rem;
-  }
-
-  .md-header__button.md-logo img {
-    height: 1.95rem;
-  }
-
   .homepage-identity .identity-wordmark {
     --identity-wordmark-size: clamp(34px, 10vw, 50px);
     --identity-wordmark-shift: 1px;
