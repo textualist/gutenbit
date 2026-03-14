@@ -192,7 +192,6 @@ cython_debug/
 
 # SQLite databases
 *.db
-.gutenbit/
 
 # Ruff stuff:
 .ruff_cache/

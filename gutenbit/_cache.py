@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
 from pathlib import Path
 
 
 def default_cache_dir() -> Path:
     """Return the default user cache directory for gutenbit."""
-    cache_home = os.environ.get("XDG_CACHE_HOME")
-    if cache_home:
-        return Path(cache_home) / "gutenbit"
-    return Path.home() / ".cache" / "gutenbit"
+    return Path.home() / ".gutenbit" / "cache"
 
 
 def read_cache_bytes(path: Path) -> bytes | None:

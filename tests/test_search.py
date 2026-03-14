@@ -8,6 +8,7 @@ import os
 import shlex
 import time
 import zipfile
+from pathlib import Path
 
 import httpx
 import pytest
@@ -1829,7 +1830,7 @@ def test_catalog_fetch_enforces_english_text_policy_and_canonical_ids(tmp_path, 
             return None
 
     compressed = gzip.compress(csv_payload.encode("utf-8"))
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
     calls: list[dict[str, object]] = []
 
     def _fake_get(*_args, **kwargs: object) -> _FakeResponse:
@@ -1866,7 +1867,7 @@ def test_catalog_fetch_uses_fresh_cache_without_network(tmp_path, monkeypatch):
         ]
     )
     compressed = gzip.compress(csv_payload.encode("utf-8"))
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
     class _FakeResponse:
         def __init__(self, content: bytes):
@@ -1901,7 +1902,7 @@ def test_catalog_fetch_redownloads_when_cache_is_older_than_two_hours(tmp_path, 
         ]
     )
     compressed = gzip.compress(csv_payload.encode("utf-8"))
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
     class _FakeResponse:
         def __init__(self, content: bytes):
@@ -1919,7 +1920,8 @@ def test_catalog_fetch_redownloads_when_cache_is_older_than_two_hours(tmp_path, 
     monkeypatch.setattr("gutenbit.catalog.httpx.get", _fake_get)
 
     initial = Catalog.fetch()
-    payload_path = next((tmp_path / "gutenbit").glob("*.csv.gz"))
+    cache_dir = tmp_path / ".gutenbit" / "cache"
+    payload_path = next(cache_dir.glob("*.csv.gz"))
     stale_timestamp = time.time() - (2 * 60 * 60 + 1)
     os.utime(payload_path, (stale_timestamp, stale_timestamp))
     refreshed = Catalog.fetch()
@@ -1939,7 +1941,7 @@ def test_catalog_fetch_falls_back_to_cached_payload_on_network_error(tmp_path, m
         ]
     )
     compressed = gzip.compress(csv_payload.encode("utf-8"))
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
     class _FakeResponse:
         def __init__(self, content: bytes):
@@ -1954,7 +1956,8 @@ def test_catalog_fetch_falls_back_to_cached_payload_on_network_error(tmp_path, m
     )
 
     initial = Catalog.fetch()
-    payload_path = next((tmp_path / "gutenbit").glob("*.csv.gz"))
+    cache_dir = tmp_path / ".gutenbit" / "cache"
+    payload_path = next(cache_dir.glob("*.csv.gz"))
     stale_timestamp = time.time() - (2 * 60 * 60 + 1)
     os.utime(payload_path, (stale_timestamp, stale_timestamp))
     monkeypatch.setattr(
@@ -1979,7 +1982,7 @@ def test_catalog_fetch_refresh_bypasses_fresh_cache(tmp_path, monkeypatch):
         ]
     )
     compressed = gzip.compress(csv_payload.encode("utf-8"))
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
     class _FakeResponse:
         def __init__(self, content: bytes):
@@ -2030,7 +2033,7 @@ def test_catalog_cli_uses_project_local_cache_dir_and_reports_cache_hit(tmp_path
         )
 
     monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(_fake_fetch))
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
     code, out, _err = _run_cli(
         tmp_path / "nested" / "library.db",
@@ -2070,7 +2073,7 @@ def test_catalog_cli_refresh_flag_forces_redownload_message(tmp_path, monkeypatc
         )
 
     monkeypatch.setattr("gutenbit.cli.Catalog.fetch", staticmethod(_fake_fetch))
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
     code, out, _err = _run_cli(
         tmp_path / "nested" / "library.db",

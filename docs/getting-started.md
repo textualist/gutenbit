@@ -16,7 +16,7 @@ Or install it like this and then run `gutenbit --help`:
 uv tool install gutenbit
 ```
 
-gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
+gutenbit stores its database and catalog cache in `~/.gutenbit/`.
 
 ## CLI walkthrough
 
@@ -46,7 +46,7 @@ Pass one or more Project Gutenberg IDs to `add`:
 gutenbit add 1342
 ```
 
-The book's HTML is downloaded, parsed into paragraph-level chunks with structural metadata, and stored in a local SQLite database (`.gutenbit/gutenbit.db` by default).
+The book's HTML is downloaded, parsed into paragraph-level chunks with structural metadata, and stored in a local SQLite database (`~/.gutenbit/gutenbit.db` by default).
 
 ### Explore structure
 
@@ -150,14 +150,14 @@ for book in books[:5]:
     print(book.id, book.title)
 ```
 
-The catalog is cached locally for two hours under `.gutenbit/cache/`, filtered to English text, and deduplicated by normalized title plus primary author, keeping the lowest Project Gutenberg ID as canonical. Use `--refresh` to force a redownload.
+The catalog is cached locally for two hours under `~/.gutenbit/cache/`, filtered to English text, and deduplicated by normalized title plus primary author, keeping the lowest Project Gutenberg ID as canonical. Use `--refresh` to force a redownload.
 
 ### Ingest books
 
 ```python
 from gutenbit import Database
 
-with Database(".gutenbit/gutenbit.db") as db:
+with Database("~/.gutenbit/gutenbit.db") as db:
     db.ingest(books[:3])
 ```
 

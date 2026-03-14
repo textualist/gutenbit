@@ -27,7 +27,7 @@ Or install it like this and then run `gutenbit --help`:
 uv tool install gutenbit
 ```
 
-gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
+gutenbit stores its database and catalog cache in `~/.gutenbit/`.
 
 ## CLI Example
 
@@ -55,8 +55,8 @@ gutenbit search "bennet" --book 1342 --limit 3 --radius 1
 ```
 
 All commands support `--json` for machine-readable output.
-CLI-managed state is stored under `.gutenbit/` by default, including the database at
-`.gutenbit/gutenbit.db` and the catalog cache under `.gutenbit/cache/`.
+CLI-managed state is stored under `~/.gutenbit/` by default, including the database at
+`~/.gutenbit/gutenbit.db` and the catalog cache under `~/.gutenbit/cache/`.
 
 ## Python
 
@@ -73,7 +73,7 @@ catalog = Catalog.fetch()
 book = catalog.get(1342)
 
 if book is not None:
-    with Database(".gutenbit/gutenbit.db") as db:
+    with Database("~/.gutenbit/gutenbit.db") as db:
         db.ingest([book])
         for hit in db.search("truth universally acknowledged", book_id=1342):
             print(hit.title, hit.div1, hit.content[:80])

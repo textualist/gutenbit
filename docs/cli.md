@@ -18,9 +18,9 @@ Or install it like this and then run `gutenbit --help`:
 uv tool install gutenbit
 ```
 
-gutenbit stores its database and catalog cache in a `.gutenbit/` folder.
+gutenbit stores its database and catalog cache in `~/.gutenbit/`.
 
-All CLI-managed state lives under `.gutenbit/` by default: the database is `.gutenbit/gutenbit.db`, and the catalog cache is stored under `.gutenbit/cache/`. Use `--db PATH` to store the database elsewhere. All commands support `--json` for machine-readable output.
+All CLI-managed state lives under `~/.gutenbit/` by default: the database is `~/.gutenbit/gutenbit.db`, and the catalog cache is stored under `~/.gutenbit/cache/`. Use `--db PATH` to store the database elsewhere. All commands support `--json` for machine-readable output.
 
 ## Project Gutenberg Access
 
@@ -257,5 +257,5 @@ These flags apply to all subcommands:
 
 | Flag | Description |
 |------|-------------|
-| `--db PATH` | SQLite database path (default: `.gutenbit/gutenbit.db`) |
+| `--db PATH` | SQLite database path (default: `~/.gutenbit/gutenbit.db`) |
 | `-v`, `--verbose` | Enable debug logging |

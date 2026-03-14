@@ -27,7 +27,7 @@ from gutenbit.download import describe_download_source, get_last_download_source
 
 STATE_DIR_NAME = ".gutenbit"
 DEFAULT_DB_NAME = "gutenbit.db"
-DEFAULT_DB = f"{STATE_DIR_NAME}/{DEFAULT_DB_NAME}"
+DEFAULT_DB = f"~/{STATE_DIR_NAME}/{DEFAULT_DB_NAME}"
 DEFAULT_DOWNLOAD_DELAY = 2.0
 DEFAULT_TOC_EXPAND = "2"
 JSON_OPENING_LINE_PREVIEW_CHARS = 140
@@ -96,7 +96,7 @@ def _display() -> CliDisplay:
 
 
 def _cli_state_dir() -> Path:
-    return (Path.cwd() / STATE_DIR_NAME).resolve()
+    return Path.home() / STATE_DIR_NAME
 
 
 def _resolved_cli_path(path: str | Path) -> Path:
@@ -117,10 +117,9 @@ def _collapse_home_path(path: Path) -> str:
 def _display_cli_path(path: str | Path) -> str:
     """Render a user-facing path without turning ``~/...`` into ``<cwd>/~/...``."""
     raw = str(path)
-    raw_path = Path(raw)
-    if raw.startswith("~") or raw_path.is_absolute():
+    if raw.startswith("~"):
         return _collapse_home_path(_resolved_cli_path(path))
-    return str(raw_path)
+    return raw
 
 
 def _catalog_cache_dir() -> Path:
@@ -879,7 +878,7 @@ gutenbit is an open-source project not affiliated with Project Gutenberg.
 It is for individual downloads, not bulk downloading.
 
 By default, gutenbit stores its SQLite database and catalog cache in
-.gutenbit/ in the current directory (default database: .gutenbit/gutenbit.db).""",
+~/.gutenbit/ (default database: ~/.gutenbit/gutenbit.db).""",
     )
     p._optionals.title = "global options"
     p.add_argument("--db", default=DEFAULT_DB, help="SQLite database path (default: %(default)s)")

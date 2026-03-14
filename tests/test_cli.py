@@ -80,7 +80,7 @@ def test_help_shows_project_local_default_db():
 
     assert excinfo.value.code == 0
     assert err.getvalue() == ""
-    assert ".gutenbit/gutenbit.db" in out.getvalue()
+    assert "~/.gutenbit/gutenbit.db" in out.getvalue()
 
 
 def test_help_shows_pride_and_prejudice_workflow():
@@ -131,8 +131,8 @@ def test_help_uses_command_placeholder_instead_of_choice_braces():
 def test_display_cli_path_preserves_relative_and_home_relative_paths():
     assert _display_cli_path(".gutenbit/gutenbit.db") == ".gutenbit/gutenbit.db"
     assert _display_cli_path("~/.gutenbit/gutenbit.db") == "~/.gutenbit/gutenbit.db"
-    assert (
-        _display_cli_path(Path.home() / ".gutenbit" / "gutenbit.db") == "~/.gutenbit/gutenbit.db"
+    assert _display_cli_path(Path.home() / ".gutenbit" / "gutenbit.db") == str(
+        Path.home() / ".gutenbit" / "gutenbit.db"
     )
 
 
@@ -161,8 +161,9 @@ def test_delete_subcommand_is_rejected():
     assert "remove" in err
 
 
-def test_books_creates_default_db_under_project_state_dir(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def test_books_creates_default_db_under_home_state_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
     code, out, err = _run_cli("books")
 
@@ -178,10 +179,11 @@ def test_default_cli_db_does_not_auto_discover_legacy_root_db(tmp_path, monkeypa
     with Database(legacy_db) as db:
         db._store(_BOOK, chunk_html(_BOOK_HTML))
 
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
     code, out, err = _run_cli("books")
-    explicit_code, explicit_out, explicit_err = _run_cli("--db", "gutenbit.db", "books")
+    explicit_code, explicit_out, explicit_err = _run_cli("--db", str(legacy_db), "books")
 
     assert code == 0
     assert err == ""
@@ -190,7 +192,7 @@ def test_default_cli_db_does_not_auto_discover_legacy_root_db(tmp_path, monkeypa
 
     assert explicit_code == 0
     assert explicit_err == ""
-    assert "1 book(s) stored in gutenbit.db" in explicit_out
+    assert f"1 book(s) stored in {legacy_db}" in explicit_out
 
 
 def test_books_output_preserves_home_relative_db_path(monkeypatch):
