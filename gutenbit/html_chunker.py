@@ -135,6 +135,7 @@ _FRONT_MATTER_HEADINGS = frozenset(
 )
 
 _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
+_HEADING_TAG_SET = frozenset(_HEADING_TAGS)
 _PLAY_HEADING_PARAGRAPH_RE = re.compile(
     r"^(?:(?P<act>(?:ACTUS|ACT)\s+[A-Z0-9IVXLCDM]+\.?)"
     r"(?:\s+(?P<scene>(?:SC(?:OE|E)NA|SCENE)\s+[A-Z0-9IVXLCDM]+\.?))?"
@@ -185,25 +186,15 @@ def chunk_html(html: str) -> list[Chunk]:
     Each ``<p>`` element becomes its own chunk. Returns chunks in document order.
     """
     soup = BeautifulSoup(html, HTML_PARSER_BACKEND)
-    tag_positions, subtree_end_positions = _build_tag_and_subtree_positions(soup)
-    bounds = _find_gutenberg_bounds(soup, tag_positions, subtree_end_positions)
-    paragraphs, paragraph_positions = _build_paragraph_index(soup, tag_positions, bounds)
-    headings, heading_positions = _build_heading_index(soup, tag_positions)
-    doc_index = _DocumentIndex(
-        tag_positions=tag_positions,
-        subtree_end_positions=subtree_end_positions,
-        paragraphs=paragraphs,
-        paragraph_positions=paragraph_positions,
-        headings=headings,
-        heading_positions=heading_positions,
-    )
+    doc_index = _scan_document(soup)
+    bounds = doc_index.bounds
+    tag_positions = doc_index.tag_positions
 
     # Build section list from TOC links and refine with body headings when the
     # TOC is a coarse but valid subsequence of the body structure.
-    toc_sections = _parse_toc_sections(soup, doc_index=doc_index, bounds=bounds)
+    toc_sections = _parse_toc_sections(doc_index=doc_index, bounds=bounds)
     if toc_sections:
         heading_sections = _parse_heading_sections(
-            soup,
             doc_index=doc_index,
             bounds=bounds,
         )
@@ -214,7 +205,7 @@ def chunk_html(html: str) -> list[Chunk]:
         )
     else:
         # Some Gutenberg editions expose page-number TOC links only.
-        sections = _parse_heading_sections(soup, doc_index=doc_index, bounds=bounds)
+        sections = _parse_heading_sections(doc_index=doc_index, bounds=bounds)
     if not sections:
         return []
 
@@ -314,19 +305,17 @@ def chunk_html(html: str) -> list[Chunk]:
 
 
 def _parse_toc_sections(
-    soup: BeautifulSoup,
     *,
     doc_index: _DocumentIndex,
     bounds: _ContentBounds,
 ) -> list[_Section]:
     """Extract section list from TOC ``pginternal`` links."""
     tag_positions = doc_index.tag_positions
-    toc_links = soup.select("a.pginternal")
+    toc_links = doc_index.toc_links
     sections: list[_Section] = []
     used_headings: set[int] = set()
 
-    # Index all anchors by id to avoid O(n) soup.find per TOC link.
-    anchor_map: dict[str, Tag] = {str(a["id"]): a for a in soup.find_all("a", id=True)}
+    anchor_map = doc_index.anchor_map
 
     for link in toc_links:
         if not _tag_within_bounds(link, tag_positions, bounds):
@@ -610,7 +599,6 @@ def _respect_heading_rank_nesting(sections: list[_Section]) -> list[_Section]:
 
 
 def _parse_heading_sections(
-    soup: BeautifulSoup,
     *,
     doc_index: _DocumentIndex,
     bounds: _ContentBounds,
@@ -621,7 +609,7 @@ def _parse_heading_sections(
     links only). We start from the first heading that looks structural.
     """
     heading_rows: list[_HeadingRow] = []
-    for heading in soup.find_all(_HEADING_TAGS):
+    for heading in doc_index.all_heading_tags:
         if not _tag_within_bounds(heading, doc_index.tag_positions, bounds):
             continue
         heading_text = _clean_heading_text(_extract_heading_text(heading))
@@ -1386,71 +1374,147 @@ class _DocumentIndex:
     paragraph_positions: list[int]
     headings: list[_IndexedHeading]
     heading_positions: list[int]
+    toc_links: list[Tag]
+    anchor_map: dict[str, Tag]
+    all_heading_tags: list[Tag]
+    bounds: _ContentBounds
 
 
-def _build_heading_index(
-    soup: BeautifulSoup,
-    tag_positions: dict[int, int],
-) -> tuple[list[_IndexedHeading], list[int]]:
-    """Pre-collect all heading tags with positions and cleaned text.
+def _scan_document(soup: BeautifulSoup) -> _DocumentIndex:
+    """Single-pass DFS that builds all document indices at once.
 
-    Builds a sorted list once so previous-heading lookups use bisect
-    instead of backward DOM traversals.
+    Replaces separate calls to ``_build_tag_and_subtree_positions``,
+    ``_find_gutenberg_bounds``, ``_build_paragraph_index``, and
+    ``_build_heading_index`` — avoiding 5+ redundant DOM traversals.
     """
-    result: list[_IndexedHeading] = []
-    positions: list[int] = []
-    for heading in soup.find_all(_HEADING_TAGS):
-        pos = tag_positions.get(id(heading))
-        if pos is None:
-            continue
-        text = _clean_heading_text(_extract_heading_text(heading))
-        if text:
-            result.append(_IndexedHeading(heading, pos, text))
-            positions.append(pos)
-    return result, positions
-
-
-def _build_paragraph_index(
-    soup: BeautifulSoup,
-    tag_positions: dict[int, int],
-    bounds: _ContentBounds,
-) -> tuple[list[_IndexedParagraph], list[int]]:
-    """Pre-collect all usable paragraph-like text blocks with positions and text.
-
-    Builds a sorted list once so section-range queries use bisect instead of
-    repeated traversals.
-    """
-    body = soup.find("body")
-    if not body:
-        return [], []
-
-    # Single-pass collection: iterate descendants once to find paragraphs and
-    # track which contain pagenum spans, img tags, or pginternal links,
-    # avoiding multiple find_all + find_parent traversals.
+    tag_positions: dict[int, int] = {}
+    end_positions: dict[int, int] = {}
+    all_heading_tags: list[Tag] = []
+    toc_links: list[Tag] = []
+    anchor_map: dict[str, Tag] = {}
+    blocks: list[Tag] = []
     paragraphs_with_pagenum: set[int] = set()
     paragraphs_with_img: set[int] = set()
     paragraphs_with_pginternal: set[int] = set()
-    blocks: list[Tag] = []
-    for tag in body.descendants:
-        if not isinstance(tag, Tag):
-            continue
-        if tag.name in ("p", "pre"):
-            blocks.append(tag)
-        elif tag.name == "span" and "pagenum" in (tag.get("class") or []):
-            p = tag.find_parent(["p", "pre"])
-            if p is not None:
-                paragraphs_with_pagenum.add(id(p))
-        elif tag.name == "img":
-            p = tag.find_parent(["p", "pre"])
-            if p is not None:
-                paragraphs_with_img.add(id(p))
-        elif tag.name == "a" and "pginternal" in (tag.get("class") or []):
-            p = tag.find_parent("p")
-            if p is not None:
-                paragraphs_with_pginternal.add(id(p))
+    start_marker_parent: Tag | None = None
+    end_marker_parent: Tag | None = None
+    pg_header: Tag | None = None
+    pg_footer: Tag | None = None
 
-    result: list[_IndexedParagraph] = []
-    positions: list[int] = []
+    counter = 0
+    in_body = False
+    block_stack: list[Tag] = []
+
+    stack: list[tuple[BeautifulSoup | Tag, bool]] = [(soup, False)]
+    while stack:
+        node, visited = stack.pop()
+        if not visited:
+            if isinstance(node, Tag) and node is not soup:
+                tag_positions[id(node)] = counter
+                counter += 1
+
+                name = node.name
+
+                if name == "body":
+                    in_body = True
+
+                if name in _HEADING_TAG_SET:
+                    all_heading_tags.append(node)
+
+                if name == "a":
+                    aid = node.get("id")
+                    if aid is not None:
+                        anchor_map[str(aid)] = node
+                    if "pginternal" in (node.get("class") or []):
+                        toc_links.append(node)
+
+                if in_body and name in ("p", "pre"):
+                    blocks.append(node)
+                    block_stack.append(node)
+
+                if in_body and block_stack:
+                    current_block = block_stack[-1]
+                    if name == "span" and "pagenum" in (node.get("class") or []):
+                        paragraphs_with_pagenum.add(id(current_block))
+                    elif name == "img":
+                        paragraphs_with_img.add(id(current_block))
+                    elif (
+                        name == "a"
+                        and "pginternal" in (node.get("class") or [])
+                        and current_block.name == "p"
+                    ):
+                        paragraphs_with_pginternal.add(id(current_block))
+
+                nid = node.get("id")
+                if nid == "pg-header":
+                    pg_header = node
+                elif nid == "pg-footer":
+                    pg_footer = node
+
+            stack.append((node, True))
+            tag_children: list[Tag] = []
+            for child in node.contents:
+                if isinstance(child, Tag):
+                    tag_children.append(child)
+                elif isinstance(child, NavigableString):
+                    if start_marker_parent is None or end_marker_parent is None:
+                        text = str(child)
+                        if start_marker_parent is None and _START_DELIMITER_RE.search(text):
+                            p = child.parent
+                            if isinstance(p, Tag):
+                                start_marker_parent = p
+                        if end_marker_parent is None and _END_DELIMITER_RE.search(text):
+                            p = child.parent
+                            if isinstance(p, Tag):
+                                end_marker_parent = p
+            for child in reversed(tag_children):
+                stack.append((child, False))
+            continue
+
+        # Post-order visit.
+        if isinstance(node, Tag) and node is not soup:
+            if node.name == "body":
+                in_body = False
+            if in_body and node.name in ("p", "pre") and block_stack and block_stack[-1] is node:
+                block_stack.pop()
+
+        end_pos = tag_positions.get(id(node))
+        for child in node.contents:
+            if not isinstance(child, Tag):
+                continue
+            child_end = end_positions.get(id(child))
+            if child_end is not None and (end_pos is None or child_end > end_pos):
+                end_pos = child_end
+        if end_pos is not None:
+            end_positions[id(node)] = end_pos
+
+    # Compute Gutenberg content bounds.
+    start_pos = tag_positions.get(id(start_marker_parent)) if start_marker_parent else None
+    end_pos_val = tag_positions.get(id(end_marker_parent)) if end_marker_parent else None
+
+    def _subtree_end(tag: Tag | None) -> int | None:
+        if tag is None:
+            return None
+        return end_positions.get(id(tag), tag_positions.get(id(tag)))
+
+    header_end_pos = _subtree_end(pg_header)
+    footer_start_pos = tag_positions.get(id(pg_footer)) if pg_footer else None
+
+    if start_pos is None:
+        start_pos = header_end_pos
+    if end_pos_val is None:
+        end_pos_val = footer_start_pos
+    if start_pos is not None and end_pos_val is not None and end_pos_val <= start_pos:
+        if footer_start_pos is not None and footer_start_pos > start_pos:
+            end_pos_val = footer_start_pos
+        else:
+            end_pos_val = None
+
+    bounds = _ContentBounds(start_pos=start_pos, end_pos=end_pos_val)
+
+    # Build paragraph index (needs bounds for filtering).
+    paragraphs: list[_IndexedParagraph] = []
+    paragraph_positions: list[int] = []
     for block in blocks:
         pos = tag_positions.get(id(block))
         if pos is None or not bounds.contains(pos):
@@ -1466,9 +1530,33 @@ def _build_paragraph_index(
                 block, has_pginternal=id(block) in paragraphs_with_pginternal
             )
         if text:
-            result.append(_IndexedParagraph(block, pos, text, is_toc))
-            positions.append(pos)
-    return result, positions
+            paragraphs.append(_IndexedParagraph(block, pos, text, is_toc))
+            paragraph_positions.append(pos)
+
+    # Build heading index.
+    headings: list[_IndexedHeading] = []
+    heading_positions: list[int] = []
+    for heading in all_heading_tags:
+        pos = tag_positions.get(id(heading))
+        if pos is None:
+            continue
+        htext = _clean_heading_text(_extract_heading_text(heading))
+        if htext:
+            headings.append(_IndexedHeading(heading, pos, htext))
+            heading_positions.append(pos)
+
+    return _DocumentIndex(
+        tag_positions=tag_positions,
+        subtree_end_positions=end_positions,
+        paragraphs=paragraphs,
+        paragraph_positions=paragraph_positions,
+        headings=headings,
+        heading_positions=heading_positions,
+        toc_links=toc_links,
+        anchor_map=anchor_map,
+        all_heading_tags=all_heading_tags,
+        bounds=bounds,
+    )
 
 
 def _paragraphs_in_range(
@@ -1872,32 +1960,6 @@ def _is_fallback_start_heading_text(heading_text: str) -> bool:
         return True
     return _FALLBACK_START_HEADING_RE.match(heading_text) is not None
 
-
-def _build_subtree_end_positions(
-    soup: BeautifulSoup, tag_positions: dict[int, int]
-) -> dict[int, int]:
-    """Return the last document-order position covered by each tag subtree."""
-    end_positions: dict[int, int] = {}
-    stack: list[tuple[BeautifulSoup | Tag, bool]] = [(soup, False)]
-    while stack:
-        node, visited = stack.pop()
-        if not visited:
-            stack.append((node, True))
-            for child in reversed(node.contents):
-                if isinstance(child, Tag):
-                    stack.append((child, False))
-            continue
-
-        end_pos = tag_positions.get(id(node))
-        for child in node.contents:
-            if not isinstance(child, Tag):
-                continue
-            child_end = end_positions.get(id(child))
-            if child_end is not None and (end_pos is None or child_end > end_pos):
-                end_pos = child_end
-        if end_pos is not None:
-            end_positions[id(node)] = end_pos
-    return end_positions
 
 
 def _subtree_end_position(
@@ -2373,49 +2435,6 @@ def _is_emphasized_toc_link(link: Tag) -> bool:
     return False
 
 
-def _tag_positions(soup: BeautifulSoup) -> dict[int, int]:
-    """Return document-order index for each HTML tag in the document."""
-    return {id(tag): idx for idx, tag in enumerate(soup.find_all(True))}
-
-
-def _build_tag_and_subtree_positions(
-    soup: BeautifulSoup,
-) -> tuple[dict[int, int], dict[int, int]]:
-    """Build tag_positions and subtree_end_positions in a single DFS pass.
-
-    Replaces separate calls to ``_tag_positions`` + ``_build_subtree_end_positions``
-    to avoid traversing the DOM twice.
-    """
-    tag_positions: dict[int, int] = {}
-    end_positions: dict[int, int] = {}
-    counter = 0
-    stack: list[tuple[BeautifulSoup | Tag, bool]] = [(soup, False)]
-    while stack:
-        node, visited = stack.pop()
-        if not visited:
-            # Pre-order: assign document position.
-            if isinstance(node, Tag) and node is not soup:
-                tag_positions[id(node)] = counter
-                counter += 1
-            stack.append((node, True))
-            for child in reversed(node.contents):
-                if isinstance(child, Tag):
-                    stack.append((child, False))
-            continue
-
-        # Post-order: compute subtree end position.
-        end_pos = tag_positions.get(id(node))
-        for child in node.contents:
-            if not isinstance(child, Tag):
-                continue
-            child_end = end_positions.get(id(child))
-            if child_end is not None and (end_pos is None or child_end > end_pos):
-                end_pos = child_end
-        if end_pos is not None:
-            end_positions[id(node)] = end_pos
-
-    return tag_positions, end_positions
-
 
 def _tag_position(tag: Tag, tag_positions: dict[int, int]) -> int | None:
     return tag_positions.get(id(tag))
@@ -2428,45 +2447,3 @@ def _tag_within_bounds(tag: Tag, tag_positions: dict[int, int], bounds: _Content
     return bounds.contains(position)
 
 
-def _find_gutenberg_bounds(
-    soup: BeautifulSoup,
-    tag_positions: dict[int, int],
-    subtree_end_positions: dict[int, int],
-) -> _ContentBounds:
-    """Locate START/END delimiter bounds in document order."""
-
-    def _find_marker_parent(marker_re: re.Pattern[str]) -> Tag | None:
-        # Use compiled regex directly — avoids a Python lambda call on
-        # every text node in the document.
-        marker_text = soup.find(string=marker_re)
-        if marker_text is None:
-            return None
-        return marker_text.parent if isinstance(marker_text.parent, Tag) else None
-
-    def _subtree_end_pos(tag: Tag | None) -> int | None:
-        if tag is None:
-            return None
-        return subtree_end_positions.get(id(tag), _tag_position(tag, tag_positions))
-
-    start_parent = _find_marker_parent(_START_DELIMITER_RE)
-    end_parent = _find_marker_parent(_END_DELIMITER_RE)
-    start_pos = _tag_position(start_parent, tag_positions) if start_parent else None
-    end_pos = _tag_position(end_parent, tag_positions) if end_parent else None
-
-    # Fallback for editions with missing/non-standard delimiter text.
-    header = soup.find(id="pg-header")
-    footer = soup.find(id="pg-footer")
-    header_end_pos = _subtree_end_pos(header if isinstance(header, Tag) else None)
-    footer_start_pos = _tag_position(footer, tag_positions) if isinstance(footer, Tag) else None
-
-    if start_pos is None:
-        start_pos = header_end_pos
-    if end_pos is None:
-        end_pos = footer_start_pos
-
-    if start_pos is not None and end_pos is not None and end_pos <= start_pos:
-        if footer_start_pos is not None and footer_start_pos > start_pos:
-            end_pos = footer_start_pos
-        else:
-            end_pos = None
-    return _ContentBounds(start_pos=start_pos, end_pos=end_pos)
