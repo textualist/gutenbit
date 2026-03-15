@@ -9,45 +9,98 @@ from collections.abc import Callable
 from bs4 import Tag
 
 from gutenbit.html_chunker._common import (
-    _BARE_HEADING_NUMBER_RE,
+    _BRACKETED_NUMERIC_HEADING_RE,
     _BROAD_KEYWORDS,
     _BROAD_NESTING_DEPTHS,
-    _BRACKETED_NUMERIC_HEADING_RE,
-    _DRAMATIC_CONTEXT_HEADING_RE,
-    _EDITORIAL_PLACEHOLDER_HEADING_RE,
-    _EMBEDDED_HEADING_RE,
-    _ENUMERATED_HEADING_PREFIX_RE,
-    _ENUMERATED_SUBHEADING_RE,
     _FALLBACK_START_HEADING_RE,
-    _FONT_SIZE_STYLE_RE,
-    _FRONT_MATTER_ATTRIBUTION_HEADING_RE,
-    _FRONT_MATTER_ATTRIBUTION_RE,
     _FRONT_MATTER_HEADINGS,
     _HEADING_KEYWORD_RE,
-    _HeadingRow,
-    _LIST_ITEM_MARKER_RE,
     _NON_ALNUM_RE,
-    _NON_STRUCTURAL_HEADING_RE,
-    _NON_SUBTITLE_HEADING_RE,
     _NUMERIC_LINK_TEXT_RE,
-    _PAGE_HEADING_RE,
-    _PLAIN_NUMBER_HEADING_RE,
-    _Section,
-    _STANDALONE_APPARATUS_HEADING_RE,
     _PLAY_HEADING_PARAGRAPH_RE,
     _STANDALONE_STRUCTURAL_RE,
-    _STRONG_DRAMATIC_CONTEXT_HEADING_RE,
-    _STRUCTURAL_INDEX_TOKEN_RE,
-    _STRUCTURAL_KEYWORD_ALIASES,
-    _SYNOPSIS_SUFFIX_RE,
-    _TRAILING_STRUCTURAL_HEADING_RE,
     _clean_heading_text,
     _front_matter_heading_key,
+    _HeadingRow,
+    _Section,
 )
 from gutenbit.html_chunker._scanning import (
     _DocumentIndex,
     _subtree_end_position,
     _tag_position,
+)
+
+# ---------------------------------------------------------------------------
+# Compiled regex patterns (used only within this module)
+# ---------------------------------------------------------------------------
+
+_STRUCTURAL_KEYWORD_ALIASES = {
+    "actus": "act",
+    "scena": "scene",
+    "scoena": "scene",
+}
+
+_STRUCTURAL_INDEX_TOKEN_RE = re.compile(
+    r"^(?:[IVXLCDM]+|[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
+    r"nineteen|twenty|first|second|third|fourth|fifth|sixth|seventh|eighth|"
+    r"ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|"
+    r"sixteenth|seventeenth|eighteenth|nineteenth|twentieth|"
+    r"primus|prima|secundus|secunda|tertius|tertia|quartus|quarta|"
+    r"quintus|quinta|sextus|sexta|septimus|septima|octavus|octava|"
+    r"nonus|nona|decimus|decima)$",
+    re.IGNORECASE,
+)
+_TRAILING_STRUCTURAL_HEADING_RE = re.compile(
+    r"^(?:THE\s+)?(?P<index>[A-Z0-9]+)\s+"
+    r"(?P<keyword>BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|"
+    r"SCOENA|SECTION|ADVENTURE)\.?\s*$",
+    re.IGNORECASE,
+)
+_EMBEDDED_HEADING_RE = re.compile(
+    r"(?:BOOK|PART|ACT|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)"
+    r"\.?\s+[IVXLCDM0-9]+",
+    re.IGNORECASE,
+)
+_PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
+_NON_STRUCTURAL_HEADING_RE = re.compile(
+    r"^(?:notes|footnotes?|endnotes?|transcriber's note|transcribers note|"
+    r"editor's note|editors note|finis)\b",
+    re.IGNORECASE,
+)
+_FRONT_MATTER_ATTRIBUTION_RE = re.compile(
+    r"^(?:by|translated\s+by|edited\s+by|illustrated\s+by)\s",
+    re.IGNORECASE,
+)
+_FRONT_MATTER_ATTRIBUTION_HEADING_RE = re.compile(
+    r"^(?:introduction|preface|foreword|afterword)\s+by\b",
+    re.IGNORECASE,
+)
+_PLAIN_NUMBER_HEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.?$", re.IGNORECASE)
+_NON_SUBTITLE_HEADING_RE = re.compile(r"^(?:chap(?:ters?)?)\.?$", re.IGNORECASE)
+_SYNOPSIS_SUFFIX_RE = re.compile(r"\s+SYNOPSIS OF\b.*$", re.IGNORECASE)
+_EDITORIAL_PLACEHOLDER_HEADING_RE = re.compile(
+    r"(?:\[\s*(?:not\b|omitted\b|wanting\b)|\bnot in early editions\b)",
+    re.IGNORECASE,
+)
+_ENUMERATED_SUBHEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.\s+\S", re.IGNORECASE)
+_ENUMERATED_HEADING_PREFIX_RE = re.compile(
+    r"^(?:[IVXLCDM]+|[0-9]+)(?:[.)])?\s+\S",
+    re.IGNORECASE,
+)
+_LIST_ITEM_MARKER_RE = re.compile(r"(?:^|\s)(?:[IVXLCDM]+|[0-9]+)\.\s+\S", re.IGNORECASE)
+_STANDALONE_APPARATUS_HEADING_RE = re.compile(r"^SYNOPSIS OF\b", re.IGNORECASE)
+_FONT_SIZE_STYLE_RE = re.compile(
+    r"font-size\s*:\s*([0-9.]+)\s*(%|em|rem|px)",
+    re.IGNORECASE,
+)
+_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
+    r"\b(?:act|scene|prologue|epilogue|tragedy|comedy)\b",
+    re.IGNORECASE,
+)
+_STRONG_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
+    r"\b(?:act|scene|tragedy|comedy)\b",
+    re.IGNORECASE,
 )
 
 # ---------------------------------------------------------------------------

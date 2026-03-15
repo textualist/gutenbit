@@ -8,13 +8,13 @@ from dataclasses import dataclass
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 from gutenbit.html_chunker._common import (
-    _ContentBounds,
+    _END_DELIMITER_RE,
     _FRONT_MATTER_HEADINGS,
     _HEADING_TAG_SET,
     _NON_ALNUM_RE,
     _START_DELIMITER_RE,
-    _END_DELIMITER_RE,
     _clean_heading_text,
+    _ContentBounds,
     _extract_heading_text,
     _front_matter_heading_key,
 )

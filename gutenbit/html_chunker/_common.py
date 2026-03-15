@@ -19,11 +19,6 @@ _BROAD_NESTING_DEPTHS = {
     "book": 3,
     "act": 3,
 }
-_STRUCTURAL_KEYWORD_ALIASES = {
-    "actus": "act",
-    "scena": "scene",
-    "scoena": "scene",
-}
 
 _FRONT_MATTER_HEADINGS = frozenset(
     {
@@ -38,7 +33,7 @@ _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 _HEADING_TAG_SET = frozenset(_HEADING_TAGS)
 
 # ---------------------------------------------------------------------------
-# Compiled regex patterns
+# Compiled regex patterns (used by multiple modules)
 # ---------------------------------------------------------------------------
 
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
@@ -73,73 +68,17 @@ _STRUCTURAL_HEADING_TRAILER_RE = re.compile(
 _BRACKETED_NUMERIC_HEADING_RE = re.compile(r"^\[\s*\d+\s*\]$")
 _NUMERIC_LINK_TEXT_RE = re.compile(r"^\[?\d+\]?$")
 _ROMAN_NUMERAL_RE = re.compile(r"^[IVXLCDM]+$")
-_PLAIN_NUMBER_HEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.?$", re.IGNORECASE)
-_STRUCTURAL_INDEX_TOKEN_RE = re.compile(
-    r"^(?:[IVXLCDM]+|[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|"
-    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
-    r"nineteen|twenty|first|second|third|fourth|fifth|sixth|seventh|eighth|"
-    r"ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|"
-    r"sixteenth|seventeenth|eighteenth|nineteenth|twentieth|"
-    r"primus|prima|secundus|secunda|tertius|tertia|quartus|quarta|"
-    r"quintus|quinta|sextus|sexta|septimus|septima|octavus|octava|"
-    r"nonus|nona|decimus|decima)$",
-    re.IGNORECASE,
-)
-_PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
-_NON_STRUCTURAL_HEADING_RE = re.compile(
-    r"^(?:notes|footnotes?|endnotes?|transcriber's note|transcribers note|"
-    r"editor's note|editors note|finis)\b",
-    re.IGNORECASE,
-)
-_FRONT_MATTER_ATTRIBUTION_RE = re.compile(
-    r"^(?:by|translated\s+by|edited\s+by|illustrated\s+by)\s",
-    re.IGNORECASE,
-)
-_FRONT_MATTER_ATTRIBUTION_HEADING_RE = re.compile(
-    r"^(?:introduction|preface|foreword|afterword)\s+by\b",
-    re.IGNORECASE,
-)
 _PLAY_HEADING_PARAGRAPH_RE = re.compile(
     r"^(?:(?P<act>(?:ACTUS|ACT)\s+[A-Z0-9IVXLCDM]+\.?)"
     r"(?:\s+(?P<scene>(?:SC(?:OE|E)NA|SCENE)\s+[A-Z0-9IVXLCDM]+\.?))?"
     r"|(?P<scene_only>(?:SC(?:OE|E)NA|SCENE)\s+[A-Z0-9IVXLCDM]+\.?))$",
     re.IGNORECASE,
 )
-_TRAILING_STRUCTURAL_HEADING_RE = re.compile(
-    r"^(?:THE\s+)?(?P<index>[A-Z0-9]+)\s+"
-    r"(?P<keyword>BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|"
-    r"SCOENA|SECTION|ADVENTURE)\.?\s*$",
-    re.IGNORECASE,
-)
-
-# Matches a structural heading pattern anywhere in text (keyword + number).
-# Used to reject subtitles that contain embedded headings like "... CHAPTER II".
-_EMBEDDED_HEADING_RE = re.compile(
-    r"(?:BOOK|PART|ACT|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)"
-    r"\.?\s+[IVXLCDM0-9]+",
-    re.IGNORECASE,
-)
+_NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]+")
 
 # Keywords that are almost exclusively structural even without a trailing number.
 _STANDALONE_STRUCTURAL_RE = re.compile(
     r"\bEPILOGUE\b|\bPROLOGUE\b|\bAPPENDIX\b",
-    re.IGNORECASE,
-)
-_NON_SUBTITLE_HEADING_RE = re.compile(r"^(?:chap(?:ters?)?)\.?$", re.IGNORECASE)
-_SYNOPSIS_SUFFIX_RE = re.compile(r"\s+SYNOPSIS OF\b.*$", re.IGNORECASE)
-_EDITORIAL_PLACEHOLDER_HEADING_RE = re.compile(
-    r"(?:\[\s*(?:not\b|omitted\b|wanting\b)|\bnot in early editions\b)",
-    re.IGNORECASE,
-)
-_ENUMERATED_SUBHEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.\s+\S", re.IGNORECASE)
-_ENUMERATED_HEADING_PREFIX_RE = re.compile(
-    r"^(?:[IVXLCDM]+|[0-9]+)(?:[.)])?\s+\S",
-    re.IGNORECASE,
-)
-_LIST_ITEM_MARKER_RE = re.compile(r"(?:^|\s)(?:[IVXLCDM]+|[0-9]+)\.\s+\S", re.IGNORECASE)
-_STANDALONE_APPARATUS_HEADING_RE = re.compile(r"^SYNOPSIS OF\b", re.IGNORECASE)
-_FONT_SIZE_STYLE_RE = re.compile(
-    r"font-size\s*:\s*([0-9.]+)\s*(%|em|rem|px)",
     re.IGNORECASE,
 )
 _FALLBACK_START_HEADING_RE = re.compile(
@@ -148,27 +87,6 @@ _FALLBACK_START_HEADING_RE = re.compile(
     r"before the curtain\b|etymology\b|extracts\b|some commendatory verses\b)",
     re.IGNORECASE,
 )
-_TAIL_SECTION_HEADING_RE = re.compile(
-    r"^(?:note\b|note to\b|letter\b|a letter from\b|finale\b|the conclusion\b)",
-    re.IGNORECASE,
-)
-_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
-    r"\b(?:act|scene|prologue|epilogue|tragedy|comedy)\b",
-    re.IGNORECASE,
-)
-_STRONG_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
-    r"\b(?:act|scene|tragedy|comedy)\b",
-    re.IGNORECASE,
-)
-
-# Tail-boundary pattern: only clearly apparatus headings, not ambiguous
-# singular "NOTE" which can be a narrative epilogue (e.g. Dracula).
-_TAIL_BOUNDARY_HEADING_RE = re.compile(
-    r"^(?:footnotes?|endnotes?|notes\b|transcriber'?s?\s+note|editor'?s?\s+note)",
-    re.IGNORECASE,
-)
-
-_NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]+")
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -187,7 +105,9 @@ class _Section:
 
     def _with_level(self, level: int) -> _Section:
         """Return a copy with only the level changed."""
-        return _Section(self.anchor_id, self.heading_text, level, self.body_anchor, self.heading_rank)
+        return _Section(
+            self.anchor_id, self.heading_text, level, self.body_anchor, self.heading_rank
+        )
 
 
 @dataclass(frozen=True, slots=True)

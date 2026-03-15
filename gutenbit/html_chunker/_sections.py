@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from bisect import bisect_left
 from collections import defaultdict
 from collections.abc import Sequence
@@ -11,33 +12,21 @@ from bs4 import Tag
 from gutenbit.html_chunker._common import (
     _BARE_HEADING_NUMBER_RE,
     _BROAD_KEYWORDS,
-    _ContentBounds,
     _FALLBACK_START_HEADING_RE,
     _FRONT_MATTER_HEADINGS,
-    _HEADING_KEYWORD_RE,
     _HEADING_TAGS,
-    _HeadingRow,
     _NON_ALNUM_RE,
     _NUMERIC_LINK_TEXT_RE,
     _PLAY_HEADING_PARAGRAPH_RE,
     _ROMAN_NUMERAL_RE,
-    _Section,
     _STANDALONE_STRUCTURAL_RE,
-    _TAIL_BOUNDARY_HEADING_RE,
-    _TAIL_SECTION_HEADING_RE,
     _clean_heading_text,
+    _ContentBounds,
     _extract_heading_text,
     _front_matter_heading_key,
     _heading_tag_rank,
-)
-from gutenbit.html_chunker._scanning import (
-    _DocumentIndex,
-    _IndexedParagraph,
-    _container_residue_without_link_text,
-    _is_dense_chapter_index_paragraph,
-    _is_toc_paragraph,
-    _tag_position,
-    _tag_within_bounds,
+    _HeadingRow,
+    _Section,
 )
 from gutenbit.html_chunker._headings import (
     _broad_heading_with_enumerated_child,
@@ -53,14 +42,13 @@ from gutenbit.html_chunker._headings import (
     _is_editorial_placeholder_heading,
     _is_emphasized_toc_link,
     _is_empty_front_matter_stub_heading,
-    _is_fallback_start_heading_text,
     _is_front_matter_attribution_heading,
     _is_ignorable_fallback_heading,
     _is_non_structural_heading_text,
     _is_rank5_subheading_under_nonchapter_section,
     _is_refinement_heading,
-    _is_shorter_adjacent_title_repeat,
     _is_short_uppercase_stage_heading,
+    _is_shorter_adjacent_title_repeat,
     _is_single_letter_subheading,
     _is_single_speaker_dialogue_heading,
     _is_title_like_heading,
@@ -73,6 +61,30 @@ from gutenbit.html_chunker._headings import (
     _split_play_heading_paragraph,
     _toc_link_refines_body_heading,
     _update_dramatic_context_state,
+)
+from gutenbit.html_chunker._scanning import (
+    _container_residue_without_link_text,
+    _DocumentIndex,
+    _IndexedParagraph,
+    _is_dense_chapter_index_paragraph,
+    _is_toc_paragraph,
+    _tag_position,
+    _tag_within_bounds,
+)
+
+# ---------------------------------------------------------------------------
+# Compiled regex patterns (used only within this module)
+# ---------------------------------------------------------------------------
+
+# Tail-boundary pattern: only clearly apparatus headings, not ambiguous
+# singular "NOTE" which can be a narrative epilogue (e.g. Dracula).
+_TAIL_BOUNDARY_HEADING_RE = re.compile(
+    r"^(?:footnotes?|endnotes?|notes\b|transcriber'?s?\s+note|editor'?s?\s+note)",
+    re.IGNORECASE,
+)
+_TAIL_SECTION_HEADING_RE = re.compile(
+    r"^(?:note\b|note to\b|letter\b|a letter from\b|finale\b|the conclusion\b)",
+    re.IGNORECASE,
 )
 
 # ---------------------------------------------------------------------------

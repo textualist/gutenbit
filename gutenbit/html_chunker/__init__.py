@@ -19,7 +19,6 @@ from bs4 import BeautifulSoup
 
 from gutenbit.html_chunker._common import (
     _HEADING_TAGS,
-    _Section,
 )
 from gutenbit.html_chunker._scanning import (
     _paragraphs_in_range,
