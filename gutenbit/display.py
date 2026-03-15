@@ -23,6 +23,15 @@ from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
 
+from gutenbit._text_utils import (
+    _format_int,
+    _indent_block,
+    _preview,
+    _single_line,
+    _split_semicolon_list,
+    _summarize_semicolon_list,
+)
+
 _THEME = Theme(
     {
         "accent": "cyan",
@@ -54,21 +63,6 @@ _INGEST_STAGE_LABELS = {
 }
 
 
-def _format_int(value: int) -> str:
-    return f"{value:,}"
-
-
-def _preview(text: str, limit: int) -> str:
-    flat = text.replace("\n", " ")
-    if len(flat) <= limit:
-        return flat
-    return flat[:limit] + "..."
-
-
-def _single_line(text: str) -> str:
-    return " ".join(text.split())
-
-
 def _display_text(value: Any) -> str:
     text = _single_line(str(value)) if value is not None else ""
     return text or EMPTY_DISPLAY
@@ -93,20 +87,6 @@ def _display_read(
     if (words is not None and int(words) <= 0) or not normalized or normalized.lower() == "n/a":
         return f"{EMPTY_DISPLAY} read" if with_label else EMPTY_DISPLAY
     return f"{normalized} read" if with_label else normalized
-
-
-def _split_semicolon_list(raw: str) -> list[str]:
-    return [_single_line(part) for part in raw.split(";") if part.strip()]
-
-
-def _summarize_semicolon_list(raw: str, *, max_items: int) -> str:
-    items = _split_semicolon_list(raw)
-    if not items:
-        return ""
-    if len(items) <= max_items:
-        return "; ".join(items)
-    shown = "; ".join(items[:max_items])
-    return f"{shown}; +{len(items) - max_items} more"
 
 
 def _section_label(value: Any) -> str:
@@ -288,13 +268,6 @@ def _passage_header(payload: dict[str, Any]) -> str:
     if payload.get("all"):
         parts.append("all")
     return "  ".join(parts)
-
-
-def _indent_block(text: str, prefix: str = "    ") -> str:
-    lines = text.splitlines()
-    if not lines:
-        return prefix if text else ""
-    return "\n".join(f"{prefix}{line}" if line else "" for line in lines)
 
 
 @dataclass(frozen=True)
@@ -680,98 +653,64 @@ class CliDisplay:
             return nullcontext(None)
         return _IngestProgressSession(self)
 
+    def _book_list_table(self, books: list[Any], *, footer: str | None = None) -> None:
+        """Render a table of books (ID, Authors, Title) with optional footer."""
+        self._begin_output()
+        if self.interactive:
+            table = Table(box=box.SIMPLE_HEAD, header_style="muted", pad_edge=False)
+            table.add_column("ID", justify="right", style="accent", no_wrap=True)
+            table.add_column("Authors", max_width=40)
+            table.add_column("Title", style="title")
+            for book in books:
+                authors = _summarize_semicolon_list(book.authors, max_items=2)[:40]
+                table.add_row(str(book.id), authors, _single_line(book.title))
+            self._out.print(table)
+            if footer:
+                self._out.print(Text(footer, style="muted"))
+        else:
+            print(f"  {'ID':>6}  {'AUTHORS':<40s}  TITLE", file=self.stdout)
+            print(
+                f"  {'------':>6}  {'----------------------------------------':<40s}  -----",
+                file=self.stdout,
+            )
+            for book in books:
+                authors = _summarize_semicolon_list(book.authors, max_items=2)[:40]
+                title = _single_line(book.title)
+                print(f"  {book.id:>6}  {authors:<40s}  {title}", file=self.stdout)
+            if footer:
+                print(f"\n{footer}", file=self.stdout)
+
     def books(self, books: list[Any], *, db_path: str) -> None:
-        if not self.interactive:
-            self._books_plain(books, db_path=db_path)
-            return
-
-        self._begin_output()
-        table = Table(box=box.SIMPLE_HEAD, header_style="muted", pad_edge=False)
-        table.add_column("ID", justify="right", style="accent", no_wrap=True)
-        table.add_column("Authors", max_width=40)
-        table.add_column("Title", style="title")
-        for book in books:
-            authors = _summarize_semicolon_list(book.authors, max_items=2)[:40]
-            table.add_row(str(book.id), authors, _single_line(book.title))
-        self._out.print(table)
-        self._out.print(Text(f"{len(books)} book(s) stored in {db_path}", style="muted"))
-
-    def _books_plain(self, books: list[Any], *, db_path: str) -> None:
-        self._begin_output()
-        print(f"  {'ID':>6}  {'AUTHORS':<40s}  TITLE", file=self.stdout)
-        print(
-            f"  {'------':>6}  {'----------------------------------------':<40s}  -----",
-            file=self.stdout,
+        self._book_list_table(
+            books,
+            footer=f"{len(books)} book(s) stored in {db_path}",
         )
-        for book in books:
-            authors = _summarize_semicolon_list(book.authors, max_items=2)[:40]
-            title = _single_line(book.title)
-            print(f"  {book.id:>6}  {authors:<40s}  {title}", file=self.stdout)
-        print(f"\n{len(books)} book(s) stored in {db_path}", file=self.stdout)
 
     def catalog(self, books: list[Any], *, remaining_count: int) -> None:
-        if not self.interactive:
-            self._catalog_plain(books, remaining_count=remaining_count)
-            return
-
-        self._begin_output()
-        table = Table(box=box.SIMPLE_HEAD, header_style="muted", pad_edge=False)
-        table.add_column("ID", justify="right", style="accent", no_wrap=True)
-        table.add_column("Authors", max_width=40)
-        table.add_column("Title", style="title")
-        for book in books:
-            authors = _summarize_semicolon_list(book.authors, max_items=2)[:40]
-            table.add_row(str(book.id), authors, _single_line(book.title))
-        self._out.print(table)
-        if remaining_count > 0:
-            self._out.print(
-                Text(
-                    f"... and {remaining_count} more (use --limit to show more)",
-                    style="muted",
-                )
-            )
-
-    def _catalog_plain(self, books: list[Any], *, remaining_count: int) -> None:
-        self._begin_output()
-        print(f"  {'ID':>6}  {'AUTHORS':<40s}  TITLE", file=self.stdout)
-        print(
-            f"  {'------':>6}  {'----------------------------------------':<40s}  -----",
-            file=self.stdout,
+        footer = (
+            f"... and {remaining_count} more (use --limit to show more)"
+            if remaining_count > 0
+            else None
         )
-        for book in books:
-            authors = _summarize_semicolon_list(book.authors, max_items=2)[:40]
-            title = _single_line(book.title)
-            print(f"  {book.id:>6}  {authors:<40s}  {title}", file=self.stdout)
-        if remaining_count > 0:
-            print(f"  ... and {remaining_count} more (use --limit to show more)", file=self.stdout)
+        self._book_list_table(books, footer=footer)
 
-    def section_summary(self, summary: Mapping[str, Any]) -> None:
-        if not self.interactive:
-            self._section_summary_plain(summary)
-            return
-
-        self._begin_output()
-        book = summary["book"]
-        sections = summary["sections"]
-        quick_actions = summary["quick_actions"]
-
-        book_grid = Table.grid(padding=(0, 2))
-        book_grid.add_column(style="muted", justify="right", no_wrap=True)
-        book_grid.add_column()
-        book_rows: list[tuple[str, str]] = [
+    @staticmethod
+    def _book_detail_rows(book: Mapping[str, Any]) -> list[tuple[str, str]]:
+        """Build label/value pairs for a book overview section."""
+        rows: list[tuple[str, str]] = [
             ("Title", str(book["title"])),
             ("Gutenberg ID", str(book["id"])),
         ]
         if book.get("authors"):
-            book_rows.append(("Authors", str(book["authors"])))
+            rows.append(("Authors", str(book["authors"])))
         if book.get("language"):
-            book_rows.append(("Language", str(book["language"])))
+            rows.append(("Language", str(book["language"])))
         if book.get("issued"):
-            book_rows.append(("Issued", str(book["issued"])))
+            rows.append(("Issued", str(book["issued"])))
         if book.get("type"):
-            book_rows.append(("Type", str(book["type"])))
+            rows.append(("Type", str(book["type"])))
         if book.get("locc"):
-            book_rows.append(("LoCC", str(book["locc"])))
+            rows.append(("LoCC", str(book["locc"])))
         subjects = _summarize_semicolon_list(
             ";".join(book.get("subjects", [])),
             max_items=TOC_OVERVIEW_LIST_MAX_ITEMS,
@@ -781,9 +720,24 @@ class CliDisplay:
             max_items=TOC_OVERVIEW_LIST_MAX_ITEMS,
         )
         if subjects:
-            book_rows.append(("Subjects", subjects))
+            rows.append(("Subjects", subjects))
         if shelves:
-            book_rows.append(("Shelves", shelves))
+            rows.append(("Shelves", shelves))
+        return rows
+
+    def section_summary(self, summary: Mapping[str, Any]) -> None:
+        if not self.interactive:
+            self._section_summary_plain(summary)
+            return
+
+        self._begin_output()
+        sections = summary["sections"]
+        quick_actions = summary["quick_actions"]
+
+        book_rows = self._book_detail_rows(summary["book"])
+        book_grid = Table.grid(padding=(0, 2))
+        book_grid.add_column(style="muted", justify="right", no_wrap=True)
+        book_grid.add_column()
         for label, value in book_rows:
             value_text = Text(value, style="title" if label == "Title" else "")
             book_grid.add_row(Text(label, style="muted"), value_text)
@@ -814,40 +768,15 @@ class CliDisplay:
 
     def _section_summary_plain(self, summary: Mapping[str, Any]) -> None:
         self._begin_output()
-        book = summary["book"]
         sections = summary["sections"]
         quick_actions = summary["quick_actions"]
 
-        authors = str(book.get("authors", ""))
-        subjects = _summarize_semicolon_list(
-            ";".join(book.get("subjects", [])),
-            max_items=TOC_OVERVIEW_LIST_MAX_ITEMS,
-        )
-        shelves = _summarize_semicolon_list(
-            ";".join(book.get("bookshelves", [])),
-            max_items=TOC_OVERVIEW_LIST_MAX_ITEMS,
-        )
-
-        book_rows: list[tuple[str, str]] = []
-        book_rows.append(("Title", str(book["title"])))
-        book_rows.append(("Gutenberg ID", str(book["id"])))
-        if authors:
-            book_rows.append(("Authors", authors))
-        if book.get("language"):
-            book_rows.append(("Language", str(book["language"])))
-        if book.get("issued"):
-            book_rows.append(("Issued", str(book["issued"])))
-        if book.get("type"):
-            book_rows.append(("Type", str(book["type"])))
-        if book.get("locc"):
-            book_rows.append(("LoCC", str(book["locc"])))
-        if subjects:
-            book_rows.append(("Subjects", subjects))
-        if shelves:
-            book_rows.append(("Shelves", shelves))
-
         self._print_heading("Overview")
-        _print_key_value_table(self.stdout, book_rows, show_header=False)
+        _print_key_value_table(
+            self.stdout,
+            self._book_detail_rows(summary["book"]),
+            show_header=False,
+        )
 
         self._print_heading("Contents")
         if not sections:

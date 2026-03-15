@@ -32,9 +32,11 @@ from gutenbit._cli_helpers import (  # noqa: F401
     _display_cli_path,
     _passage_payload,
     _print_json_envelope,
+)
+from gutenbit._cli_sections import (  # noqa: F401
+    _build_section_summary,
     _select_section_opening_line,
 )
-from gutenbit._cli_sections import _build_section_summary  # noqa: F401
 from gutenbit.catalog import Catalog as Catalog  # noqa: F401
 
 __all__ = [

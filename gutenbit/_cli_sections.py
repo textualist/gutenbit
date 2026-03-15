@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, cast
 
 from gutenbit._cli_helpers import (
@@ -11,11 +12,9 @@ from gutenbit._cli_helpers import (
     OPENING_SECTION_SKIP_HEADINGS,
     _ChunkCounts,
     _display,
-    _estimate_read_time,
     _load_catalog,
     _no_chunks_display_message,
     _normalize_apostrophes,
-    _preview,
     _quick_action_search_query,
     _QuickActions,
     _section_depth,
@@ -24,10 +23,8 @@ from gutenbit._cli_helpers import (
     _SectionRow,
     _SectionState,
     _SectionSummary,
-    _select_section_opening_line,
-    _single_line,
-    _split_semicolon_list,
 )
+from gutenbit._text_utils import _preview, _single_line, _split_semicolon_list
 from gutenbit.db import (
     ChunkRecord,
     Database,
@@ -36,6 +33,112 @@ from gutenbit.db import (
     normalize_div_segment,
 )
 from gutenbit.display import CliDisplay
+
+# ---------------------------------------------------------------------------
+# Opening line selection heuristics
+# ---------------------------------------------------------------------------
+
+_TITLE_STYLE_CONNECTORS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "as",
+        "at",
+        "by",
+        "for",
+        "from",
+        "in",
+        "of",
+        "on",
+        "or",
+        "the",
+        "to",
+        "with",
+    }
+)
+_TITLE_STYLE_WORD_RE = re.compile(r"^[A-Za-z]+(?:['\u2019][A-Za-z]+)*$")
+_ROMAN_NUMERAL_RE = re.compile(r"^[IVXLCDM]+$", re.IGNORECASE)
+_SENTENCE_END_RE = re.compile(r'[.!?]["\')\]]*$')
+
+
+def _opening_preview_tokens(text: str) -> list[str]:
+    tokens: list[str] = []
+    for raw in text.split():
+        token = raw.strip("()[]{}\"'""'',;:-")
+        if not token:
+            continue
+        tokens.append(token)
+    return tokens
+
+
+def _is_title_style_token(token: str) -> bool:
+    if _ROMAN_NUMERAL_RE.fullmatch(token):
+        return True
+    if token.isupper() and any(ch.isalpha() for ch in token):
+        return True
+    if not _TITLE_STYLE_WORD_RE.fullmatch(token):
+        return False
+    lower = token.casefold()
+    if lower in _TITLE_STYLE_CONNECTORS:
+        return True
+    return token[0].isupper() and token[1:] == token[1:].lower()
+
+
+def _looks_like_opening_title_line(text: str) -> bool:
+    flat = _single_line(text).strip()
+    if not flat or _SENTENCE_END_RE.search(flat):
+        return False
+    if "," in flat or ";" in flat:
+        return False
+    tokens = _opening_preview_tokens(flat)
+    if not tokens or len(tokens) > 8:
+        return False
+    return all(_is_title_style_token(token) for token in tokens)
+
+
+def _select_section_opening_line(paragraphs: list[str]) -> str:
+    """Choose a representative opening line for a section preview.
+
+    Keep the first paragraph as the fallback, but skip a short title-like
+    opening block when it is immediately followed by body text.
+    """
+    preview_lines: list[str] = []
+    for text in paragraphs:
+        flat = _single_line(text)
+        if flat:
+            preview_lines.append(flat)
+    if not preview_lines:
+        return ""
+
+    prefix_len = 0
+    while prefix_len < len(preview_lines) and _looks_like_opening_title_line(
+        preview_lines[prefix_len]
+    ):
+        prefix_len += 1
+
+    if prefix_len < len(preview_lines):
+        first_line = preview_lines[0]
+        if prefix_len > 1 or first_line.endswith(":"):
+            return preview_lines[prefix_len]
+
+    return preview_lines[0]
+
+
+# ---------------------------------------------------------------------------
+# Read time estimation
+# ---------------------------------------------------------------------------
+
+
+def _estimate_read_time(words: int, *, wpm: int = 250) -> str:
+    if words <= 0:
+        return "n/a"
+    minutes = max(1, round(words / wpm))
+    hours, mins = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {mins}m"
+    return f"{mins}m"
+
 
 # ---------------------------------------------------------------------------
 # Section path / selector utilities

@@ -9,8 +9,8 @@ from typing import Any, cast
 import click
 
 from gutenbit._cli_helpers import (
-    _DB_OVERRIDE_HELP,
-    _VERBOSE_HELP,
+    _CommandEnv,
+    _common_options,
     DEFAULT_DOWNLOAD_DELAY,
     DEFAULT_OPENING_CHUNK_COUNT,
     DEFAULT_TOC_EXPAND,
@@ -19,10 +19,7 @@ from gutenbit._cli_helpers import (
     _book_id_ref,
     _book_payload,
     _command_error,
-    _configure_logging,
-    _display,
     _display_cli_path,
-    _estimate_read_time,
     _format_fts_error,
     _fts_phrase_query,
     _joined_chunk_text,
@@ -32,16 +29,15 @@ from gutenbit._cli_helpers import (
     _no_chunks_message,
     _passage_payload,
     _print_json_envelope,
-    _resolve_db,
-    _resolve_verbose,
     _resolved_cli_path,
     _safe_fts_query,
     _section_path,
-    _single_line,
     _toc_expand_depth,
 )
+from gutenbit._text_utils import _single_line
 from gutenbit._cli_sections import (
     _build_section_summary,
+    _estimate_read_time,
     _canonical_section_match,
     _opening_rows,
     _print_passage,
@@ -80,31 +76,19 @@ def _ingest_one_book(
     force: bool = False,
     progress_callback: IngestProgressCallback | None = None,
 ) -> bool:
-    def _run_ingest() -> bool:
-        if progress_callback is None:
-            return db._ingest_book(
-                book,
-                delay=delay,
-                force=force,
-                state=state,
-            )
-        return db._ingest_book(
-            book,
-            delay=delay,
-            force=force,
-            state=state,
-            progress_callback=progress_callback,
-        )
+    kwargs: dict[str, Any] = dict(delay=delay, force=force, state=state)
+    if progress_callback is not None:
+        kwargs["progress_callback"] = progress_callback
 
     if as_json:
         previous_disable = logging.root.manager.disable
         logging.disable(logging.CRITICAL)
         try:
-            return _run_ingest()
+            return db._ingest_book(book, **kwargs)
         finally:
             logging.disable(previous_disable)
 
-    return _run_ingest()
+    return db._ingest_book(book, **kwargs)
 
 
 def _process_books_for_ingest(
@@ -211,36 +195,25 @@ all filters use case-insensitive substring matching (AND logic).""",
 @click.option("--language", default="", help="filter by language code, e.g. 'en'")
 @click.option("--subject", default="", help="filter by subject (substring match)")
 @click.option("--limit", type=int, default=20, help="max results (default: 20)")
-@click.option("--json", "json_output", is_flag=True, help="output as JSON")
 @click.option(
     "--refresh",
     is_flag=True,
     help="ignore the catalog cache and redownload it now",
 )
-@click.option("--db", default=None, metavar="DB", help=_DB_OVERRIDE_HELP)
-@click.option("-v", "--verbose", is_flag=True, default=False, help=_VERBOSE_HELP)
-@click.pass_context
+@_common_options
 def _cmd_catalog(
-    ctx: click.Context,
+    env: _CommandEnv,
     author: str,
     title: str,
     language: str,
     subject: str,
     limit: int,
-    json_output: bool,
     refresh: bool,
-    db: str | None,
-    verbose: bool,
 ) -> int:
-    effective_db = _resolve_db(ctx, db)
-    if _resolve_verbose(ctx, verbose):
-        _configure_logging(True)
-    as_json = json_output
-    display = _display()
     if limit <= 0:
-        return _command_error("catalog", "--limit must be > 0.", as_json=as_json)
+        return _command_error("catalog", "--limit must be > 0.", as_json=env.as_json)
 
-    catalog = _load_catalog(refresh, display=display, as_json=as_json)
+    catalog = _load_catalog(refresh, display=env.display, as_json=env.as_json)
     results = catalog.search(
         author=author,
         title=title,
@@ -249,7 +222,7 @@ def _cmd_catalog(
     )
 
     shown = results[:limit]
-    if as_json:
+    if env.as_json:
         data = {
             "filters": {
                 "author": author,
@@ -270,10 +243,10 @@ def _cmd_catalog(
         return 0
 
     if not shown:
-        display.status("No books found.")
+        env.display.status("No books found.")
         return 0
 
-    display.catalog(shown, remaining_count=len(results) - len(shown))
+    env.display.catalog(shown, remaining_count=len(results) - len(shown))
     return 0
 
 
@@ -299,31 +272,20 @@ examples:
     default=DEFAULT_DOWNLOAD_DELAY,
     help="seconds between downloads (default: %(default)s)",
 )
-@click.option("--json", "json_output", is_flag=True, help="output as JSON")
 @click.option(
     "--refresh",
     is_flag=True,
     help="ignore the catalog cache, redownload it now, and reprocess matching stored books",
 )
-@click.option("--db", default=None, metavar="DB", help=_DB_OVERRIDE_HELP)
-@click.option("-v", "--verbose", is_flag=True, default=False, help=_VERBOSE_HELP)
-@click.pass_context
+@_common_options
 def _cmd_add(
-    ctx: click.Context,
+    env: _CommandEnv,
     book_ids: tuple[int, ...],
     delay: float,
-    json_output: bool,
     refresh: bool,
-    db: str | None,
-    verbose: bool,
 ) -> int:
-    effective_db = _resolve_db(ctx, db)
-    if _resolve_verbose(ctx, verbose):
-        _configure_logging(True)
-    as_json = json_output
-    display = _display()
     if delay < 0:
-        return _command_error("add", "--delay must be >= 0.", as_json=as_json)
+        return _command_error("add", "--delay must be >= 0.", as_json=env.as_json)
 
     if not book_ids:
         raise click.UsageError("At least one BOOK_ID is required.")
@@ -333,11 +295,11 @@ def _cmd_add(
         return _command_error(
             "add",
             f"Book IDs must be positive integers, got: {', '.join(str(bid) for bid in invalid_ids)}",
-            as_json=as_json,
+            as_json=env.as_json,
             data={"invalid_ids": invalid_ids},
         )
 
-    catalog = _load_catalog(refresh, display=display, as_json=as_json)
+    catalog = _load_catalog(refresh, display=env.display, as_json=env.as_json)
     selected_by_id: dict[int, Any] = {}
     request_results: list[dict[str, Any]] = []
     warnings: list[str] = []
@@ -349,16 +311,16 @@ def _cmd_add(
             )
             warnings.append(warning)
             request_results.append({"requested_id": requested_id, "status": "out_of_policy"})
-            if not as_json:
-                display.warning(
+            if not env.as_json:
+                env.display.warning(
                     "  warning: "
                     f"{_book_id_ref(requested_id, capitalize=False)} is outside "
                     "the English text catalog boundaries, skipping"
                 )
             continue
         title = _single_line(rec.title)
-        if rec.id != requested_id and not as_json:
-            display.status(f"  remapped {requested_id} -> {rec.id}: {title} (canonical edition)")
+        if rec.id != requested_id and not env.as_json:
+            env.display.status(f"  remapped {requested_id} -> {rec.id}: {title} (canonical edition)")
         if rec.id in selected_by_id:
             request_results.append(
                 {
@@ -385,7 +347,7 @@ def _cmd_add(
 
     if not books:
         data = {
-            "db": str(_resolved_cli_path(effective_db)),
+            "db": str(_resolved_cli_path(env.db_path)),
             "catalog_source": catalog.fetch_info.source if catalog.fetch_info else "unknown",
             "catalog_cache_path": (
                 str(catalog.fetch_info.cache_path) if catalog.fetch_info else ""
@@ -396,23 +358,23 @@ def _cmd_add(
         return _command_error(
             "add",
             "No valid book IDs provided.",
-            as_json=as_json,
+            as_json=env.as_json,
             data=data,
             warnings=warnings,
         )
 
-    with Database(effective_db) as db_conn:
+    with Database(env.db_path) as db_conn:
         canonical_statuses, errors = _process_books_for_ingest(
             db_conn,
             books,
             delay=delay,
-            as_json=as_json,
-            display=display,
+            as_json=env.as_json,
+            display=env.display,
             failure_action="add",
             force=refresh,
         )
 
-    if as_json:
+    if env.as_json:
         result_rows: list[dict[str, Any]] = []
         status_totals: dict[str, int] = {}
         for row in request_results:
@@ -432,7 +394,7 @@ def _cmd_add(
             result_rows.append(result)
 
         data = {
-            "db": str(_resolved_cli_path(effective_db)),
+            "db": str(_resolved_cli_path(env.db_path)),
             "catalog_source": catalog.fetch_info.source if catalog.fetch_info else "unknown",
             "catalog_cache_path": (
                 str(catalog.fetch_info.cache_path) if catalog.fetch_info else ""
@@ -456,11 +418,11 @@ def _cmd_add(
         return 0 if ok else 1
 
     if errors:
-        display.error(
-            f"Completed with {len(errors)} failure(s). Database: {_display_cli_path(effective_db)}"
+        env.display.error(
+            f"Completed with {len(errors)} failure(s). Database: {_display_cli_path(env.db_path)}"
         )
         return 1
-    display.success(f"Done. Database: {_display_cli_path(effective_db)}")
+    env.display.success(f"Done. Database: {_display_cli_path(env.db_path)}")
     return 0
 
 
@@ -499,59 +461,48 @@ output columns:  ID  AUTHORS  TITLE""",
     is_flag=True,
     help="show which stored books would be updated without downloading",
 )
-@click.option("--json", "json_output", is_flag=True, help="output as JSON")
-@click.option("--db", default=None, metavar="DB", help=_DB_OVERRIDE_HELP)
-@click.option("-v", "--verbose", is_flag=True, default=False, help=_VERBOSE_HELP)
-@click.pass_context
+@_common_options
 def _cmd_books(
-    ctx: click.Context,
+    env: _CommandEnv,
     update: bool,
     delay: float,
     force: bool,
     dry_run: bool,
-    json_output: bool,
-    db: str | None,
-    verbose: bool,
 ) -> int:
-    effective_db = _resolve_db(ctx, db)
-    if _resolve_verbose(ctx, verbose):
-        _configure_logging(True)
-    as_json = json_output
-    display = _display()
     if not update:
         if delay != DEFAULT_DOWNLOAD_DELAY:
             return _command_error(
                 "books",
                 "--delay can only be used with --update.",
-                as_json=as_json,
+                as_json=env.as_json,
             )
         if force:
             return _command_error(
                 "books",
                 "--force can only be used with --update.",
-                as_json=as_json,
+                as_json=env.as_json,
             )
         if dry_run:
             return _command_error(
                 "books",
                 "--dry-run can only be used with --update.",
-                as_json=as_json,
+                as_json=env.as_json,
             )
     elif delay < 0:
-        return _command_error("books", "--delay must be >= 0.", as_json=as_json)
+        return _command_error("books", "--delay must be >= 0.", as_json=env.as_json)
 
-    with Database(effective_db) as db_conn:
+    with Database(env.db_path) as db_conn:
         books = db_conn.books()
         if update:
-            db_path = str(_resolved_cli_path(effective_db))
-            db_display_path = _display_cli_path(effective_db)
+            db_path = str(_resolved_cli_path(env.db_path))
+            db_display_path = _display_cli_path(env.db_path)
             stored_count = len(books)
             selected_books = books if force else db_conn.stale_books()
             selected_count = len(selected_books)
             skipped_current = 0 if force else stored_count - selected_count
 
             if not books:
-                if as_json:
+                if env.as_json:
                     _print_json_envelope(
                         "books",
                         ok=True,
@@ -572,7 +523,7 @@ def _cmd_books(
                         },
                     )
                 else:
-                    display.status("No books stored yet. Use 'gutenbit add <id> ...' to add some.")
+                    env.display.status("No books stored yet. Use 'gutenbit add <id> ...' to add some.")
                 return 0
 
             if dry_run:
@@ -584,7 +535,7 @@ def _cmd_books(
                     }
                     for book in selected_books
                 ]
-                if as_json:
+                if env.as_json:
                     _print_json_envelope(
                         "books",
                         ok=True,
@@ -605,13 +556,13 @@ def _cmd_books(
                         },
                     )
                 elif selected_books:
-                    display.status(
+                    env.display.status(
                         f"Would reprocess {selected_count} of {stored_count} stored book(s):"
                     )
                     for book in selected_books:
-                        display.status(f"  {book.id}: {_single_line(book.title)}")
+                        env.display.status(f"  {book.id}: {_single_line(book.title)}")
                 else:
-                    display.status(
+                    env.display.status(
                         "All "
                         f"{stored_count} stored book(s) are current. "
                         f"Database: {db_display_path}"
@@ -619,7 +570,7 @@ def _cmd_books(
                 return 0
 
             if not selected_books:
-                if as_json:
+                if env.as_json:
                     _print_json_envelope(
                         "books",
                         ok=True,
@@ -640,22 +591,22 @@ def _cmd_books(
                         },
                     )
                 else:
-                    display.success(
+                    env.display.success(
                         "All "
                         f"{stored_count} stored book(s) are current. "
                         f"Database: {db_display_path}"
                     )
                 return 0
 
-            if not as_json:
-                display.status(f"Checking {stored_count} stored book(s)...")
+            if not env.as_json:
+                env.display.status(f"Checking {stored_count} stored book(s)...")
 
             statuses, errors = _process_books_for_ingest(
                 db_conn,
                 selected_books,
                 delay=delay,
-                as_json=as_json,
-                display=display,
+                as_json=env.as_json,
+                display=env.display,
                 failure_action="update",
                 force=force,
                 show_skipped_current=False,
@@ -673,7 +624,7 @@ def _cmd_books(
                 for book in selected_books
             ]
 
-            if as_json:
+            if env.as_json:
                 _print_json_envelope(
                     "books",
                     ok=failed_count == 0,
@@ -697,29 +648,29 @@ def _cmd_books(
                 return 0 if failed_count == 0 else 1
 
             if failed_count:
-                display.error(
+                env.display.error(
                     "Completed with "
                     f"{failed_count} failure(s). Updated {updated_count} book(s); "
                     f"{skipped_current} already current. Database: {db_display_path}"
                 )
                 return 1
-            display.success(
+            env.display.success(
                 f"Done. Updated {updated_count} book(s); "
                 f"{skipped_current} already current. Database: {db_display_path}"
             )
             return 0
 
     if not books:
-        if as_json:
+        if env.as_json:
             _print_json_envelope(
                 "books",
                 ok=True,
                 data={"count": 0, "items": []},
             )
         else:
-            display.status("No books stored yet. Use 'gutenbit add <id> ...' to add some.")
+            env.display.status("No books stored yet. Use 'gutenbit add <id> ...' to add some.")
         return 0
-    if as_json:
+    if env.as_json:
         _print_json_envelope(
             "books",
             ok=True,
@@ -729,7 +680,7 @@ def _cmd_books(
             },
         )
         return 0
-    display.books(books, db_path=_display_cli_path(effective_db))
+    env.display.books(books, db_path=_display_cli_path(env.db_path))
     return 0
 
 
@@ -750,52 +701,41 @@ examples:
 if a book ID is not present, a warning is printed and exit code is 1.""",
 )
 @click.argument("book_ids", nargs=-1, type=int, metavar="BOOK_ID")
-@click.option("--json", "json_output", is_flag=True, help="output as JSON")
-@click.option("--db", default=None, metavar="DB", help=_DB_OVERRIDE_HELP)
-@click.option("-v", "--verbose", is_flag=True, default=False, help=_VERBOSE_HELP)
-@click.pass_context
+@_common_options
 def _cmd_remove(
-    ctx: click.Context,
+    env: _CommandEnv,
     book_ids: tuple[int, ...],
-    json_output: bool,
-    db: str | None,
-    verbose: bool,
 ) -> int:
-    effective_db = _resolve_db(ctx, db)
-    if _resolve_verbose(ctx, verbose):
-        _configure_logging(True)
-    as_json = json_output
-    display = _display()
     if not book_ids:
         raise click.UsageError("At least one BOOK_ID is required.")
     any_missing = False
     removed_count = 0
     results: list[dict[str, Any]] = []
     errors: list[str] = []
-    with Database(effective_db) as db_conn:
+    with Database(env.db_path) as db_conn:
         for book_id in book_ids:
             removed = db_conn.remove_book(book_id)
             if not removed:
                 message = f"No book found for id {book_id}."
                 errors.append(message)
                 results.append({"book_id": book_id, "status": "missing"})
-                if not as_json:
-                    display.error(f"No book found for {_book_id_ref(book_id, capitalize=False)}.")
+                if not env.as_json:
+                    env.display.error(f"No book found for {_book_id_ref(book_id, capitalize=False)}.")
                 any_missing = True
             else:
                 removed_count += 1
                 results.append({"book_id": book_id, "status": "removed"})
-                if not as_json:
-                    display.success(
+                if not env.as_json:
+                    env.display.success(
                         f"Removed {_book_id_ref(book_id, capitalize=False)} "
-                        f"from {_display_cli_path(effective_db)}."
+                        f"from {_display_cli_path(env.db_path)}."
                     )
-    if as_json:
+    if env.as_json:
         _print_json_envelope(
             "remove",
             ok=not any_missing,
             data={
-                "db": str(_resolved_cli_path(effective_db)),
+                "db": str(_resolved_cli_path(env.db_path)),
                 "removed_count": removed_count,
                 "missing_count": len(book_ids) - removed_count,
                 "results": results,
@@ -881,12 +821,9 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
     help="surrounding passage on each side of each hit, in reading order",
 )
 @click.option("--count", is_flag=True, help="just print the number of matches")
-@click.option("--json", "json_output", is_flag=True, help="output results as JSON")
-@click.option("--db", default=None, metavar="DB", help=_DB_OVERRIDE_HELP)
-@click.option("-v", "--verbose", is_flag=True, default=False, help=_VERBOSE_HELP)
-@click.pass_context
+@_common_options
 def _cmd_search(
-    ctx: click.Context,
+    env: _CommandEnv,
     query: str,
     phrase: bool,
     raw: bool,
@@ -899,32 +836,23 @@ def _cmd_search(
     limit: int,
     radius: int | None,
     count: bool,
-    json_output: bool,
-    db: str | None,
-    verbose: bool,
 ) -> int:
-    effective_db = _resolve_db(ctx, db)
-    if _resolve_verbose(ctx, verbose):
-        _configure_logging(True)
-    as_json = json_output
-    display = _display()
-
     if phrase and raw:
-        return _command_error("search", "--phrase and --raw are mutually exclusive.", as_json=as_json)
+        return _command_error("search", "--phrase and --raw are mutually exclusive.", as_json=env.as_json)
     if limit <= 0:
-        return _command_error("search", "--limit must be > 0.", as_json=as_json)
+        return _command_error("search", "--limit must be > 0.", as_json=env.as_json)
     if radius is not None and radius < 0:
-        return _command_error("search", "--radius must be >= 0.", as_json=as_json)
+        return _command_error("search", "--radius must be >= 0.", as_json=env.as_json)
     if count and radius is not None:
         return _command_error(
             "search",
             "--radius cannot be used with --count.",
-            as_json=as_json,
+            as_json=env.as_json,
         )
 
     query_text = query.strip()
     if not query_text:
-        return _command_error("search", "Search query must not be empty.", as_json=as_json)
+        return _command_error("search", "Search query must not be empty.", as_json=env.as_json)
 
     # Query mode: --phrase wraps as exact phrase, --raw passes through to FTS5,
     # default auto-escapes plain text so punctuation is ok.
@@ -944,14 +872,14 @@ def _cmd_search(
 
     search_order = cast(SearchOrder, order)
     warnings: list[str] = []
-    with Database(effective_db) as db_conn:
+    with Database(env.db_path) as db_conn:
         section_number_for = _section_number_lookup(db_conn)
 
         if book is not None and not db_conn.has_text(book):
             warning = f"Book {book} is not in the database."
             warnings.append(warning)
-            if not as_json:
-                display.warning(f"warning: {_book_id_ref(book)} is not in the database.")
+            if not env.as_json:
+                env.display.warning(f"warning: {_book_id_ref(book)} is not in the database.")
 
         # Resolve section number → div path (requires book_id).
         if section_arg is not None:
@@ -959,20 +887,20 @@ def _cmd_search(
                 section_number = int(section_arg)
                 if section_number <= 0:
                     return _command_error(
-                        "search", "--section number must be >= 1.", as_json=as_json
+                        "search", "--section number must be >= 1.", as_json=env.as_json
                     )
                 if book is None:
                     return _command_error(
                         "search",
                         "--section with a number requires --book.",
-                        as_json=as_json,
+                        as_json=env.as_json,
                     )
                 summary = _build_section_summary(db_conn, book)
                 if summary is None:
                     return _command_error(
                         "search",
                         f"Book {book} has no sections.",
-                        as_json=as_json,
+                        as_json=env.as_json,
                         display_message=f"{_book_id_ref(book)} has no sections.",
                     )
                 sections = summary["sections"]
@@ -981,7 +909,7 @@ def _cmd_search(
                         "search",
                         f"Section {section_number} is out of range "
                         f"(book {book} has {len(sections)} sections).",
-                        as_json=as_json,
+                        as_json=env.as_json,
                         display_message=(
                             f"Section {section_number} is out of range "
                             f"({_book_id_ref(book, capitalize=False)} "
@@ -996,7 +924,7 @@ def _cmd_search(
                     return _command_error(
                         "search",
                         f"Invalid section selector: {exc}.",
-                        as_json=as_json,
+                        as_json=env.as_json,
                     )
                 if book is not None:
                     matched_section = _canonical_section_match(
@@ -1040,7 +968,7 @@ def _cmd_search(
             return _command_error(
                 "search",
                 _format_fts_error(exc),
-                as_json=as_json,
+                as_json=env.as_json,
                 data={
                     "query": {
                         "raw": query,
@@ -1090,7 +1018,7 @@ def _cmd_search(
 
     # --count: just print the total.
     if count:
-        if as_json:
+        if env.as_json:
             _print_json_envelope(
                 "search",
                 ok=True,
@@ -1115,7 +1043,7 @@ def _cmd_search(
             print(total_results)
         return 0
 
-    if as_json:
+    if env.as_json:
         data = {
             "query": {
                 "raw": query,
@@ -1144,10 +1072,10 @@ def _cmd_search(
         return 0
 
     if not result_items:
-        display.status("No results.")
+        env.display.status("No results.")
         return 0
 
-    display.search_results(
+    env.display.search_results(
         query=query,
         order=order,
         items=result_items,
@@ -1185,35 +1113,24 @@ section numbers in this output can be passed to:
     metavar="DEPTH",
     help="show heading levels up to this depth (default: 2; use 'all' for every level)",
 )
-@click.option("--json", "json_output", is_flag=True, help="output as JSON")
-@click.option("--db", default=None, metavar="DB", help=_DB_OVERRIDE_HELP)
-@click.option("-v", "--verbose", is_flag=True, default=False, help=_VERBOSE_HELP)
-@click.pass_context
+@_common_options
 def _cmd_toc(
-    ctx: click.Context,
+    env: _CommandEnv,
     book: int,
     expand: str,
-    json_output: bool,
-    db: str | None,
-    verbose: bool,
 ) -> int:
-    effective_db = _resolve_db(ctx, db)
-    if _resolve_verbose(ctx, verbose):
-        _configure_logging(True)
-    as_json = json_output
-    display = _display()
     expand_depth = _toc_expand_depth(expand)
-    with Database(effective_db) as db_conn:
+    with Database(env.db_path) as db_conn:
         resolved_book_id, ingest_errors = _resolve_toc_book_id(
             db_conn,
             book,
             refresh=False,
-            display=display,
-            as_json=as_json,
+            display=env.display,
+            as_json=env.as_json,
             process_books_for_ingest=_process_books_for_ingest,
         )
         if resolved_book_id is None:
-            if as_json:
+            if env.as_json:
                 _print_json_envelope(
                     "toc",
                     ok=False,
@@ -1221,7 +1138,7 @@ def _cmd_toc(
                     errors=ingest_errors or [f"Failed to add book {book}."],
                 )
             return 1
-        if as_json:
+        if env.as_json:
             summary = _build_section_summary(db_conn, resolved_book_id, expand_depth=expand_depth)
             if summary is None:
                 return _command_error(
@@ -1295,38 +1212,27 @@ selectors (choose at most one):
     default=None,
     help="surrounding passage on each side of the selected passage",
 )
-@click.option("--json", "json_output", is_flag=True, help="output as JSON")
-@click.option("--db", default=None, metavar="DB", help=_DB_OVERRIDE_HELP)
-@click.option("-v", "--verbose", is_flag=True, default=False, help=_VERBOSE_HELP)
-@click.pass_context
+@_common_options
 def _cmd_view(
-    ctx: click.Context,
+    env: _CommandEnv,
     book: int,
     position: int | None,
     section: str | None,
     show_all: bool,
     forward: int | None,
     radius: int | None,
-    json_output: bool,
-    db: str | None,
-    verbose: bool,
 ) -> int:
-    effective_db = _resolve_db(ctx, db)
-    if _resolve_verbose(ctx, verbose):
-        _configure_logging(True)
-    as_json = json_output
-    display = _display()
     selected = int(position is not None) + int(section is not None)
     if selected > 1:
         return _command_error(
             "view",
             "Choose at most one selector: --position or --section.",
-            as_json=as_json,
+            as_json=env.as_json,
         )
     if forward is not None and forward <= 0:
-        return _command_error("view", "--forward must be > 0.", as_json=as_json)
+        return _command_error("view", "--forward must be > 0.", as_json=env.as_json)
     if radius is not None and radius < 0:
-        return _command_error("view", "--radius must be >= 0.", as_json=as_json)
+        return _command_error("view", "--radius must be >= 0.", as_json=env.as_json)
     shapes_selected = sum(
         int(value)
         for value in [
@@ -1342,19 +1248,19 @@ def _cmd_view(
                 "Choose one retrieval shape: --forward for forward reading, "
                 "--radius for a surrounding passage window, or --all for a full book or section."
             ),
-            as_json=as_json,
+            as_json=env.as_json,
         )
     if radius is not None and selected == 0:
         return _command_error(
             "view",
             "--radius requires --position or --section.",
-            as_json=as_json,
+            as_json=env.as_json,
         )
     if show_all and position is not None:
         return _command_error(
             "view",
             "--all can be used with a book or section, not with --position.",
-            as_json=as_json,
+            as_json=env.as_json,
         )
 
     def _effective_forward(default: int) -> int:
@@ -1364,7 +1270,7 @@ def _cmd_view(
         None if radius is not None or show_all else _effective_forward(DEFAULT_VIEW_FORWARD)
     )
     requested_all = True if show_all else None
-    with Database(effective_db) as db_conn:
+    with Database(env.db_path) as db_conn:
         section_number_for = _section_number_lookup(db_conn)
         book_record = db_conn.book(book)
         title = _single_line(book_record.title) if book_record else f"Book {book}"
@@ -1411,7 +1317,7 @@ def _cmd_view(
                 return _command_error(
                     "view",
                     f"No chunk found at position {position} in book {book}.",
-                    as_json=as_json,
+                    as_json=env.as_json,
                     display_message=(
                         f"No chunk found at position {position} in "
                         f"{_book_id_ref(book, capitalize=False)}."
@@ -1447,7 +1353,7 @@ def _cmd_view(
                 all_scope=all_scope,
                 content=_joined_chunk_text(rows),
             )
-            if as_json:
+            if env.as_json:
                 _print_json_envelope("view", ok=True, data=record)
                 return 0
             _print_passage(record, footer_stats=_view_footer_stats(rows))
@@ -1459,7 +1365,7 @@ def _cmd_view(
                 return _command_error(
                     "view",
                     "--section must not be empty.",
-                    as_json=as_json,
+                    as_json=env.as_json,
                     data=_view_payload(
                         section=None,
                         section_number=None,
@@ -1478,7 +1384,7 @@ def _cmd_view(
                     return _command_error(
                         "view",
                         "--section number must be >= 1.",
-                        as_json=as_json,
+                        as_json=env.as_json,
                         data=_view_payload(
                             section=section_query,
                             section_number=None,
@@ -1493,7 +1399,7 @@ def _cmd_view(
                     return _command_error(
                         "view",
                         _no_chunks_message(db_conn, book),
-                        as_json=as_json,
+                        as_json=env.as_json,
                         display_message=_no_chunks_display_message(db_conn, book),
                         data=_view_payload(
                             section=section_query,
@@ -1516,7 +1422,7 @@ def _cmd_view(
                         f"(max {len(raw_sections)})."
                     )
                     examples = _section_examples(db_conn, book)
-                    if as_json:
+                    if env.as_json:
                         return _command_error(
                             "view",
                             message,
@@ -1535,7 +1441,7 @@ def _cmd_view(
                                 },
                             ),
                         )
-                    display.examples(
+                    env.display.examples(
                         display_message,
                         examples=examples,
                         tip=f"gutenbit toc {book}",
@@ -1549,7 +1455,7 @@ def _cmd_view(
                             f"Unable to resolve section number {section_number} "
                             f"for book {book}."
                         ),
-                        as_json=as_json,
+                        as_json=env.as_json,
                         display_message=(
                             f"Unable to resolve section number {section_number} "
                             f"for {_book_id_ref(book, capitalize=False)}."
@@ -1572,7 +1478,7 @@ def _cmd_view(
                             f"Unable to resolve section number {section_number} "
                             f"for book {book}."
                         ),
-                        as_json=as_json,
+                        as_json=env.as_json,
                         display_message=(
                             f"Unable to resolve section number {section_number} "
                             f"for {_book_id_ref(book, capitalize=False)}."
@@ -1597,7 +1503,7 @@ def _cmd_view(
                     return _command_error(
                         "view",
                         f"Invalid section selector: {exc}.",
-                        as_json=as_json,
+                        as_json=env.as_json,
                         data=_view_payload(
                             section=section_query,
                             section_number=None,
@@ -1618,7 +1524,7 @@ def _cmd_view(
                     f"No chunks found for {_book_id_ref(book, capitalize=False)} "
                     f"under section '{section_query}'."
                 )
-                if as_json:
+                if env.as_json:
                     return _command_error(
                         "view",
                         message,
@@ -1636,7 +1542,7 @@ def _cmd_view(
                             },
                         ),
                     )
-                display.examples(
+                env.display.examples(
                     display_message,
                     examples=examples,
                     tip=f"gutenbit toc {book}",
@@ -1663,7 +1569,7 @@ def _cmd_view(
                 all_scope=all_scope,
                 content=_joined_chunk_text(rows),
             )
-            if as_json:
+            if env.as_json:
                 _print_json_envelope("view", ok=True, data=record)
                 return 0
             _print_passage(record, footer_stats=_view_footer_stats(rows))
@@ -1679,7 +1585,7 @@ def _cmd_view(
                 return _command_error(
                     "view",
                     _no_chunks_message(db_conn, book),
-                    as_json=as_json,
+                    as_json=env.as_json,
                     display_message=_no_chunks_display_message(db_conn, book),
                     data=_view_payload(
                         section=first_section["section"] if first_section else None,
@@ -1703,14 +1609,14 @@ def _cmd_view(
                 all_scope=True,
                 content=_joined_chunk_text(rows),
             )
-            if as_json:
+            if env.as_json:
                 _print_json_envelope(
                     "view",
                     ok=True,
                     data={**record, "action_hints": action_hints},
                 )
                 return 0
-            display.passage(
+            env.display.passage(
                 record,
                 action_hints=action_hints,
                 footer_stats=_view_footer_stats(rows),
@@ -1722,7 +1628,7 @@ def _cmd_view(
             return _command_error(
                 "view",
                 _no_chunks_message(db_conn, book),
-                as_json=as_json,
+                as_json=env.as_json,
                 display_message=_no_chunks_display_message(db_conn, book),
                 data=_view_payload(
                     section=first_section["section"] if first_section else None,
@@ -1744,14 +1650,14 @@ def _cmd_view(
             all_scope=None,
             content=_joined_chunk_text(rows),
         )
-        if as_json:
+        if env.as_json:
             _print_json_envelope(
                 "view",
                 ok=True,
                 data={**record, "action_hints": action_hints},
             )
             return 0
-        display.passage(
+        env.display.passage(
             record,
             action_hints=action_hints,
             footer_stats=_view_footer_stats(rows),

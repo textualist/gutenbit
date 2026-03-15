@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import re
 import sqlite3
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
 import click
 
+from gutenbit._text_utils import (
+    _format_int,
+    _indent_block,
+    _preview,
+    _single_line,
+    _split_semicolon_list,
+    _summarize_semicolon_list,
+)
 from gutenbit.catalog import Catalog, CatalogFetchInfo
 from gutenbit.db import ChunkRecord, Database
 from gutenbit.display import CliDisplay
@@ -46,28 +56,6 @@ OPENING_SECTION_SKIP_HEADINGS = frozenset(
         "authors note",
     }
 )
-_TITLE_STYLE_CONNECTORS = frozenset(
-    {
-        "a",
-        "an",
-        "and",
-        "as",
-        "at",
-        "by",
-        "for",
-        "from",
-        "in",
-        "of",
-        "on",
-        "or",
-        "the",
-        "to",
-        "with",
-    }
-)
-_TITLE_STYLE_WORD_RE = re.compile(r"^[A-Za-z]+(?:['\u2019][A-Za-z]+)*$")
-_ROMAN_NUMERAL_RE = re.compile(r"^[IVXLCDM]+$", re.IGNORECASE)
-_SENTENCE_END_RE = re.compile(r'[.!?]["\')\]]*$')
 
 # ---------------------------------------------------------------------------
 # Click infrastructure
@@ -110,6 +98,48 @@ def _display() -> CliDisplay:
     if _DISPLAY_CACHE is None or _DISPLAY_CACHE[:2] != cache_key:
         _DISPLAY_CACHE = (*cache_key, CliDisplay(stdout=stdout, stderr=stderr))
     return _DISPLAY_CACHE[2]
+
+
+# ---------------------------------------------------------------------------
+# Common command options
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _CommandEnv:
+    """Resolved common options injected into every command."""
+
+    db_path: str
+    as_json: bool
+    display: CliDisplay
+
+
+def _common_options(fn: Any) -> Any:
+    """Decorator that adds --json, --db, --verbose options and resolves them.
+
+    Replaces the ``ctx``, ``json_output``, ``db``, ``verbose`` parameters with
+    a single ``env: _CommandEnv`` first argument containing the resolved values.
+    """
+
+    @click.option("--json", "json_output", is_flag=True, help="output as JSON")
+    @click.option("--db", default=None, metavar="DB", help=_DB_OVERRIDE_HELP)
+    @click.option("-v", "--verbose", is_flag=True, default=False, help=_VERBOSE_HELP)
+    @click.pass_context
+    @functools.wraps(fn)
+    def wrapper(
+        ctx: click.Context,
+        json_output: bool,
+        db: str | None,
+        verbose: bool,
+        **kwargs: Any,
+    ) -> Any:
+        effective_db = _resolve_db(ctx, db)
+        if _resolve_verbose(ctx, verbose):
+            _configure_logging(True)
+        env = _CommandEnv(db_path=effective_db, as_json=json_output, display=_display())
+        return fn(env, **kwargs)
+
+    return wrapper
 
 
 # ---------------------------------------------------------------------------
@@ -339,81 +369,6 @@ def _no_chunks_display_message(db: Database, book_id: int) -> str:
     return f"No chunks found for {_book_id_ref(book_id, capitalize=False)}."
 
 
-def _preview(text: str, limit: int) -> str:
-    flat = text.replace("\n", " ")
-    if len(flat) <= limit:
-        return flat
-    return flat[:limit] + "…"
-
-
-def _single_line(text: str) -> str:
-    """Collapse all whitespace so tabular CLI output stays on one line."""
-    return " ".join(text.split())
-
-
-def _opening_preview_tokens(text: str) -> list[str]:
-    tokens: list[str] = []
-    for raw in text.split():
-        token = raw.strip("()[]{}\"'""'',;:-")
-        if not token:
-            continue
-        tokens.append(token)
-    return tokens
-
-
-def _is_title_style_token(token: str) -> bool:
-    if _ROMAN_NUMERAL_RE.fullmatch(token):
-        return True
-    if token.isupper() and any(ch.isalpha() for ch in token):
-        return True
-    if not _TITLE_STYLE_WORD_RE.fullmatch(token):
-        return False
-    lower = token.casefold()
-    if lower in _TITLE_STYLE_CONNECTORS:
-        return True
-    return token[0].isupper() and token[1:] == token[1:].lower()
-
-
-def _looks_like_opening_title_line(text: str) -> bool:
-    flat = _single_line(text).strip()
-    if not flat or _SENTENCE_END_RE.search(flat):
-        return False
-    if "," in flat or ";" in flat:
-        return False
-    tokens = _opening_preview_tokens(flat)
-    if not tokens or len(tokens) > 8:
-        return False
-    return all(_is_title_style_token(token) for token in tokens)
-
-
-def _select_section_opening_line(paragraphs: list[str]) -> str:
-    """Choose a representative opening line for a section preview.
-
-    Keep the first paragraph as the fallback, but skip a short title-like
-    opening block when it is immediately followed by body text.
-    """
-    preview_lines: list[str] = []
-    for text in paragraphs:
-        flat = _single_line(text)
-        if flat:
-            preview_lines.append(flat)
-    if not preview_lines:
-        return ""
-
-    prefix_len = 0
-    while prefix_len < len(preview_lines) and _looks_like_opening_title_line(
-        preview_lines[prefix_len]
-    ):
-        prefix_len += 1
-
-    if prefix_len < len(preview_lines):
-        first_line = preview_lines[0]
-        if prefix_len > 1 or first_line.endswith(":"):
-            return preview_lines[prefix_len]
-
-    return preview_lines[0]
-
-
 # ---------------------------------------------------------------------------
 # FTS query utilities
 # ---------------------------------------------------------------------------
@@ -512,10 +467,6 @@ def _quick_action_search_query(rows: list[ChunkRecord]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _format_int(value: int) -> str:
-    return f"{value:,}"
-
-
 def _json_search_filters(
     *,
     author: str | None,
@@ -545,30 +496,6 @@ def _section_depth(section: str) -> int:
     return len(_section_path_parts(section)) or 1
 
 
-def _split_semicolon_list(raw: str) -> list[str]:
-    return [_single_line(part) for part in raw.split(";") if part.strip()]
-
-
-def _summarize_semicolon_list(raw: str, *, max_items: int) -> str:
-    items = _split_semicolon_list(raw)
-    if not items:
-        return ""
-    if len(items) <= max_items:
-        return "; ".join(items)
-    shown = "; ".join(items[:max_items])
-    return f"{shown}; +{len(items) - max_items} more"
-
-
-def _estimate_read_time(words: int, *, wpm: int = 250) -> str:
-    if words <= 0:
-        return "n/a"
-    minutes = max(1, round(words / wpm))
-    hours, mins = divmod(minutes, 60)
-    if hours:
-        return f"{hours}h {mins}m"
-    return f"{mins}m"
-
-
 def _book_payload(book: Any) -> dict[str, Any]:
     return {
         "id": book.id,
@@ -587,13 +514,6 @@ def _joined_chunk_text(
     rows: list[ChunkRecord],
 ) -> str:
     return "\n\n".join(row.content for row in rows)
-
-
-def _indent_block(text: str, prefix: str = "    ") -> str:
-    lines = text.splitlines()
-    if not lines:
-        return prefix if text else ""
-    return "\n".join(f"{prefix}{line}" if line else "" for line in lines)
 
 
 def _passage_payload(
@@ -625,72 +545,6 @@ def _passage_payload(
     if extras:
         payload.update(extras)
     return payload
-
-
-def _passage_header(payload: dict[str, Any]) -> str:
-    parts = [
-        f"{JSON_BOOK_ID_KEY}={payload[JSON_BOOK_ID_KEY]}",
-        f"title={payload['title']}",
-    ]
-    if payload.get("author"):
-        parts.append(f"author={payload['author']}")
-    if payload.get("section"):
-        parts.append(f"section={payload['section']}")
-    if payload.get("section_number") is not None:
-        parts.append(f"section_number={payload['section_number']}")
-    if payload.get("position") is not None:
-        parts.append(f"position={payload['position']}")
-    if payload.get("forward") is not None:
-        parts.append(f"forward={payload['forward']}")
-    if payload.get("radius") is not None:
-        parts.append(f"radius={payload['radius']}")
-    if payload.get("all"):
-        parts.append("all")
-    return "  ".join(parts)
-
-
-def _print_key_value_table(
-    rows: list[tuple[str, str]],
-    *,
-    show_header: bool = True,
-    key_header: str = "Field",
-    value_header: str = "Value",
-) -> None:
-    if not rows:
-        return
-    key_width = max(len(key_header), max(len(key) for key, _ in rows))
-    if show_header:
-        print(f"  {key_header:<{key_width}}  {value_header}")
-        print(f"  {'-' * key_width}  {'-' * len(value_header)}")
-    for key, value in rows:
-        shown = _single_line(value) if value else "-"
-        print(f"  {key:<{key_width}}  {shown}")
-
-
-def _print_table(headers: list[str], rows: list[list[str]], *, right_align: set[int]) -> None:
-    if not headers:
-        return
-    widths = []
-    for idx, header in enumerate(headers):
-        widest = len(header)
-        for row in rows:
-            widest = max(widest, len(row[idx]))
-        widths.append(widest)
-
-    def _fmt(cell: str, idx: int) -> str:
-        width = widths[idx]
-        if idx in right_align:
-            return f"{cell:>{width}}"
-        return f"{cell:<{width}}"
-
-    print("  " + "  ".join(_fmt(header, i) for i, header in enumerate(headers)))
-    print("  " + "  ".join("-" * width for width in widths))
-    for row in rows:
-        print("  " + "  ".join(_fmt(cell, i) for i, cell in enumerate(row)))
-
-
-def _print_block_header(title: str) -> None:
-    print(f"\n[{title.upper()}]")
 
 
 # ---------------------------------------------------------------------------
