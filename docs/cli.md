@@ -49,26 +49,26 @@ Books already stored at the current parser version are skipped unless you pass `
 
 ## books
 
-List all books stored in the database, or update stored books whose parser version is stale.
+List all books stored in the database, or refresh stored books whose parser version is stale.
 
 ```bash
 gutenbit books
 gutenbit books --json
-gutenbit books --update
-gutenbit books --update --force
-gutenbit books --update --dry-run
+gutenbit books --refresh
+gutenbit books --refresh --force
+gutenbit books --refresh --dry-run
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--update` | Reprocess stored books whose parser version is stale |
-| `--delay SECONDS` | Pause between downloads in update mode (default: 2.0) |
-| `--force` | Reprocess all stored books in update mode, even if already current |
-| `--dry-run` | Show which stored books would be updated without downloading |
+| `--refresh` | Reprocess stored books whose parser version is stale |
+| `--delay SECONDS` | Pause between downloads in refresh mode (default: 2.0) |
+| `--force` | Reprocess all stored books in refresh mode, even if already current |
+| `--dry-run` | Show which stored books would be refreshed without downloading |
 | `--json` | Output as JSON |
 
-Without `--update`, `books` behaves exactly as before and just lists stored books.
-With `--update`, gutenbit checks the local database and reprocesses only books whose
+Without `--refresh`, `books` behaves exactly as before and just lists stored books.
+With `--refresh`, gutenbit checks the local database and reprocesses only books whose
 stored text is out of date for the current parser version. `--force` refreshes every
 stored book, and `--dry-run` reports what would be refreshed without doing any work.
 

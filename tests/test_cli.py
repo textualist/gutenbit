@@ -223,7 +223,7 @@ def test_books_update_output_preserves_home_relative_db_path(monkeypatch):
 
     monkeypatch.setattr("gutenbit.cli._commands.Database", _FakeDatabase)
 
-    code, out, err = _run_cli("--db", "~/.gutenbit/gutenbit.db", "books", "--update")
+    code, out, err = _run_cli("--db", "~/.gutenbit/gutenbit.db", "books", "--refresh")
 
     assert code == 0
     assert err == ""

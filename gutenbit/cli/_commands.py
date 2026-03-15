@@ -438,61 +438,61 @@ def _cmd_add(
 
 @click.command(
     "books",
-    help="list or update books stored in the database",
+    help="list or refresh books stored in the database",
     epilog="""
 examples:
   gutenbit books
   gutenbit books --json
-  gutenbit books --update
-  gutenbit books --update --force
+  gutenbit books --refresh
+  gutenbit books --refresh --force
   gutenbit books --db my.db
 
 output columns:  ID  AUTHORS  TITLE""",
 )
 @click.option(
-    "--update", is_flag=True, help="reprocess stored books whose parser version is stale"
+    "--refresh", is_flag=True, help="reprocess stored books whose parser version is stale"
 )
 @click.option(
     "--delay",
     type=float,
     default=DEFAULT_DOWNLOAD_DELAY,
-    help="seconds between downloads in update mode (default: %(default)s)",
+    help="seconds between downloads in refresh mode (default: %(default)s)",
 )
 @click.option(
     "--force",
     is_flag=True,
-    help="reprocess all stored books in update mode, even if already current",
+    help="reprocess all stored books in refresh mode, even if already current",
 )
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="show which stored books would be updated without downloading",
+    help="show which stored books would be refreshed without downloading",
 )
 @_common_options
 def _cmd_books(
     env: _CommandEnv,
-    update: bool,
+    refresh: bool,
     delay: float,
     force: bool,
     dry_run: bool,
 ) -> int:
-    if not update:
+    if not refresh:
         if delay != DEFAULT_DOWNLOAD_DELAY:
             return _command_error(
                 "books",
-                "--delay can only be used with --update.",
+                "--delay can only be used with --refresh.",
                 as_json=env.as_json,
             )
         if force:
             return _command_error(
                 "books",
-                "--force can only be used with --update.",
+                "--force can only be used with --refresh.",
                 as_json=env.as_json,
             )
         if dry_run:
             return _command_error(
                 "books",
-                "--dry-run can only be used with --update.",
+                "--dry-run can only be used with --refresh.",
                 as_json=env.as_json,
             )
     elif delay < 0:
@@ -500,7 +500,7 @@ def _cmd_books(
 
     with Database(env.db_path) as db_conn:
         books = db_conn.books()
-        if update:
+        if refresh:
             db_path = str(_resolved_cli_path(env.db_path))
             db_display_path = _display_cli_path(env.db_path)
             stored_count = len(books)
@@ -514,7 +514,7 @@ def _cmd_books(
                         "books",
                         ok=True,
                         data={
-                            "action": "update",
+                            "action": "refresh",
                             "db": db_path,
                             "delay_seconds": delay,
                             "force": force,
@@ -549,7 +549,7 @@ def _cmd_books(
                         "books",
                         ok=True,
                         data={
-                            "action": "update",
+                            "action": "refresh",
                             "db": db_path,
                             "delay_seconds": delay,
                             "force": force,
@@ -584,7 +584,7 @@ def _cmd_books(
                         "books",
                         ok=True,
                         data={
-                            "action": "update",
+                            "action": "refresh",
                             "db": db_path,
                             "delay_seconds": delay,
                             "force": force,
@@ -616,7 +616,7 @@ def _cmd_books(
                 delay=delay,
                 as_json=env.as_json,
                 display=env.display,
-                failure_action="update",
+                failure_action="refresh",
                 force=force,
                 show_skipped_current=False,
             )
@@ -638,7 +638,7 @@ def _cmd_books(
                     "books",
                     ok=failed_count == 0,
                     data={
-                        "action": "update",
+                        "action": "refresh",
                         "db": db_path,
                         "delay_seconds": delay,
                         "force": force,
