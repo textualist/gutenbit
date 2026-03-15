@@ -380,14 +380,33 @@ def test_search_filter_by_title(tmp_path):
 
 def test_search_filter_by_book_id(tmp_path):
     db = _make_db(tmp_path)
-    results = db.search("the", book_id=2)
+    results = db.search("the", book_ids=[2])
     assert all(r.book_id == 2 for r in results)
 
 
 def test_search_filter_excludes_non_matching(tmp_path):
     db = _make_db(tmp_path)
-    results = db.search("Ishmael", book_id=2)
+    results = db.search("Ishmael", book_ids=[2])
     assert results == []
+
+
+def test_search_filter_by_multiple_book_ids(tmp_path):
+    db = _make_db(tmp_path)
+    results = db.search("the", book_ids=[1, 2])
+    book_ids_found = {r.book_id for r in results}
+    # Results should only come from the requested books.
+    assert book_ids_found <= {1, 2}
+    # Both books contain "the", so both should be present.
+    assert book_ids_found == {1, 2}
+
+
+def test_search_filter_multiple_book_ids_excludes_others(tmp_path):
+    db = Database(tmp_path / "test.db")
+    db._store(_BOOK, chunk_html(_BOOK_HTML))
+    db._store(_BOOK2, chunk_html(_BOOK2_HTML))
+    db._store(_BOOK3, chunk_html(_BOOK3_HTML))
+    results = db.search("the", book_ids=[1, 3])
+    assert all(r.book_id in (1, 3) for r in results)
 
 
 def test_search_limit(tmp_path):
@@ -424,20 +443,20 @@ def test_search_filter_by_kind(tmp_path):
 
 def test_search_order_first_orders_by_position(tmp_path):
     db = _make_db(tmp_path)
-    results = db.search("CHAPTER", book_id=1, kind="heading", order="first", limit=2)
+    results = db.search("CHAPTER", book_ids=[1], kind="heading", order="first", limit=2)
     assert [r.position for r in results] == [0, 3]
 
 
 def test_search_order_last_orders_reverse_position(tmp_path):
     db = _make_db(tmp_path)
-    results = db.search("CHAPTER", book_id=1, kind="heading", order="last", limit=2)
+    results = db.search("CHAPTER", book_ids=[1], kind="heading", order="last", limit=2)
     assert [r.position for r in results] == [3, 0]
 
 
 def test_search_rejects_legacy_mode_keyword(tmp_path):
     db = _make_db(tmp_path)
     with pytest.raises(TypeError):
-        db.search("CHAPTER", book_id=1, kind="heading", mode="first", limit=2)
+        db.search("CHAPTER", book_ids=[1], kind="heading", mode="first", limit=2)
 
 
 def test_search_help_documents_ordering(tmp_path):
@@ -613,7 +632,7 @@ def test_search_cli_kind_all_includes_heading_chunks(tmp_path):
 
 def test_search_cli_footer_shows_total_and_shown_when_limited(tmp_path):
     db = _make_db(tmp_path)
-    total_results = db.search_count("the", book_id=1)
+    total_results = db.search_count("the", book_ids=[1])
     db_path = db.path
     db.close()
 
@@ -641,7 +660,7 @@ def test_search_cli_skips_count_for_untruncated_page(tmp_path, monkeypatch):
 def test_search_cli_section_search_does_not_double_count(tmp_path, monkeypatch):
     db = _make_db(tmp_path)
     db_path = db.path
-    total_results = len(db.search("the", book_id=1, div_path="CHAPTER 1", limit=20))
+    total_results = len(db.search("the", book_ids=[1], div_path="CHAPTER 1", limit=20))
     db.close()
 
     def _unexpected_count(*args, **kwargs):
@@ -665,19 +684,76 @@ def test_search_cli_raw_and_phrase_mutually_exclusive(tmp_path):
     assert code != 0
 
 
+# --- multi-book CLI ---
+
+
+def test_search_cli_multi_book(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "the", "--book", "1 2")
+    assert code == 0
+    # Results should mention both books.
+    assert "Moby Dick" in out
+    assert "Pride and Prejudice" in out
+
+
+def test_search_cli_multi_book_section_number_errors(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, _out, _err = _run_cli(db_path, "search", "the", "--book", "1 2", "--section", "1")
+    assert code == 1
+
+
+def test_search_cli_multi_book_json_filter(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "the", "--book", "1 2", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["data"]["filters"]["book_id"] == [1, 2]
+
+
+def test_search_cli_single_book_json_filter_is_int(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--book", "1", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["data"]["filters"]["book_id"] == 1
+
+
+def test_search_cli_no_book_json_filter_is_null(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "search", "Ishmael", "--json")
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["data"]["filters"]["book_id"] is None
+
+
 # --- --section filter ---
 
 
 def test_search_filter_by_section_path(tmp_path):
     db = _make_db(tmp_path)
-    results = db.search("the", book_id=1, div_path="CHAPTER 1")
+    results = db.search("the", book_ids=[1], div_path="CHAPTER 1")
     assert len(results) >= 1
     assert all(r.div1 == "CHAPTER 1" for r in results)
 
 
 def test_search_filter_by_section_excludes_other_sections(tmp_path):
     db = _make_db(tmp_path)
-    results = db.search("the", book_id=1, div_path="CHAPTER 2")
+    results = db.search("the", book_ids=[1], div_path="CHAPTER 2")
     assert all(r.div1 == "CHAPTER 2" for r in results)
 
 

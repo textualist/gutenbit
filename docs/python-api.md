@@ -116,12 +116,12 @@ Returns a list of `SearchResult` objects ordered by BM25 rank by default.
 
 ```python
 results = db.search("battle", author="Tolstoy")
-results = db.search("battle", book_id=2600)
+results = db.search("battle", book_ids=[2600])
 results = db.search("battle", kind="text")
 results = db.search("battle", title="War")
 ```
 
-Metadata filters (`author`, `title`, `language`, `subject`) use substring matching. `book_id` and `kind` are exact.
+Metadata filters (`author`, `title`, `language`, `subject`) use substring matching. `book_ids` and `kind` are exact.
 
 **Order** controls result ordering:
 

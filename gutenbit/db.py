@@ -6,7 +6,7 @@ import logging
 import re
 import sqlite3
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import astuple, dataclass
 from pathlib import Path
 from typing import Literal
@@ -498,7 +498,7 @@ class Database:
         title: str | None = None,
         language: str | None = None,
         subject: str | None = None,
-        book_id: int | None = None,
+        book_ids: Sequence[int] | None = None,
         kind: str | None = None,
         sql: str,
     ) -> tuple[str, list[object]]:
@@ -514,9 +514,14 @@ class Database:
             if value is not None:
                 sql += f" AND {column} LIKE ?"
                 params.append(f"%{value}%")
-        if book_id is not None:
-            sql += " AND c.book_id = ?"
-            params.append(book_id)
+        if book_ids is not None:
+            if len(book_ids) == 1:
+                sql += " AND c.book_id = ?"
+                params.append(book_ids[0])
+            else:
+                placeholders = ", ".join("?" for _ in book_ids)
+                sql += f" AND c.book_id IN ({placeholders})"
+                params.extend(book_ids)
         if kind is not None:
             sql += " AND c.kind = ?"
             params.append(kind)
@@ -531,7 +536,7 @@ class Database:
         title: str | None = None,
         language: str | None = None,
         subject: str | None = None,
-        book_id: int | None = None,
+        book_ids: Sequence[int] | None = None,
         kind: str | None = None,
         order: SearchOrder = "rank",
         limit: int | None = None,
@@ -543,7 +548,7 @@ class Database:
             title=title,
             language=language,
             subject=subject,
-            book_id=book_id,
+            book_ids=book_ids,
             kind=kind,
             sql=_SEARCH_SQL,
         )
@@ -571,7 +576,7 @@ class Database:
         title: str | None = None,
         language: str | None = None,
         subject: str | None = None,
-        book_id: int | None = None,
+        book_ids: Sequence[int] | None = None,
         kind: str | None = None,
         div_path: str | None = None,
     ) -> int:
@@ -583,7 +588,7 @@ class Database:
                 title=title,
                 language=language,
                 subject=subject,
-                book_id=book_id,
+                book_ids=book_ids,
                 kind=kind,
                 sql=_SEARCH_COUNT_SQL,
             )
@@ -596,7 +601,7 @@ class Database:
             title=title,
             language=language,
             subject=subject,
-            book_id=book_id,
+            book_ids=book_ids,
             kind=kind,
             sql=_SEARCH_DIV_PATH_SQL,
         )
@@ -618,7 +623,7 @@ class Database:
         title: str | None = None,
         language: str | None = None,
         subject: str | None = None,
-        book_id: int | None = None,
+        book_ids: Sequence[int] | None = None,
         kind: str | None = None,
         div_path: str | None = None,
         order: SearchOrder = "rank",
@@ -634,7 +639,7 @@ class Database:
                 title=title,
                 language=language,
                 subject=subject,
-                book_id=book_id,
+                book_ids=book_ids,
                 kind=kind,
                 order=order,
                 limit=fetch_limit,
@@ -649,7 +654,7 @@ class Database:
                     title=title,
                     language=language,
                     subject=subject,
-                    book_id=book_id,
+                    book_ids=book_ids,
                     kind=kind,
                 )
             return SearchPage(
@@ -663,7 +668,7 @@ class Database:
             title=title,
             language=language,
             subject=subject,
-            book_id=book_id,
+            book_ids=book_ids,
             kind=kind,
             order=order,
         )
@@ -689,7 +694,7 @@ class Database:
         title: str | None = None,
         language: str | None = None,
         subject: str | None = None,
-        book_id: int | None = None,
+        book_ids: Sequence[int] | None = None,
         kind: str | None = None,
         div_path: str | None = None,
         order: SearchOrder = "rank",
@@ -708,7 +713,7 @@ class Database:
             title=title,
             language=language,
             subject=subject,
-            book_id=book_id,
+            book_ids=book_ids,
             kind=kind,
             order=order,
             limit=sql_limit,

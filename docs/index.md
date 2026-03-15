@@ -71,7 +71,7 @@ book = catalog.get(1342)
 if book is not None:
     with Database("~/.gutenbit/gutenbit.db") as db:
         db.ingest([book])
-        for hit in db.search("truth universally acknowledged", book_id=1342):
+        for hit in db.search("truth universally acknowledged", book_ids=[1342]):
             print(hit.title, hit.div1, hit.content[:80])
 ```
 

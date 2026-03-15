@@ -761,6 +761,17 @@ def _cmd_remove(
 # ---------------------------------------------------------------------------
 
 
+def _parse_book_ids(
+    ctx: click.Context, param: click.Parameter, value: str | None
+) -> tuple[int, ...]:
+    if value is None:
+        return ()
+    try:
+        return tuple(int(x) for x in value.split())
+    except ValueError:
+        raise click.BadParameter("expected space-separated integers")
+
+
 @click.command(
     "search",
     help="full-text search across stored books",
@@ -773,6 +784,7 @@ examples:
   gutenbit search "ghost OR spirit" --raw                   # FTS5 boolean query
   gutenbit search "(ghost OR spirit) AND NOT haunt*" --raw  # advanced FTS5
   gutenbit search "bennet" --book 1342                      # restrict to one book
+  gutenbit search "the" --book "1 2 3"                      # restrict to several books
   gutenbit search "truth universally acknowledged" --book 1342 --section 1 --phrase
   gutenbit search "chapter" --book 1342 --kind heading      # search headings only
   gutenbit search "bennet" --book 1342 --order first        # reading order (earliest)
@@ -815,7 +827,14 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
 )
 @click.option("--author", default=None, help="filter results by author (substring match)")
 @click.option("--title", default=None, help="filter results by title (substring match)")
-@click.option("--book", type=int, default=None, help="restrict to a single book by PG ID")
+@click.option(
+    "--book",
+    callback=_parse_book_ids,
+    default=None,
+    expose_value=True,
+    is_eager=False,
+    help="restrict to one or more books by PG ID (space-separated)",
+)
 @click.option(
     "--kind",
     type=click.Choice(["text", "heading", "all"]),
@@ -845,7 +864,7 @@ def _cmd_search(
     order: str,
     author: str | None,
     title: str | None,
-    book: int | None,
+    book: tuple[int, ...],
     kind: str,
     section: str | None,
     limit: int,
@@ -892,11 +911,12 @@ def _cmd_search(
     with Database(env.db_path) as db_conn:
         section_number_for = _section_number_lookup(db_conn)
 
-        if book is not None and not db_conn.has_text(book):
-            warning = f"Book {book} is not in the database."
-            warnings.append(warning)
-            if not env.as_json:
-                env.display.warning(f"warning: {_book_id_ref(book)} is not in the database.")
+        for bid in book:
+            if not db_conn.has_text(bid):
+                warning = f"Book {bid} is not in the database."
+                warnings.append(warning)
+                if not env.as_json:
+                    env.display.warning(f"warning: {_book_id_ref(bid)} is not in the database.")
 
         # Resolve section number → div path (requires book_id).
         if section_arg is not None:
@@ -906,30 +926,30 @@ def _cmd_search(
                     return _command_error(
                         "search", "--section number must be >= 1.", as_json=env.as_json
                     )
-                if book is None:
+                if len(book) != 1:
                     return _command_error(
                         "search",
-                        "--section with a number requires --book.",
+                        "--section with a number requires exactly one --book.",
                         as_json=env.as_json,
                     )
-                summary = _build_section_summary(db_conn, book)
+                summary = _build_section_summary(db_conn, book[0])
                 if summary is None:
                     return _command_error(
                         "search",
-                        f"Book {book} has no sections.",
+                        f"Book {book[0]} has no sections.",
                         as_json=env.as_json,
-                        display_message=f"{_book_id_ref(book)} has no sections.",
+                        display_message=f"{_book_id_ref(book[0])} has no sections.",
                     )
                 sections = summary["sections"]
                 if section_number > len(sections):
                     return _command_error(
                         "search",
                         f"Section {section_number} is out of range "
-                        f"(book {book} has {len(sections)} sections).",
+                        f"(book {book[0]} has {len(sections)} sections).",
                         as_json=env.as_json,
                         display_message=(
                             f"Section {section_number} is out of range "
-                            f"({_book_id_ref(book, capitalize=False)} "
+                            f"({_book_id_ref(book[0], capitalize=False)} "
                             f"has {len(sections)} sections)."
                         ),
                     )
@@ -943,9 +963,9 @@ def _cmd_search(
                         f"Invalid section selector: {exc}.",
                         as_json=env.as_json,
                     )
-                if book is not None:
+                if len(book) == 1:
                     matched_section = _canonical_section_match(
-                        _build_section_summary(db_conn, book), section_arg
+                        _build_section_summary(db_conn, book[0]), section_arg
                     )
                     div_path = matched_section[0] if matched_section is not None else section_arg
                 else:
@@ -953,7 +973,7 @@ def _cmd_search(
 
         search_author = author
         search_title = title
-        search_book_id = book
+        search_book_ids = book if book else None
         search_kind = None if kind == "all" else kind
         search_div_path = div_path
 
@@ -963,7 +983,7 @@ def _cmd_search(
                     search_query,
                     author=search_author,
                     title=search_title,
-                    book_id=search_book_id,
+                    book_ids=search_book_ids,
                     kind=search_kind,
                     div_path=search_div_path,
                 )
@@ -973,7 +993,7 @@ def _cmd_search(
                     search_query,
                     author=search_author,
                     title=search_title,
-                    book_id=search_book_id,
+                    book_ids=search_book_ids,
                     kind=search_kind,
                     div_path=search_div_path,
                     order=search_order,
@@ -995,7 +1015,7 @@ def _cmd_search(
                     "filters": _json_search_filters(
                         author=author,
                         title=title,
-                        book_id=book,
+                        book_ids=book,
                         kind=kind,
                         section=section_arg,
                     ),
@@ -1048,7 +1068,7 @@ def _cmd_search(
                     "filters": _json_search_filters(
                         author=author,
                         title=title,
-                        book_id=book,
+                        book_ids=book,
                         kind=kind,
                         section=section_arg,
                     ),
@@ -1070,7 +1090,7 @@ def _cmd_search(
             "filters": _json_search_filters(
                 author=author,
                 title=title,
-                book_id=book,
+                book_ids=book,
                 kind=kind,
                 section=section_arg,
             ),

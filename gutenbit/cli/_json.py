@@ -64,14 +64,20 @@ def _json_search_filters(
     *,
     author: str | None,
     title: str | None,
-    book_id: int | None,
+    book_ids: tuple[int, ...],
     kind: str,
     section: str | None,
 ) -> dict[str, Any]:
+    if not book_ids:
+        bid: int | list[int] | None = None
+    elif len(book_ids) == 1:
+        bid = book_ids[0]
+    else:
+        bid = list(book_ids)
     return {
         "author": author,
         "title": title,
-        JSON_BOOK_ID_KEY: book_id,
+        JSON_BOOK_ID_KEY: bid,
         "kind": kind,
         "section": section,
     }
