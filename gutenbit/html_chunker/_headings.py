@@ -8,7 +8,7 @@ from collections.abc import Callable
 
 from bs4 import Tag
 
-from gutenbit.html_chunker._constants import (
+from gutenbit.html_chunker._common import (
     _BARE_HEADING_NUMBER_RE,
     _BROAD_KEYWORDS,
     _BROAD_NESTING_DEPTHS,
@@ -34,6 +34,7 @@ from gutenbit.html_chunker._constants import (
     _PLAIN_NUMBER_HEADING_RE,
     _Section,
     _STANDALONE_APPARATUS_HEADING_RE,
+    _PLAY_HEADING_PARAGRAPH_RE,
     _STANDALONE_STRUCTURAL_RE,
     _STRONG_DRAMATIC_CONTEXT_HEADING_RE,
     _STRUCTURAL_INDEX_TOKEN_RE,
@@ -515,8 +516,6 @@ def _heading_text_suggests_play_structure(heading_text: str) -> bool:
 
 def _split_play_heading_paragraph(paragraph_text: str) -> list[str]:
     """Split strict play-heading paragraphs into act/scene section labels."""
-    from gutenbit.html_chunker._constants import _PLAY_HEADING_PARAGRAPH_RE
-
     text = " ".join(paragraph_text.split()).strip()
     match = _PLAY_HEADING_PARAGRAPH_RE.fullmatch(text)
     if not match:

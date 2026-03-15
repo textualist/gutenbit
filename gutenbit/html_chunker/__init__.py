@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from bs4 import BeautifulSoup
 
-from gutenbit.html_chunker._constants import (
+from gutenbit.html_chunker._common import (
     _HEADING_TAGS,
     _Section,
 )

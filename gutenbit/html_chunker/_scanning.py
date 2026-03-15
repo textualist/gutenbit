@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-from gutenbit.html_chunker._constants import (
+from gutenbit.html_chunker._common import (
     _ContentBounds,
     _FRONT_MATTER_HEADINGS,
     _HEADING_TAG_SET,

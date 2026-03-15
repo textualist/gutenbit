@@ -8,7 +8,7 @@ from collections.abc import Sequence
 
 from bs4 import Tag
 
-from gutenbit.html_chunker._constants import (
+from gutenbit.html_chunker._common import (
     _BARE_HEADING_NUMBER_RE,
     _BROAD_KEYWORDS,
     _ContentBounds,
