@@ -8,37 +8,42 @@ from typing import Any, cast
 
 import click
 
-from gutenbit._cli_helpers import (
+from gutenbit.catalog import BookRecord
+from gutenbit.cli._context import (
     _CommandEnv,
     _common_options,
+    _display_cli_path,
+    _load_catalog,
+    _resolved_cli_path,
+)
+from gutenbit.cli._display import CliDisplay, format_summary_stats
+from gutenbit.cli._json import (
+    JSON_BOOK_ID_KEY,
+    _book_payload,
+    _command_error,
+    _joined_chunk_text,
+    _json_search_filters,
+    _passage_payload,
+    _print_json_envelope,
+)
+from gutenbit.cli._query import (
     DEFAULT_DOWNLOAD_DELAY,
     DEFAULT_OPENING_CHUNK_COUNT,
     DEFAULT_TOC_EXPAND,
     DEFAULT_VIEW_FORWARD,
-    JSON_BOOK_ID_KEY,
     _book_id_ref,
-    _book_payload,
-    _command_error,
-    _display_cli_path,
     _format_fts_error,
     _fts_phrase_query,
-    _joined_chunk_text,
-    _json_search_filters,
-    _load_catalog,
     _no_chunks_display_message,
     _no_chunks_message,
-    _passage_payload,
-    _print_json_envelope,
-    _resolved_cli_path,
     _safe_fts_query,
     _section_path,
     _toc_expand_depth,
 )
-from gutenbit._text_utils import _single_line
-from gutenbit._cli_sections import (
+from gutenbit.cli._sections import (
     _build_section_summary,
-    _estimate_read_time,
     _canonical_section_match,
+    _estimate_read_time,
     _opening_rows,
     _print_passage,
     _render_section_summary,
@@ -50,7 +55,7 @@ from gutenbit._cli_sections import (
     _section_summary_json_payload,
     _view_action_hints,
 )
-from gutenbit.catalog import BookRecord
+from gutenbit.cli._text_utils import _single_line
 from gutenbit.db import (
     ChunkRecord,
     Database,
@@ -58,7 +63,6 @@ from gutenbit.db import (
     SearchOrder,
     TextState,
 )
-from gutenbit.display import CliDisplay, format_summary_stats
 from gutenbit.download import describe_download_source, get_last_download_source
 
 # ---------------------------------------------------------------------------
@@ -320,7 +324,9 @@ def _cmd_add(
             continue
         title = _single_line(rec.title)
         if rec.id != requested_id and not env.as_json:
-            env.display.status(f"  remapped {requested_id} -> {rec.id}: {title} (canonical edition)")
+            env.display.status(
+                f"  remapped {requested_id} -> {rec.id}: {title} (canonical edition)"
+            )
         if rec.id in selected_by_id:
             request_results.append(
                 {
@@ -444,7 +450,9 @@ examples:
 
 output columns:  ID  AUTHORS  TITLE""",
 )
-@click.option("--update", is_flag=True, help="reprocess stored books whose parser version is stale")
+@click.option(
+    "--update", is_flag=True, help="reprocess stored books whose parser version is stale"
+)
 @click.option(
     "--delay",
     type=float,
@@ -523,7 +531,9 @@ def _cmd_books(
                         },
                     )
                 else:
-                    env.display.status("No books stored yet. Use 'gutenbit add <id> ...' to add some.")
+                    env.display.status(
+                        "No books stored yet. Use 'gutenbit add <id> ...' to add some."
+                    )
                 return 0
 
             if dry_run:
@@ -720,7 +730,9 @@ def _cmd_remove(
                 errors.append(message)
                 results.append({"book_id": book_id, "status": "missing"})
                 if not env.as_json:
-                    env.display.error(f"No book found for {_book_id_ref(book_id, capitalize=False)}.")
+                    env.display.error(
+                        f"No book found for {_book_id_ref(book_id, capitalize=False)}."
+                    )
                 any_missing = True
             else:
                 removed_count += 1
@@ -789,8 +801,12 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
      by default; use --kind heading or --kind all when needed.""",
 )
 @click.argument("query", metavar="QUERY")
-@click.option("--phrase", is_flag=True, help="treat query as an exact phrase (word order must match)")
-@click.option("--raw", is_flag=True, help="pass query directly to FTS5 (AND/OR/NOT, prefix*, NEAR, groups)")
+@click.option(
+    "--phrase", is_flag=True, help="treat query as an exact phrase (word order must match)"
+)
+@click.option(
+    "--raw", is_flag=True, help="pass query directly to FTS5 (AND/OR/NOT, prefix*, NEAR, groups)"
+)
 @click.option(
     "--order",
     type=click.Choice(["rank", "first", "last"]),
@@ -838,7 +854,9 @@ def _cmd_search(
     count: bool,
 ) -> int:
     if phrase and raw:
-        return _command_error("search", "--phrase and --raw are mutually exclusive.", as_json=env.as_json)
+        return _command_error(
+            "search", "--phrase and --raw are mutually exclusive.", as_json=env.as_json
+        )
     if limit <= 0:
         return _command_error("search", "--limit must be > 0.", as_json=env.as_json)
     if radius is not None and radius < 0:
@@ -1188,7 +1206,9 @@ selectors (choose at most one):
 """,
 )
 @click.argument("book", type=int, metavar="BOOK_ID")
-@click.option("--position", type=int, default=None, help="select the passage at this exact position")
+@click.option(
+    "--position", type=int, default=None, help="select the passage at this exact position"
+)
 @click.option(
     "--section",
     default=None,
@@ -1340,9 +1360,7 @@ def _cmd_view(
             else:
                 forward = _effective_forward(DEFAULT_VIEW_FORWARD)
                 all_scope = None
-                rows = [
-                    row for row in db_conn.chunk_records(book) if row.position >= position
-                ]
+                rows = [row for row in db_conn.chunk_records(book) if row.position >= position]
                 rows = rows[:forward]
             record = _view_payload(
                 section=anchor_section,
@@ -1451,10 +1469,7 @@ def _cmd_view(
                 if not isinstance(selected_section, dict):
                     return _command_error(
                         "view",
-                        (
-                            f"Unable to resolve section number {section_number} "
-                            f"for book {book}."
-                        ),
+                        (f"Unable to resolve section number {section_number} for book {book}."),
                         as_json=env.as_json,
                         display_message=(
                             f"Unable to resolve section number {section_number} "
@@ -1474,10 +1489,7 @@ def _cmd_view(
                 if not resolved_section:
                     return _command_error(
                         "view",
-                        (
-                            f"Unable to resolve section number {section_number} "
-                            f"for book {book}."
-                        ),
+                        (f"Unable to resolve section number {section_number} for book {book}."),
                         as_json=env.as_json,
                         display_message=(
                             f"Unable to resolve section number {section_number} "

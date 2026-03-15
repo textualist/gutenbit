@@ -4,30 +4,31 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from gutenbit._cli_helpers import (
+from gutenbit.cli._context import _display, _load_catalog, _normalize_apostrophes
+from gutenbit.cli._display import CliDisplay
+from gutenbit.cli._json import JSON_OPENING_LINE_PREVIEW_CHARS
+from gutenbit.cli._query import (
     DEFAULT_DOWNLOAD_DELAY,
-    JSON_OPENING_LINE_PREVIEW_CHARS,
     OPENING_PREVIEW_PARAGRAPH_LIMIT,
     OPENING_SECTION_SKIP_HEADINGS,
-    _ChunkCounts,
-    _display,
-    _load_catalog,
     _no_chunks_display_message,
-    _normalize_apostrophes,
     _quick_action_search_query,
-    _QuickActions,
     _section_depth,
     _section_path,
     _section_path_parts,
-    _SectionRow,
-    _SectionState,
-    _SectionSummary,
 )
-from gutenbit._text_utils import (
+from gutenbit.cli._text_utils import (
     _preview,
     _select_section_opening_line,
     _single_line,
     _split_semicolon_list,
+)
+from gutenbit.cli._types import (
+    _ChunkCounts,
+    _QuickActions,
+    _SectionRow,
+    _SectionState,
+    _SectionSummary,
 )
 from gutenbit.db import (
     ChunkRecord,
@@ -36,7 +37,6 @@ from gutenbit.db import (
     div_parts_match,
     normalize_div_segment,
 )
-from gutenbit.display import CliDisplay
 
 # ---------------------------------------------------------------------------
 # Read time estimation

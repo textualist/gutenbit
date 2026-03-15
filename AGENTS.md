@@ -14,9 +14,9 @@ HTML-first Project Gutenberg ETL and search. The core loop is: resolve a catalog
 
 - `gutenbit/catalog.py` — Gutenberg catalog fetch and search
 - `gutenbit/download.py` — HTML download from Gutenberg epub zips
-- `gutenbit/html_chunker.py` — structural parsing and chunk generation
+- `gutenbit/html_chunker/` — structural parsing and chunk generation
 - `gutenbit/db.py` — SQLite storage and FTS search
-- `gutenbit/cli.py` — CLI surface
+- `gutenbit/cli/` — CLI surface (Click commands, display, section summaries, JSON output)
 - `tests/test_battle.py` — live parser regression corpus
 
 ## Parsing model

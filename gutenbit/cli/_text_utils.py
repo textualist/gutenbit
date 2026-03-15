@@ -75,7 +75,7 @@ _SENTENCE_END_RE = re.compile(r'[.!?]["\')\]]*$')
 def _opening_preview_tokens(text: str) -> list[str]:
     tokens: list[str] = []
     for raw in text.split():
-        token = raw.strip("()[]{}\"'""'',;:-")
+        token = raw.strip("()[]{}\"''',;:-")
         if not token:
             continue
         tokens.append(token)

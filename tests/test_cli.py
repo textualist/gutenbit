@@ -195,7 +195,7 @@ def test_books_output_preserves_home_relative_db_path(monkeypatch):
         def books(self) -> list[BookRecord]:
             return [_BOOK]
 
-    monkeypatch.setattr("gutenbit._cli_commands.Database", _FakeDatabase)
+    monkeypatch.setattr("gutenbit.cli._commands.Database", _FakeDatabase)
 
     code, out, err = _run_cli("--db", "~/.gutenbit/gutenbit.db", "books")
 
@@ -221,7 +221,7 @@ def test_books_update_output_preserves_home_relative_db_path(monkeypatch):
         def stale_books(self) -> list[BookRecord]:
             return []
 
-    monkeypatch.setattr("gutenbit._cli_commands.Database", _FakeDatabase)
+    monkeypatch.setattr("gutenbit.cli._commands.Database", _FakeDatabase)
 
     code, out, err = _run_cli("--db", "~/.gutenbit/gutenbit.db", "books", "--update")
 
@@ -265,9 +265,11 @@ def test_add_done_output_preserves_home_relative_db_path(monkeypatch):
     ) -> tuple[dict[int, str], list[str]]:
         return ({book.id: "added" for book in books}, [])
 
-    monkeypatch.setattr("gutenbit._cli_commands.Database", _FakeDatabase)
-    monkeypatch.setattr("gutenbit._cli_commands._load_catalog", _fake_load_catalog)
-    monkeypatch.setattr("gutenbit._cli_commands._process_books_for_ingest", _fake_process_books_for_ingest)
+    monkeypatch.setattr("gutenbit.cli._commands.Database", _FakeDatabase)
+    monkeypatch.setattr("gutenbit.cli._commands._load_catalog", _fake_load_catalog)
+    monkeypatch.setattr(
+        "gutenbit.cli._commands._process_books_for_ingest", _fake_process_books_for_ingest
+    )
 
     code, out, err = _run_cli("--db", "~/.gutenbit/gutenbit.db", "add", "1")
 
@@ -290,7 +292,7 @@ def test_remove_output_preserves_home_relative_db_path(monkeypatch):
         def remove_book(self, book_id: int) -> bool:
             return book_id == _BOOK.id
 
-    monkeypatch.setattr("gutenbit._cli_commands.Database", _FakeDatabase)
+    monkeypatch.setattr("gutenbit.cli._commands.Database", _FakeDatabase)
 
     code, out, err = _run_cli("--db", "~/.gutenbit/gutenbit.db", "remove", "1")
 

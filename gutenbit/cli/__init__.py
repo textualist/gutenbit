@@ -9,7 +9,8 @@ from importlib.metadata import version as package_version
 
 import click
 
-from gutenbit._cli_commands import (
+from gutenbit.catalog import Catalog as Catalog  # noqa: F401
+from gutenbit.cli._commands import (
     _cmd_add,
     _cmd_books,
     _cmd_catalog,
@@ -23,21 +24,20 @@ from gutenbit._cli_commands import (
 # Re-exports: these names are imported by tests and other consumers from
 # gutenbit.cli — keep them accessible here.
 # ---------------------------------------------------------------------------
-from gutenbit._cli_helpers import (  # noqa: F401
+from gutenbit.cli._context import (  # noqa: F401
     _CONTEXT_SETTINGS,
     _DB_HELP,
     _VERBOSE_HELP,
     DEFAULT_DB,
     _display,
     _display_cli_path,
+)
+from gutenbit.cli._json import (  # noqa: F401
     _passage_payload,
     _print_json_envelope,
 )
-from gutenbit._cli_sections import (  # noqa: F401
-    _build_section_summary,
-    _select_section_opening_line,
-)
-from gutenbit.catalog import Catalog as Catalog  # noqa: F401
+from gutenbit.cli._sections import _build_section_summary  # noqa: F401
+from gutenbit.cli._text_utils import _select_section_opening_line  # noqa: F401
 
 __all__ = [
     "Catalog",
@@ -182,9 +182,7 @@ def main(argv: list[str] | None = None) -> int:
         as_json = False
         command = "gutenbit"
         if ctx is not None:
-            verbose = ctx.params.get("verbose", False) or (ctx.obj or {}).get(
-                "verbose", False
-            )
+            verbose = ctx.params.get("verbose", False) or (ctx.obj or {}).get("verbose", False)
             as_json = ctx.params.get("json_output", False)
             command = ctx.info_name or command
         if verbose:
