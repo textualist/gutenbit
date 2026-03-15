@@ -93,7 +93,7 @@ def chunk_html(html: str) -> list[Chunk]:
         sections = _refine_toc_sections(
             toc_sections,
             heading_sections,
-            tag_positions=tag_positions,
+            doc_index=doc_index,
         )
     else:
         # Some Gutenberg editions expose page-number TOC links only.
@@ -137,7 +137,7 @@ def chunk_html(html: str) -> list[Chunk]:
     # NOTES) that appears after the last section.  This prevents endnotes from
     # being lumped into the last chapter.
     tail_anchor = _find_non_structural_boundary_after(
-        sections[-1].body_anchor, tag_positions=tag_positions, bounds=bounds
+        sections[-1].body_anchor, doc_index=doc_index
     )
 
     # Body sections.

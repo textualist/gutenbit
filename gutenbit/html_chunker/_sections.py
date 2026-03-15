@@ -139,8 +139,7 @@ def _parse_toc_sections(
             heading_el = _find_next_heading(
                 body_anchor,
                 used_headings,
-                tag_positions=tag_positions,
-                bounds=bounds,
+                doc_index=doc_index,
             )
         if not heading_el or id(heading_el) in used_headings:
             continue
@@ -480,7 +479,7 @@ def _refine_toc_sections(
     toc_sections: list[_Section],
     heading_sections: list[_Section],
     *,
-    tag_positions: dict[int, int],
+    doc_index: _DocumentIndex,
 ) -> list[_Section]:
     """Supplement a valid TOC with deeper body headings.
 
@@ -496,6 +495,7 @@ def _refine_toc_sections(
     heading_idx = 0
 
     first_toc = toc_sections[0]
+    tag_positions = doc_index.tag_positions
     first_pos = _tag_position(first_toc.body_anchor, tag_positions)
     if first_pos is not None:
         while heading_idx < len(heading_sections):
@@ -558,8 +558,7 @@ def _refine_toc_sections(
 def _find_non_structural_boundary_after(
     anchor: Tag,
     *,
-    tag_positions: dict[int, int],
-    bounds: _ContentBounds,
+    doc_index: _DocumentIndex,
 ) -> Tag | None:
     """Find the first apparatus heading after *anchor* (e.g. FOOTNOTES, NOTES).
 
@@ -570,7 +569,7 @@ def _find_non_structural_boundary_after(
     for el in anchor.find_all_next(_HEADING_TAGS):
         if not isinstance(el, Tag):
             continue
-        if not _tag_within_bounds(el, tag_positions, bounds):
+        if not _tag_within_bounds(el, doc_index.tag_positions, doc_index.bounds):
             continue
         heading_text = _clean_heading_text(_extract_heading_text(el))
         if heading_text and _TAIL_BOUNDARY_HEADING_RE.match(heading_text):
@@ -582,15 +581,14 @@ def _find_next_heading(
     anchor: Tag,
     used_headings: set[int] | None = None,
     *,
-    tag_positions: dict[int, int],
-    bounds: _ContentBounds,
+    doc_index: _DocumentIndex,
 ) -> Tag | None:
     """Find the next ``<h1>``–``<h3>`` heading after *anchor*."""
     for el in anchor.find_all_next(limit=25):
         if isinstance(el, Tag) and el.name in ("h1", "h2", "h3"):
             if used_headings is not None and id(el) in used_headings:
                 continue
-            if not _tag_within_bounds(el, tag_positions, bounds):
+            if not _tag_within_bounds(el, doc_index.tag_positions, doc_index.bounds):
                 continue
             return el
     return None
