@@ -80,7 +80,7 @@ def _previous_heading_text(link: Tag, *, doc_index: _DocumentIndex | None = None
     if doc_index is not None:
         link_pos = doc_index.tag_positions.get(id(link))
         if link_pos is not None and doc_index.heading_positions:
-            idx = bisect_left(doc_index.heading_positions, link_pos) - 1
+            idx = bisect_left(doc_index.heading_positions, link_pos) - 1  # last heading strictly before link_pos
             if idx >= 0:
                 return doc_index.headings[idx].text
         return ""

@@ -97,7 +97,7 @@ def _parse_toc_sections(
     bounds: _ContentBounds,
 ) -> list[_Section]:
     """Extract section list from TOC ``pginternal`` links."""
-    tag_positions = doc_index.tag_positions
+    tag_positions = doc_index.tag_positions  # local alias: _tag_within_bounds/_tag_position take it as a direct arg
     toc_links = doc_index.toc_links
     sections: list[_Section] = []
     used_headings: set[int] = set()
@@ -496,7 +496,7 @@ def _refine_toc_sections(
     heading_idx = 0
 
     first_toc = toc_sections[0]
-    tag_positions = doc_index.tag_positions
+    tag_positions = doc_index.tag_positions  # local alias: _tag_position takes it as a direct arg
     first_pos = _tag_position(first_toc.body_anchor, tag_positions)
     if first_pos is not None:
         while heading_idx < len(heading_sections):
@@ -574,7 +574,7 @@ def _find_non_structural_boundary_after(
     if anchor_pos is None:
         return None
 
-    lo = bisect_right(doc_index.heading_positions, anchor_pos)
+    lo = bisect_right(doc_index.heading_positions, anchor_pos)  # first heading strictly after anchor_pos
     for ih in doc_index.headings[lo:]:
         if not doc_index.bounds.contains(ih.position):
             continue
