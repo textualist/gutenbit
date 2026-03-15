@@ -18,7 +18,6 @@ from gutenbit.html_chunker._common import (
     _PLAY_HEADING_PARAGRAPH_RE,
     _STANDALONE_STRUCTURAL_RE,
     _clean_heading_text,
-    _ContentBounds,
     _extract_heading_text,
     _heading_tag_rank,
     _HeadingRow,
@@ -94,10 +93,10 @@ _TAIL_SECTION_HEADING_RE = re.compile(
 def _parse_toc_sections(
     *,
     doc_index: _DocumentIndex,
-    bounds: _ContentBounds,
 ) -> list[_Section]:
     """Extract section list from TOC ``pginternal`` links."""
     tag_positions = doc_index.tag_positions
+    bounds = doc_index.bounds
     toc_links = doc_index.toc_links
     sections: list[_Section] = []
     used_headings: set[int] = set()
@@ -310,27 +309,24 @@ def _respect_heading_rank_nesting(sections: list[_Section]) -> list[_Section]:
 def _parse_heading_sections(
     *,
     doc_index: _DocumentIndex,
-    bounds: _ContentBounds,
 ) -> list[_Section]:
     """Fallback section extraction directly from body headings.
 
     Used when TOC links don't point at structural anchors (e.g., page-number
     links only). We start from the first heading that looks structural.
     """
+    bounds = doc_index.bounds
     heading_rows: list[_HeadingRow] = []
-    for heading in doc_index.all_heading_tags:
-        if not _tag_within_bounds(heading, doc_index.tag_positions, bounds):
+    for ih in doc_index.headings:
+        if not bounds.contains(ih.position):
             continue
-        heading_text = _clean_heading_text(_extract_heading_text(heading))
-        if not heading_text:
+        if _is_non_structural_heading_text(ih.text):
             continue
-        if _is_non_structural_heading_text(heading_text):
-            continue
-        rank = _heading_tag_rank(heading)
+        rank = _heading_tag_rank(ih.tag)
         if rank is None:
             continue
-        anchor = heading.find("a", id=True) or heading
-        heading_rows.append(_HeadingRow(heading, anchor, heading_text, rank))
+        anchor = ih.tag.find("a", id=True) or ih.tag
+        heading_rows.append(_HeadingRow(ih.tag, anchor, ih.text, rank))
 
     if _should_scan_paragraph_heading_rows(heading_rows, doc_index.paragraphs):
         heading_rows.extend(_paragraph_heading_rows(doc_index))

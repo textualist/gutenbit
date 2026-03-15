@@ -79,17 +79,13 @@ def chunk_html(html: str) -> list[Chunk]:
     """
     soup = BeautifulSoup(html, HTML_PARSER_BACKEND)
     doc_index = _scan_document(soup)
-    bounds = doc_index.bounds
     tag_positions = doc_index.tag_positions
 
     # Build section list from TOC links and refine with body headings when the
     # TOC is a coarse but valid subsequence of the body structure.
-    toc_sections = _parse_toc_sections(doc_index=doc_index, bounds=bounds)
+    toc_sections = _parse_toc_sections(doc_index=doc_index)
     if toc_sections:
-        heading_sections = _parse_heading_sections(
-            doc_index=doc_index,
-            bounds=bounds,
-        )
+        heading_sections = _parse_heading_sections(doc_index=doc_index)
         sections = _refine_toc_sections(
             toc_sections,
             heading_sections,
@@ -97,7 +93,7 @@ def chunk_html(html: str) -> list[Chunk]:
         )
     else:
         # Some Gutenberg editions expose page-number TOC links only.
-        sections = _parse_heading_sections(doc_index=doc_index, bounds=bounds)
+        sections = _parse_heading_sections(doc_index=doc_index)
     if not sections:
         return []
 
@@ -116,16 +112,21 @@ def chunk_html(html: str) -> list[Chunk]:
     pos = 0
     divs = ["", "", "", ""]
 
+    # Precompute the heading element (or anchor itself) for each section,
+    # avoiding redundant find_parent calls in the loop below.
+    def _heading_or_anchor(anchor: Tag) -> Tag:
+        return anchor.find_parent(_HEADING_TAGS) or anchor
+
+    section_els = [_heading_or_anchor(s.body_anchor) for s in sections]
+
     # Opening paragraphs before first section remain unsectioned prose.
     heading_texts = {s.heading_text.lower() for s in sections}
-    first_heading = sections[0].body_anchor.find_parent(_HEADING_TAGS)
-    stop_tag = first_heading or sections[0].body_anchor
-    stop_pos = tag_positions.get(id(stop_tag))
+    stop_pos = tag_positions.get(id(section_els[0]))
     if stop_pos is not None:
         for text in _paragraphs_in_range(
             doc_index.paragraphs,
             doc_index.paragraph_positions,
-            bounds.start_pos,
+            doc_index.bounds.start_pos,
             stop_pos,
             heading_texts=heading_texts,
             min_length=20,
@@ -139,6 +140,9 @@ def chunk_html(html: str) -> list[Chunk]:
     tail_anchor = _find_non_structural_boundary_after(
         sections[-1].body_anchor, doc_index=doc_index
     )
+    tail_pos: int | None = None
+    if tail_anchor is not None:
+        tail_pos = tag_positions.get(id(_heading_or_anchor(tail_anchor)))
 
     # Body sections.
     for i, section in enumerate(sections):
@@ -154,20 +158,14 @@ def chunk_html(html: str) -> list[Chunk]:
         pos += 1
 
         # Paragraphs until next section (or tail boundary for the last section).
-        heading_el = section.body_anchor.find_parent(_HEADING_TAGS)
-        start_el = heading_el or section.body_anchor
-        start_pos_val = tag_positions.get(id(start_el))
+        start_pos_val = tag_positions.get(id(section_els[i]))
 
-        stop_pos_val: int | None = None
         if i + 1 < len(sections):
-            next_heading = sections[i + 1].body_anchor.find_parent(_HEADING_TAGS)
-            next_stop = next_heading or sections[i + 1].body_anchor
-            stop_pos_val = tag_positions.get(id(next_stop))
-        elif tail_anchor is not None:
-            tail_heading = tail_anchor.find_parent(_HEADING_TAGS)
-            is_heading_tag = tail_heading and tail_heading.name in _HEADING_TAGS
-            tail_stop = tail_heading if is_heading_tag else tail_anchor
-            stop_pos_val = tag_positions.get(id(tail_stop))
+            stop_pos_val = tag_positions.get(id(section_els[i + 1]))
+        elif tail_pos is not None:
+            stop_pos_val = tail_pos
+        else:
+            stop_pos_val = None
 
         if start_pos_val is not None:
             for text in _paragraphs_in_range(

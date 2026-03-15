@@ -55,7 +55,6 @@ class _DocumentIndex:
     heading_positions: list[int]
     toc_links: list[Tag]
     anchor_map: dict[str, Tag]
-    all_heading_tags: list[Tag]
     bounds: _ContentBounds
 
 
@@ -263,7 +262,6 @@ def _scan_document(soup: BeautifulSoup) -> _DocumentIndex:
         heading_positions=heading_positions,
         toc_links=toc_links,
         anchor_map=anchor_map,
-        all_heading_tags=all_heading_tags,
         bounds=bounds,
     )
 
