@@ -4,28 +4,6 @@ The `gutenbit` command-line tool provides seven subcommands that follow a natura
 
 Start with `gutenbit --help` for the workflow overview, then use `gutenbit COMMAND --help` for command-specific flags and examples.
 
-## Installation
-
-Try the latest stable release from PyPI without a persistent install:
-
-```bash
-uvx gutenbit --help
-```
-
-Or install it like this and then run `gutenbit --help`:
-
-```bash
-uv tool install gutenbit
-```
-
-gutenbit stores its database and catalog cache in `~/.gutenbit/`.
-
-All CLI-managed state lives under `~/.gutenbit/` by default: the database is `~/.gutenbit/gutenbit.db`, and the catalog cache is stored under `~/.gutenbit/cache/`. Use `--db PATH` to store the database elsewhere. All commands support `--json` for machine-readable output.
-
-## Project Gutenberg Access
-
-gutenbit is an open-source project not affiliated with Project Gutenberg. It is for individual downloads, not bulk downloading. It prefers official mirrors and uses the main site only as a zip fallback, with a default `2.0` second delay between downloads. gutenbit also sends an identifying default `User-Agent` on Gutenberg and PGLAF requests: `gutenbit/<version> (+https://gutenbit.textualist.org)`. Review the [Robot Access Policy](https://www.gutenberg.org/policy/robot_access.html) and [Terms of Use](https://www.gutenberg.org/policy/terms_of_use.html).
-
 ## catalog
 
 Search the Project Gutenberg catalog for books by metadata.
@@ -67,7 +45,7 @@ gutenbit add 2600 --delay 2.0
 | `--refresh` | Ignore the local catalog cache, redownload it now, and reprocess matching stored books |
 | `--json` | Output as JSON |
 
-Books already stored at the current chunker version are skipped unless you pass `--refresh`, which also refreshes the catalog cache before reprocessing the requested book IDs. IDs that map to a different canonical edition are remapped automatically.
+Books already stored at the current parser version are skipped unless you pass `--refresh`, which also refreshes the catalog cache before reprocessing the requested book IDs. IDs that map to a different canonical edition are remapped automatically.
 
 ## books
 
@@ -91,12 +69,12 @@ gutenbit books --update --dry-run
 
 Without `--update`, `books` behaves exactly as before and just lists stored books.
 With `--update`, gutenbit checks the local database and reprocesses only books whose
-stored text is out of date for the current chunker version. `--force` refreshes every
+stored text is out of date for the current parser version. `--force` refreshes every
 stored book, and `--dry-run` reports what would be refreshed without doing any work.
 
 ## remove
 
-Remove books and their chunks from the database.
+Remove books from the database.
 
 ```bash
 gutenbit remove 1342
@@ -113,7 +91,7 @@ Exits with code 1 if any requested ID was not found.
 ## search
 
 Full-text search across stored books using SQLite FTS5 with BM25 ranking. Search
-targets text chunks by default.
+targets paragraph chunks by default.
 
 ```bash
 gutenbit search "bennet"
@@ -137,7 +115,7 @@ gutenbit search "bennet" --book 1342 --count
 | `--author TEXT` | Filter by author (substring match) |
 | `--title TEXT` | Filter by title (substring match) |
 | `--book ID` | Restrict to a single book |
-| `--kind KIND` | Chunk kind to search: `text` (default), `heading`, or `all` |
+| `--kind KIND` | Paragraph chunk kind to search: `text` (default), `heading`, or `all` |
 | `--section SELECTOR` | Restrict to a section by path prefix or number from `toc` (number requires `--book`) |
 | `--limit N` | Maximum results (default: 10) |
 | `--radius N` | Surrounding passage to include on each side of each hit |
@@ -223,7 +201,7 @@ gutenbit view 1342 --section 1 --radius 2       # surrounding passage around sec
 |------|-------------|
 | `BOOK_ID` | Project Gutenberg book ID (positional) |
 | `--section SELECTOR` | Section number (from `toc`) or path prefix (e.g. `"BOOK I/CHAPTER I"`) |
-| `--position N` | Exact chunk position |
+| `--position N` | Exact paragraph chunk position |
 | `--all` | Read the full selected scope (whole book or selected section, including nested subsections) |
 | `--forward N` | Passages to read forward (default: 3 for opening, 1 for section/position) |
 | `--radius N` | Surrounding passage to include on each side of the selected center passage |

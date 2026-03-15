@@ -34,7 +34,7 @@ gutenbit stores its database and catalog cache in `~/.gutenbit/`.
 Find a book in the Project Gutenberg catalog and download it locally. Sections are parsed automatically during import.
 
 ```bash
-gutenbit catalog --author "Austen, Jane"
+gutenbit catalog --author "Jane Austen"
 gutenbit add 1342
 ```
 
@@ -44,7 +44,7 @@ book is missing locally, `gutenbit toc <id>` adds it automatically first.
 ```bash
 gutenbit toc 1342
 gutenbit view 1342
-gutenbit view 1342 --section 1 --forward 5
+gutenbit view 1342 --section 2 --forward 5
 ```
 
 Search within the book and read exact matches or nearby context.
@@ -85,7 +85,7 @@ Full documentation: [Getting Started](docs/getting-started.md) | [CLI](docs/cli.
 
 ## Project Gutenberg Access
 
-gutenbit is an open-source project not affiliated with Project Gutenberg. It is for individual downloads, not bulk downloading. It prefers official mirrors and uses the main site only as a zip fallback, with a default `2.0` second delay between downloads. gutenbit also sends an identifying default `User-Agent` on Gutenberg and PGLAF requests: `gutenbit/<version> (+https://gutenbit.textualist.org)`. Review Project Gutenberg's [Robot Access Policy](https://www.gutenberg.org/policy/robot_access.html) and [Terms of Use](https://www.gutenberg.org/policy/terms_of_use.html).
+gutenbit is an open-source project not affiliated with Project Gutenberg. It is for individual downloads, not bulk downloading. It prefers official mirrors and uses the main site only as a fallback, with a default 2 second delay between downloads. gutenbit also sends an identifying default `User-Agent` on Gutenberg requests. Review Project Gutenberg's [Robot Access Policy](https://www.gutenberg.org/policy/robot_access.html) and [Terms of Use](https://www.gutenberg.org/policy/terms_of_use.html).
 
 ## Development
 

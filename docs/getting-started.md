@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide walks through a complete workflow: find a book, download it, explore its structure, and search its text. Both CLI and Python examples use *Pride and Prejudice* (Project Gutenberg ID 1342).
+This guide walks through a complete workflow: find a book, download it, explore its structure, and search its text.
 
 ## Installation
 
@@ -25,7 +25,7 @@ gutenbit stores its database and catalog cache in `~/.gutenbit/`.
 Search the Project Gutenberg catalog by author, title, subject, or language:
 
 ```bash
-gutenbit catalog --author "Austen, Jane"
+gutenbit catalog --author "Jane Austen"
 ```
 
 ```
@@ -46,7 +46,7 @@ Pass one or more Project Gutenberg IDs to `add`:
 gutenbit add 1342
 ```
 
-The book's HTML is downloaded, parsed into paragraph-level chunks with structural metadata, and stored in a local SQLite database (`~/.gutenbit/gutenbit.db` by default).
+The book's HTML is downloaded, parsed into paragraph chunks with structural metadata, and stored in a local SQLite database (`~/.gutenbit/gutenbit.db` by default).
 
 ### Explore structure
 
@@ -64,7 +64,7 @@ all` to collapse further or reveal the full nested structure.
 gutenbit toc 100 --expand all
 ```
 
-Each section number can be used with `view --section` to jump directly to that part of the book. When deeper levels are collapsed, the visible lowest-level rows include the stats for the hidden descendants beneath them.
+Each section number can be used with `view --section` to jump directly to that part of the book.
 
 ### Read text
 
@@ -88,24 +88,24 @@ gutenbit view 1342 --section 1 --all
 
 If the selected section has nested subsections, `--all` includes the entire subtree. For example, selecting an act includes all of its scenes.
 
-Read from an exact chunk position:
+Read from an exact paragraph position:
 
 ```bash
 gutenbit view 1342 --position 1 --forward 5
 ```
 
-Read surrounding passage around a position or section start:
+Read the surrounding passage around a section or position start:
 
 ```bash
-gutenbit view 1342 --position 1 --radius 2
-gutenbit view 1342 --section 1 --radius 2
+gutenbit view 1342 --section 2 --radius 2
+gutenbit view 1342 --position 975 --radius 2
 ```
 
 Use `--forward` for forward reading, `--radius` for a surrounding passage window, and `--all` for a full book or selected section subtree. `--all` does not apply to `--position`.
 
 ### Search
 
-Full-text search across all stored books. Search targets text chunks by default:
+Full-text search across all stored books. Search targets paragraph chunks by default:
 
 ```bash
 gutenbit search "pride"
@@ -161,7 +161,7 @@ with Database("~/.gutenbit/gutenbit.db") as db:
     db.ingest(books[:3])
 ```
 
-`ingest` downloads each book's HTML, parses it into chunks, and stores everything in SQLite. Books already in the database are skipped.
+`ingest` downloads each book's HTML, parses it into paragraph chunks, and stores everything in SQLite. Books already in the database are skipped.
 
 ### Search
 
