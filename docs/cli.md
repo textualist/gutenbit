@@ -57,10 +57,12 @@ gutenbit books --json
 gutenbit books --refresh
 gutenbit books --refresh --force
 gutenbit books --refresh --dry-run
+gutenbit books --refresh 2600
 ```
 
 | Flag | Description |
 |------|-------------|
+| `BOOK_IDS` | Optional positional book IDs to target with `--refresh` |
 | `--refresh` | Reprocess stored books whose parser version is stale |
 | `--delay SECONDS` | Pause between downloads in refresh mode (default: 2.0) |
 | `--force` | Reprocess all stored books in refresh mode, even if already current |
@@ -69,8 +71,9 @@ gutenbit books --refresh --dry-run
 
 Without `--refresh`, `books` behaves exactly as before and just lists stored books.
 With `--refresh`, gutenbit checks the local database and reprocesses only books whose
-stored text is out of date for the current parser version. `--force` refreshes every
-stored book, and `--dry-run` reports what would be refreshed without doing any work.
+stored text is out of date for the current parser version. Pass one or more book IDs
+to target specific books for refresh. `--force` refreshes every stored book, and
+`--dry-run` reports what would be refreshed without doing any work.
 
 ## remove
 

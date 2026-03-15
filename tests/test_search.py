@@ -2637,6 +2637,36 @@ def test_books_update_json_output(tmp_path, monkeypatch):
     ]
 
 
+def test_books_refresh_specific_ids(tmp_path, monkeypatch):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    seen_downloads: list[int] = []
+
+    def _fake_download(book_id: int) -> str:
+        seen_downloads.append(book_id)
+        return {1: _BOOK_HTML, 2: _BOOK2_HTML}[book_id]
+
+    monkeypatch.setattr("gutenbit.db.download_html", _fake_download)
+
+    code, out, _err = _run_cli(db_path, "books", "--refresh", "--delay", "0", "1")
+    assert code == 0
+    assert "processing 1: Moby Dick" in out
+    assert "processing 2:" not in out
+    assert seen_downloads == [1]
+
+
+def test_books_ids_rejected_without_refresh(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    code, out, _err = _run_cli(db_path, "books", "1")
+    assert code == 1
+    assert "Book IDs can only be used with --refresh." in out
+
+
 # ------------------------------------------------------------------
 # Validation edge cases
 # ------------------------------------------------------------------

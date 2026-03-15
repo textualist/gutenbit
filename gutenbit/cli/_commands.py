@@ -445,10 +445,13 @@ examples:
   gutenbit books --json
   gutenbit books --refresh
   gutenbit books --refresh --force
+  gutenbit books --refresh 2600       # refresh a specific book
+  gutenbit books --refresh 2600 1342  # refresh specific books
   gutenbit books --db my.db
 
 output columns:  ID  AUTHORS  TITLE""",
 )
+@click.argument("book_ids", nargs=-1, type=int, required=False)
 @click.option(
     "--refresh", is_flag=True, help="reprocess stored books whose parser version is stale"
 )
@@ -471,11 +474,18 @@ output columns:  ID  AUTHORS  TITLE""",
 @_common_options
 def _cmd_books(
     env: _CommandEnv,
+    book_ids: tuple[int, ...],
     refresh: bool,
     delay: float,
     force: bool,
     dry_run: bool,
 ) -> int:
+    if book_ids and not refresh:
+        return _command_error(
+            "books",
+            "Book IDs can only be used with --refresh.",
+            as_json=env.as_json,
+        )
     if not refresh:
         if delay != DEFAULT_DOWNLOAD_DELAY:
             return _command_error(
@@ -504,9 +514,20 @@ def _cmd_books(
             db_path = str(_resolved_cli_path(env.db_path))
             db_display_path = _display_cli_path(env.db_path)
             stored_count = len(books)
-            selected_books = books if force else db_conn.stale_books()
-            selected_count = len(selected_books)
-            skipped_current = 0 if force else stored_count - selected_count
+            if book_ids:
+                books_by_id = {b.id: b for b in books}
+                selected_books = [books_by_id[bid] for bid in book_ids if bid in books_by_id]
+                missing_ids = [bid for bid in book_ids if bid not in books_by_id]
+                for mid in missing_ids:
+                    warning = f"Book {mid} is not in the database."
+                    if not env.as_json:
+                        env.display.warning(f"warning: {warning}")
+                selected_count = len(selected_books)
+                skipped_current = stored_count - selected_count
+            else:
+                selected_books = books if force else db_conn.stale_books()
+                selected_count = len(selected_books)
+                skipped_current = 0 if force else stored_count - selected_count
 
             if not books:
                 if env.as_json:
@@ -610,6 +631,7 @@ def _cmd_books(
             if not env.as_json:
                 env.display.status(f"Checking {stored_count} stored book(s)...")
 
+            effective_force = force or bool(book_ids)
             statuses, errors = _process_books_for_ingest(
                 db_conn,
                 selected_books,
@@ -617,7 +639,7 @@ def _cmd_books(
                 as_json=env.as_json,
                 display=env.display,
                 failure_action="refresh",
-                force=force,
+                force=effective_force,
                 show_skipped_current=False,
             )
             updated_count = sum(
