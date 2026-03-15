@@ -34,8 +34,8 @@ from gutenbit.db import (
     ChunkRecord,
     Database,
     TextState,
+    _normalized_div_parts,
     div_parts_match,
-    normalize_div_segment,
 )
 
 # ---------------------------------------------------------------------------
@@ -59,7 +59,7 @@ def _estimate_read_time(words: int, *, wpm: int = 250) -> str:
 
 
 def _section_selector_parts(raw: str) -> list[str]:
-    parts = [normalize_div_segment(part) for part in raw.split("/") if part.strip()]
+    parts = _normalized_div_parts(raw) or []
     if len(parts) > 4:
         raise ValueError("div path has too many segments (max 4: div1/div2/div3/div4)")
     return parts
@@ -257,8 +257,8 @@ def _collapse_section_rows(
             ancestor_parts = visible_parts[idx]
             if len(ancestor_parts) > len(parts) or parts[: len(ancestor_parts)] != ancestor_parts:
                 continue
-            visible_rows[idx]["paras"] = int(visible_rows[idx]["paras"]) + int(row["paras"])
-            visible_rows[idx]["chars"] = int(visible_rows[idx]["chars"]) + int(row["chars"])
+            visible_rows[idx]["paras"] += row["paras"]
+            visible_rows[idx]["chars"] += row["chars"]
             if (
                 not str(visible_rows[idx]["opening_line"]).strip()
                 and str(row["opening_line"]).strip()
@@ -336,8 +336,8 @@ def _build_section_summary(
                 }
             )
         elif rec.kind == "text" and sections:
-            sections[-1]["paragraphs"] = int(sections[-1]["paragraphs"]) + 1
-            sections[-1]["chars"] = int(sections[-1]["chars"]) + rec.char_count
+            sections[-1]["paragraphs"] += 1
+            sections[-1]["chars"] += rec.char_count
             opening_candidates = sections[-1]["opening_candidates"]
             if len(opening_candidates) < OPENING_PREVIEW_PARAGRAPH_LIMIT:
                 opening_candidates.append(rec.content)

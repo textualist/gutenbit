@@ -160,7 +160,7 @@ def _extract_heading_text(heading_el: Tag) -> str:
 
     # Walk the tree directly instead of re-parsing with BeautifulSoup.
     parts: list[str] = []
-    _collect_heading_parts(heading_el, parts)
+    _collect_text_parts(heading_el, parts)
     text = " ".join("".join(parts).split()).strip()
     if text:
         return text
@@ -171,14 +171,20 @@ def _extract_heading_text(heading_el: Tag) -> str:
     return ""
 
 
-def _collect_heading_parts(node: Tag, parts: list[str]) -> None:
-    """Collect text parts from a heading, skipping pagenum spans and replacing <br> with space."""
+def _collect_text_parts(node: Tag, parts: list[str], *, replace_br: bool = True) -> None:
+    """Collect text parts from an element, skipping pagenum spans.
+
+    When *replace_br* is True (the default, used for headings), ``<br>`` tags
+    are replaced with a space.  When False (used for paragraphs), ``<br>`` is
+    ignored — whitespace collapsing handles it.
+    """
     for child in node.children:
         if isinstance(child, NavigableString):
             parts.append(str(child))
         elif isinstance(child, Tag):
             if child.name == "br":
-                parts.append(" ")
+                if replace_br:
+                    parts.append(" ")
             elif child.name == "span" and "pagenum" in (child.get("class") or []):
                 continue
             elif child.name == "img":
@@ -187,7 +193,7 @@ def _collect_heading_parts(node: Tag, parts: list[str]) -> None:
                 if alt_text:
                     parts.append(alt_text)
             else:
-                _collect_heading_parts(child, parts)
+                _collect_text_parts(child, parts, replace_br=replace_br)
 
 
 def _clean_heading_text(heading_text: str) -> str:

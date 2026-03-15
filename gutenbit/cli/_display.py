@@ -461,8 +461,7 @@ class _IngestProgressSession:
             completed = max(self._task_total - 1, 2)
         elif stage == "done":
             completed = self._task_total
-        elif stage == "failed":
-            completed = self._completed
+        # "failed" keeps completed at its current value.
 
         if stage != "failed":
             self._completed = completed

@@ -38,26 +38,36 @@ OPENING_SECTION_SKIP_HEADINGS = frozenset(
 # ---------------------------------------------------------------------------
 
 
-def _no_chunks_message(db: Database, book_id: int) -> str:
-    """Return a descriptive error for a book with no chunks."""
-    if db.book(book_id) is None:
-        return f"Book {book_id} is not in the database. Use 'gutenbit add {book_id}' to add it."
-    return f"No chunks found for book {book_id}."
-
-
 def _book_id_ref(book_id: int, *, capitalize: bool = True) -> str:
     prefix = "Book ID" if capitalize else "book ID"
     return f"{prefix} {book_id}"
 
 
-def _no_chunks_display_message(db: Database, book_id: int) -> str:
-    """Return the human-facing no-chunks message with an explicit book ID label."""
+def _no_chunks_messages(db: Database, book_id: int) -> tuple[str, str]:
+    """Return ``(json_message, display_message)`` for a book with no chunks.
+
+    Performs a single ``db.book()`` lookup instead of one per message style.
+    """
     if db.book(book_id) is None:
         return (
+            f"Book {book_id} is not in the database. Use 'gutenbit add {book_id}' to add it.",
             f"{_book_id_ref(book_id)} is not in the database. "
-            f"Use 'gutenbit add {book_id}' to add it."
+            f"Use 'gutenbit add {book_id}' to add it.",
         )
-    return f"No chunks found for {_book_id_ref(book_id, capitalize=False)}."
+    return (
+        f"No chunks found for book {book_id}.",
+        f"No chunks found for {_book_id_ref(book_id, capitalize=False)}.",
+    )
+
+
+def _no_chunks_message(db: Database, book_id: int) -> str:
+    """Return a descriptive error for a book with no chunks (JSON contexts)."""
+    return _no_chunks_messages(db, book_id)[0]
+
+
+def _no_chunks_display_message(db: Database, book_id: int) -> str:
+    """Return the human-facing no-chunks message with an explicit book ID label."""
+    return _no_chunks_messages(db, book_id)[1]
 
 
 # ---------------------------------------------------------------------------

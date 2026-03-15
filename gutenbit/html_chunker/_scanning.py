@@ -14,6 +14,7 @@ from gutenbit.html_chunker._common import (
     _NON_ALNUM_RE,
     _START_DELIMITER_RE,
     _clean_heading_text,
+    _collect_text_parts,
     _ContentBounds,
     _extract_heading_text,
     _front_matter_heading_key,
@@ -329,27 +330,7 @@ def _extract_paragraph_text(
         return " ".join(paragraph.get_text().split()).strip()
 
     parts: list[str] = []
-
-    def _append_text(node: Tag) -> None:
-        for child in node.children:
-            if isinstance(child, NavigableString):
-                parts.append(str(child))
-                continue
-            if not isinstance(child, Tag):
-                continue
-            if child.name == "span" and "pagenum" in {
-                str(cls).lower() for cls in (child.get("class") or [])
-            }:
-                continue
-            if child.name == "img":
-                alt_value = child.get("alt")
-                alt_text = " ".join(str(alt_value or "").split()).strip()
-                if alt_text:
-                    parts.append(alt_text)
-                continue
-            _append_text(child)
-
-    _append_text(paragraph)
+    _collect_text_parts(paragraph, parts, replace_br=False)
     return " ".join("".join(parts).split()).strip()
 
 

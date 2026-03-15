@@ -85,24 +85,9 @@ def _catalog_cache_path(policy: CatalogPolicy, cache_dir: str | Path | None = No
     return root / f"{_policy_cache_key(policy)}.csv.gz"
 
 
-def _read_catalog_cache(payload_path: Path) -> bytes | None:
-    return read_cache_bytes(payload_path)
-
-
-def _write_catalog_cache(payload_path: Path, payload: bytes) -> None:
-    try:
-        write_bytes_atomic(payload_path, payload)
-    except OSError:
-        return
-
-
-def _catalog_cache_age_seconds(payload_path: Path, *, now: float) -> float | None:
-    return cache_age_seconds(payload_path, now=now)
-
-
 def _is_fresh_catalog_cache(payload_path: Path, *, now: float) -> bool:
-    age_seconds = _catalog_cache_age_seconds(payload_path, now=now)
-    return age_seconds is not None and age_seconds < _CATALOG_CACHE_TTL_SECONDS
+    age = cache_age_seconds(payload_path, now=now)
+    return age is not None and age < _CATALOG_CACHE_TTL_SECONDS
 
 
 def _catalog_from_payload(
@@ -249,9 +234,9 @@ class Catalog:
     ) -> Catalog:
         """Download the CSV catalog from Project Gutenberg."""
         payload_path = _catalog_cache_path(policy, cache_dir)
-        cached = _read_catalog_cache(payload_path)
+        cached = read_cache_bytes(payload_path)
         now = time.time()
-        cache_age_seconds = _catalog_cache_age_seconds(payload_path, now=now)
+        cached_age = cache_age_seconds(payload_path, now=now)
 
         if cached is not None and not refresh and _is_fresh_catalog_cache(payload_path, now=now):
             try:
@@ -262,7 +247,7 @@ class Catalog:
                 catalog.fetch_info = CatalogFetchInfo(
                     source="cache",
                     cache_path=payload_path,
-                    cache_age_seconds=cache_age_seconds,
+                    cache_age_seconds=cached_age,
                 )
                 return catalog
 
@@ -280,13 +265,16 @@ class Catalog:
                 catalog.fetch_info = CatalogFetchInfo(
                     source="stale_cache",
                     cache_path=payload_path,
-                    cache_age_seconds=cache_age_seconds,
+                    cache_age_seconds=cached_age,
                 )
                 return catalog
             raise
 
         payload = response.content
-        _write_catalog_cache(payload_path, payload)
+        try:
+            write_bytes_atomic(payload_path, payload)
+        except OSError:
+            pass
         catalog = _catalog_from_payload(payload, policy=policy)
         catalog.fetch_info = CatalogFetchInfo(
             source="downloaded",

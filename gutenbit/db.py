@@ -401,32 +401,9 @@ class Database:
         kinds: list[str] | None = None,
     ) -> list[tuple[int, str, str, str, str, str, str, int]]:
         """Return chunks as ``(position, div1, div2, div3, div4, content, kind, char_count)``."""
-        fields = "position, div1, div2, div3, div4, content, kind, char_count"
-        if kinds:
-            placeholders = ",".join("?" * len(kinds))
-            sql = (
-                f"SELECT {fields} FROM chunks"
-                f" WHERE book_id = ? AND kind IN ({placeholders})"
-                f" ORDER BY position"
-            )
-            rows = self._conn.execute(sql, [book_id, *kinds]).fetchall()
-        else:
-            rows = self._conn.execute(
-                f"SELECT {fields} FROM chunks WHERE book_id = ? ORDER BY position",
-                (book_id,),
-            ).fetchall()
         return [
-            (
-                r["position"],
-                r["div1"],
-                r["div2"],
-                r["div3"],
-                r["div4"],
-                r["content"],
-                r["kind"],
-                r["char_count"],
-            )
-            for r in rows
+            (r.position, r.div1, r.div2, r.div3, r.div4, r.content, r.kind, r.char_count)
+            for r in self.chunk_records(book_id, kinds=kinds)
         ]
 
     def chunk_by_id(self, book_id: int, chunk_id: int) -> ChunkRecord | None:
@@ -483,14 +460,20 @@ class Database:
         if len(parts) > 4:
             raise ValueError("div path has too many segments (max 4: div1/div2/div3/div4)")
 
-        rows = self._conn.execute(
-            "SELECT * FROM chunks WHERE book_id = ? ORDER BY position",
-            (book_id,),
-        ).fetchall()
+        if kinds:
+            kind_placeholders = ",".join("?" * len(kinds))
+            rows = self._conn.execute(
+                f"SELECT * FROM chunks WHERE book_id = ? AND kind IN ({kind_placeholders})"
+                f" ORDER BY position",
+                [book_id, *kinds],
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM chunks WHERE book_id = ? ORDER BY position",
+                (book_id,),
+            ).fetchall()
         out: list[ChunkRecord] = []
         for row in rows:
-            if kinds and row["kind"] not in kinds:
-                continue
             row_parts = [
                 normalize_div_segment(d)
                 for d in [row["div1"], row["div2"], row["div3"], row["div4"]]

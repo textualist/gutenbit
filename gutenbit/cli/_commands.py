@@ -34,8 +34,7 @@ from gutenbit.cli._query import (
     _book_id_ref,
     _format_fts_error,
     _fts_phrase_query,
-    _no_chunks_display_message,
-    _no_chunks_message,
+    _no_chunks_messages,
     _safe_fts_query,
     _section_path,
     _toc_expand_depth,
@@ -1161,7 +1160,7 @@ def _cmd_toc(
             if summary is None:
                 return _command_error(
                     "toc",
-                    _no_chunks_message(db_conn, resolved_book_id),
+                    _no_chunks_messages(db_conn, resolved_book_id)[0],
                     as_json=True,
                     data={JSON_BOOK_ID_KEY: book},
                 )
@@ -1414,11 +1413,12 @@ def _cmd_view(
                     )
                 summary = _build_section_summary(db_conn, book)
                 if summary is None:
+                    nc_msg, nc_display = _no_chunks_messages(db_conn, book)
                     return _command_error(
                         "view",
-                        _no_chunks_message(db_conn, book),
+                        nc_msg,
                         as_json=env.as_json,
-                        display_message=_no_chunks_display_message(db_conn, book),
+                        display_message=nc_display,
                         data=_view_payload(
                             section=section_query,
                             section_number=section_number,
@@ -1594,11 +1594,12 @@ def _cmd_view(
         if show_all:
             rows = db_conn.chunk_records(book)
             if not rows:
+                nc_msg, nc_display = _no_chunks_messages(db_conn, book)
                 return _command_error(
                     "view",
-                    _no_chunks_message(db_conn, book),
+                    nc_msg,
                     as_json=env.as_json,
-                    display_message=_no_chunks_display_message(db_conn, book),
+                    display_message=nc_display,
                     data=_view_payload(
                         section=first_section["section"] if first_section else None,
                         section_number=(
@@ -1637,11 +1638,12 @@ def _cmd_view(
 
         rows = _opening_rows(db_conn, book, forward)
         if not rows:
+            nc_msg, nc_display = _no_chunks_messages(db_conn, book)
             return _command_error(
                 "view",
-                _no_chunks_message(db_conn, book),
+                nc_msg,
                 as_json=env.as_json,
-                display_message=_no_chunks_display_message(db_conn, book),
+                display_message=nc_display,
                 data=_view_payload(
                     section=first_section["section"] if first_section else None,
                     section_number=(first_section["section_number"] if first_section else None),
