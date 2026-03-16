@@ -77,6 +77,25 @@ def test_shakespeare_anthology_nests_acts_and_scenes_under_work_titles():
     assert sonnets.div2 == ""
 
 
+def test_shakespeare_anthology_nests_induction_under_parent_play():
+    headings = _headings(100)
+
+    henry_iv_induction = next(
+        heading
+        for heading in headings
+        if heading.content == "INDUCTION"
+        and heading.div1 == "THE SECOND PART OF KING HENRY THE FOURTH"
+    )
+    assert henry_iv_induction.div2 == "INDUCTION"
+
+    taming_induction = next(
+        heading
+        for heading in headings
+        if heading.content == "INDUCTION" and heading.div1 == "THE TAMING OF THE SHREW"
+    )
+    assert taming_induction.div2 == "INDUCTION"
+
+
 def test_locke_essay_volume_two_skips_contents_scaffolding():
     headings = _headings(10616)
     heading_texts = {heading.content for heading in headings}
