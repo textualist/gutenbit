@@ -146,7 +146,7 @@ def test_rich_passage_separates_title_from_metadata(tmp_path):
     )
     out = StringIO()
 
-    CliDisplay(stdout=out, interactive=True, color=False, width=100).passage(
+    CliDisplay(stdout=out, interactive=True, color=False, width=120).passage(
         payload,
         action_hints={
             "toc": "gutenbit toc 1",
@@ -164,7 +164,10 @@ def test_rich_passage_separates_title_from_metadata(tmp_path):
     assert "Book ID 1 · Section CHAPTER 1 · Section No. 1 · Position 0 · Forward 3" in rendered
     assert " · No. 1 · " not in rendered
     assert "Forward 3\n\nCHAPTER 1" in rendered
-    assert "Moby Dick · id 1 · section CHAPTER 1 · 1 paragraph · 3 words · 1m read" in rendered
+    assert (
+        "Moby Dick · id 1 · section CHAPTER 1 · section no. 1 · position 0 · forward 3"
+        " · 1 paragraph · 3 words · 1m read" in rendered
+    )
     assert "\nNext\n" in rendered
     assert "gutenbit toc 1" in rendered
     assert 'gutenbit search "Ishmael" --book 1' in rendered
@@ -191,7 +194,10 @@ def test_plain_passage_shows_footer_stats(tmp_path):
     )
 
     rendered = out.getvalue()
-    assert "Moby Dick · id 1 · section CHAPTER 1 · 0 paragraphs · - words · - read" in rendered
+    assert (
+        "Moby Dick · id 1 · section CHAPTER 1 · section no. 1 · position 0 · forward 1"
+        " · 0 paragraphs · - words · - read" in rendered
+    )
 
 
 def test_rich_section_summary_uses_simple_section_layout(tmp_path):

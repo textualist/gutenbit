@@ -1534,7 +1534,10 @@ def test_view_position_heading_only_shows_dash_footer_stats(tmp_path):
     code, out, _err = _run_cli(db_path, "view", "1", "--position", "0", "--forward", "1")
     assert code == 0
     assert "CHAPTER 1" in out
-    assert "Moby Dick · id 1 · section CHAPTER 1 · 0 paragraphs · - words · - read" in out
+    assert (
+        "Moby Dick · id 1 · section CHAPTER 1 · section no. 1 · position 0 · forward 1"
+        " · 0 paragraphs · - words · - read" in out
+    )
 
 
 def test_view_position_with_radius_header(tmp_path):
@@ -1601,6 +1604,21 @@ def test_view_section_with_forward_header(tmp_path):
     assert "position=0  forward=1" in out
     assert "CHAPTER 1" in out
     assert "Call me Ishmael" in out
+
+
+def test_view_section_forward_extends_into_next_section(tmp_path):
+    db = _make_db(tmp_path)
+    db_path = db.path
+    db.close()
+
+    # CHAPTER 1 has 2 text chunks; forward=3 should extend into CHAPTER 2
+    code, out, _err = _run_cli(
+        db_path, "view", "1", "--section", "CHAPTER 1", "--forward", "3"
+    )
+    assert code == 0
+    assert "Call me Ishmael" in out  # CHAPTER 1 text
+    assert "It is a way I have" in out  # CHAPTER 1 text
+    assert "I stuffed a shirt" in out  # CHAPTER 2 text (crossed boundary)
 
 
 def test_view_section_miss_shows_examples(tmp_path):

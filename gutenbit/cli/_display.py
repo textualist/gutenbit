@@ -224,7 +224,17 @@ def _passage_footer_stats(
         _footer_book_id(payload[BOOK_ID_KEY]),
     ]
     if payload.get("section"):
-        stats.append(f"section {_section_label(payload['section'])}")
+        stats.append(
+            f"section {_truncate_single_line(_section_label(payload['section']), FOOTER_TITLE_MAX_CHARS)}"
+        )
+    if payload.get("section_number") is not None:
+        stats.append(f"section no. {payload['section_number']}")
+    if payload.get("position") is not None:
+        stats.append(f"position {payload['position']}")
+    if payload.get("forward") is not None:
+        stats.append(f"forward {payload['forward']}")
+    if payload.get("radius") is not None:
+        stats.append(f"radius {payload['radius']}")
     stats.extend(item for item in (footer_stats or []) if item)
     return stats
 

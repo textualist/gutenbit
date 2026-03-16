@@ -1616,7 +1616,8 @@ def _cmd_view(
             else:
                 forward = _effective_forward(DEFAULT_VIEW_FORWARD)
                 all_scope = None
-                rows = _section_reading_window(rows, text_passages=forward)
+                all_rows = [row for row in db_conn.chunk_records(book) if row.position >= anchor.position]
+                rows = _section_reading_window(all_rows, text_passages=forward)
             record = _view_payload(
                 section=resolved_section,
                 section_number=section_number,
