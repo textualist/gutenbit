@@ -11,13 +11,14 @@ from bs4 import NavigableString, Tag
 # Constants and frozen sets
 # ---------------------------------------------------------------------------
 
-_BROAD_KEYWORDS = frozenset({"book", "part", "act", "epilogue", "volume"})
+_BROAD_KEYWORDS = frozenset({"book", "part", "act", "epilogue", "induction", "volume"})
 _BROAD_NESTING_DEPTHS = {
     "volume": 1,
     "part": 2,
     "epilogue": 2,
     "book": 3,
     "act": 3,
+    "induction": 3,
 }
 
 _FRONT_MATTER_HEADINGS = frozenset(
@@ -45,7 +46,7 @@ _BARE_HEADING_NUMBER_RE = re.compile(
 )
 
 _HEADING_KEYWORD_RE = re.compile(
-    r"^(?:BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|SCOENA|SECTION|ADVENTURE)\.?\s",
+    r"^(?:(?:BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|SCOENA|SECTION|ADVENTURE)\.?\s|INDUCTION\b)",
     re.IGNORECASE,
 )
 _START_DELIMITER_RE = re.compile(
@@ -78,7 +79,7 @@ _NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]+")
 
 # Keywords that are almost exclusively structural even without a trailing number.
 _STANDALONE_STRUCTURAL_RE = re.compile(
-    r"\bEPILOGUE\b|\bPROLOGUE\b|\bAPPENDIX\b",
+    r"\bEPILOGUE\b|\bPROLOGUE\b|\bAPPENDIX\b|\bINDUCTION\b",
     re.IGNORECASE,
 )
 _FALLBACK_START_HEADING_RE = re.compile(
