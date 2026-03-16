@@ -10,8 +10,10 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 from gutenbit.html_chunker._common import (
     _END_DELIMITER_RE,
     _FRONT_MATTER_HEADINGS,
+    _HEADING_KEYWORD_RE,
     _HEADING_TAG_SET,
     _NON_ALNUM_RE,
+    _STANDALONE_STRUCTURAL_RE,
     _START_DELIMITER_RE,
     _clean_heading_text,
     _collect_text_parts,
@@ -165,17 +167,18 @@ def _scan_document(soup: BeautifulSoup) -> _DocumentIndex:
             for child in node.contents:
                 if isinstance(child, Tag):
                     tag_children.append(child)
-                elif isinstance(child, NavigableString):
-                    if start_marker_parent is None or end_marker_parent is None:
-                        text = str(child)
-                        if start_marker_parent is None and _START_DELIMITER_RE.search(text):
-                            p = child.parent
-                            if isinstance(p, Tag):
-                                start_marker_parent = p
-                        if end_marker_parent is None and _END_DELIMITER_RE.search(text):
-                            p = child.parent
-                            if isinstance(p, Tag):
-                                end_marker_parent = p
+                elif isinstance(child, NavigableString) and (
+                    start_marker_parent is None or end_marker_parent is None
+                ):
+                    text = str(child)
+                    if start_marker_parent is None and _START_DELIMITER_RE.search(text):
+                        p = child.parent
+                        if isinstance(p, Tag):
+                            start_marker_parent = p
+                    if end_marker_parent is None and _END_DELIMITER_RE.search(text):
+                        p = child.parent
+                        if isinstance(p, Tag):
+                            end_marker_parent = p
             for child in reversed(tag_children):
                 stack.append((child, False))
             continue
@@ -374,7 +377,41 @@ def _is_toc_paragraph(paragraph: Tag, *, has_pginternal: bool | None = None) -> 
     # Check if removing pginternal link text leaves only punctuation/whitespace,
     # without re-parsing the paragraph.
     residue = _container_residue_without_link_text(paragraph)
-    return _NON_ALNUM_RE.sub("", residue) == ""
+    return _NON_ALNUM_RE.sub("", residue) == "" or _is_single_link_structural_toc_paragraph(
+        paragraph, links=links, residue=residue
+    )
+
+
+def _is_single_link_structural_toc_paragraph(
+    paragraph: Tag,
+    *,
+    links: list[Tag] | None = None,
+    residue: str | None = None,
+) -> bool:
+    """Return True for single-link TOC entries whose subtitle sits outside the anchor."""
+    if links is None:
+        links = paragraph.find_all("a", class_="pginternal")
+    if len(links) != 1:
+        return False
+
+    link_text = _clean_heading_text(" ".join(links[0].get_text(" ", strip=True).split()))
+    if not link_text:
+        return False
+    if not (_HEADING_KEYWORD_RE.match(link_text) or _STANDALONE_STRUCTURAL_RE.search(link_text)):
+        return False
+
+    if residue is None:
+        residue = _container_residue_without_link_text(paragraph)
+    stripped_residue = residue.lstrip()
+    if not stripped_residue.startswith(("-", "—", ":")):
+        return False
+
+    subtitle = _clean_heading_text(stripped_residue.lstrip("-—:;,. "))
+    if not subtitle or _NON_ALNUM_RE.sub("", subtitle) == "":
+        return False
+    if _HEADING_KEYWORD_RE.match(subtitle):
+        return False
+    return _STANDALONE_STRUCTURAL_RE.search(subtitle) is None
 
 
 def _is_dense_chapter_index_paragraph(paragraph: Tag) -> bool:

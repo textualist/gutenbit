@@ -237,6 +237,48 @@ def test_republic_preserves_book_headings_over_dialogue_speakers():
     assert all(heading.div2 == "" for heading in headings)
 
 
+def test_theologico_political_treatise_keeps_chapter_sequences_across_parts():
+    part_one = _headings(989)
+    part_two = _headings(990)
+    part_three = _headings(991)
+
+    def chapter_markers(headings: list[Chunk]) -> list[str]:
+        markers: list[str] = []
+        for heading in headings:
+            match = re.match(r"^CHAPTER\s+[IVXLCDM]+", heading.content)
+            if match:
+                markers.append(match.group(0))
+        return markers
+
+    assert part_one[0].content == "PREFACE."
+    assert chapter_markers(part_one) == [
+        "CHAPTER I",
+        "CHAPTER II",
+        "CHAPTER III",
+        "CHAPTER IV",
+        "CHAPTER V",
+    ]
+    assert part_one[-1].content == "AUTHOR'S ENDNOTES TO THE THEOLOGICO-POLITICAL TREATISE"
+
+    assert chapter_markers(part_two) == [
+        "CHAPTER VI",
+        "CHAPTER VII",
+        "CHAPTER VIII",
+        "CHAPTER IX",
+        "CHAPTER X",
+    ]
+    assert part_two[-1].content == "AUTHOR'S ENDNOTES TO THE THEOLOGICO-POLITICAL TREATISE"
+
+    assert chapter_markers(part_three) == [
+        "CHAPTER XI",
+        "CHAPTER XII",
+        "CHAPTER XIII",
+        "CHAPTER XIV",
+        "CHAPTER XV",
+    ]
+    assert part_three[-1].content == "AUTHOR'S ENDNOTES TO THE THEOLOGICO-POLITICAL TREATISE"
+
+
 def test_faust_keeps_only_top_level_dramatic_sections():
     headings = _headings(3023)
     heading_texts = [heading.content for heading in headings]

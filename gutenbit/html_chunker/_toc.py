@@ -76,15 +76,15 @@ def _previous_heading_text(link: Tag, *, doc_index: _DocumentIndex) -> str:
     """
     link_pos = doc_index.tag_positions.get(id(link))
     if link_pos is not None and doc_index.heading_positions:
-        idx = bisect_left(doc_index.heading_positions, link_pos) - 1  # last heading strictly before link_pos
+        idx = (
+            bisect_left(doc_index.heading_positions, link_pos) - 1
+        )  # last heading strictly before link_pos
         if idx >= 0:
             return doc_index.headings[idx].text
     return ""
 
 
-def _is_structural_toc_link(
-    link: Tag, link_text: str, *, doc_index: _DocumentIndex
-) -> bool:
+def _is_structural_toc_link(link: Tag, link_text: str, *, doc_index: _DocumentIndex) -> bool:
     """Return True for TOC links that can map to actual section headings."""
     if not _is_toc_context_link(link):
         return False

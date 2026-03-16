@@ -307,6 +307,10 @@ def _is_fallback_start_heading_text(heading_text: str) -> bool:
 
 def _is_dialogue_speaker_heading(heading_text: str) -> bool:
     """Return True for uppercase speaker attributions like ``SOCRATES - GLAUCON``."""
+    if _heading_keyword(heading_text):
+        return False
+    if _STANDALONE_STRUCTURAL_RE.search(heading_text):
+        return False
     if " - " not in heading_text:
         return False
 

@@ -81,7 +81,8 @@ _TAIL_BOUNDARY_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 _TAIL_SECTION_HEADING_RE = re.compile(
-    r"^(?:note\b|note to\b|letter\b|a letter from\b|finale\b|the conclusion\b)",
+    r"^(?:note\b|note to\b|letter\b|a letter from\b|finale\b|the conclusion\b|"
+    r"author'?s?\s+endnotes?\b)",
     re.IGNORECASE,
 )
 
@@ -570,7 +571,9 @@ def _find_non_structural_boundary_after(
     if anchor_pos is None:
         return None
 
-    lo = bisect_right(doc_index.heading_positions, anchor_pos)  # first heading strictly after anchor_pos
+    lo = bisect_right(
+        doc_index.heading_positions, anchor_pos
+    )  # first heading strictly after anchor_pos
     for ih in doc_index.headings[lo:]:
         if not doc_index.bounds.contains(ih.position):
             continue
@@ -968,4 +971,3 @@ def _should_scan_paragraph_heading_rows(
         if non_toc_scanned >= 400:
             break
     return False
-

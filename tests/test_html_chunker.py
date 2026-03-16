@@ -755,6 +755,34 @@ def test_inline_pginternal_links_not_toc():
     assert paragraphs == ["Body text with inline reference [1] remains content."]
 
 
+def test_single_link_chapter_toc_paragraph_with_subtitle_is_toc():
+    html = _make_html("""
+    <p><a href="#ch11" class="pginternal">CHAPTER XI</a> - Of Prophecy.</p>
+    <p><a href="#ch12" class="pginternal">CHAPTER XII</a> - Of Miracles.</p>
+    <p><a href="#endnotes" class="pginternal">Author's Endnotes to the Treatise.</a></p>
+    <h2><a id="ch11"></a>CHAPTER XI - Of Prophecy.</h2>
+    <p>Chapter eleven paragraph.</p>
+    <h2><a id="ch12"></a>CHAPTER XII - Of Miracles.</h2>
+    <p>Chapter twelve paragraph.</p>
+    <h2><a id="endnotes"></a>Author's Endnotes to the Treatise.</h2>
+    <p>Endnotes paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    paragraphs = [c.content for c in chunks if c.kind == "text"]
+
+    assert headings == [
+        "CHAPTER XI - Of Prophecy.",
+        "CHAPTER XII - Of Miracles.",
+        "Author's Endnotes to the Treatise.",
+    ]
+    assert paragraphs == [
+        "Chapter eleven paragraph.",
+        "Chapter twelve paragraph.",
+        "Endnotes paragraph.",
+    ]
+
+
 # ------------------------------------------------------------------
 # Heading text extraction
 # ------------------------------------------------------------------
@@ -1552,6 +1580,23 @@ def test_dialogue_speaker_headings_do_not_replace_book_structure():
     assert paragraphs[2].div2 == ""
 
 
+def test_heading_scan_keeps_hyphenated_chapter_headings():
+    html = _make_html("""
+    <h1>A Theologico-Political Treatise</h1>
+    <h3>CHAPTER VI. - OF MIRACLES.</h3>
+    <p>Chapter six paragraph.</p>
+    <h3>CHAPTER VII. - OF THE INTERPRETATION OF SCRIPTURE.</h3>
+    <p>Chapter seven paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert headings == [
+        "CHAPTER VI. - OF MIRACLES.",
+        "CHAPTER VII. - OF THE INTERPRETATION OF SCRIPTURE.",
+    ]
+
+
 def test_heading_scan_starts_from_prologues_and_skips_short_dramatic_cues():
     html = _make_html("""
     <h5>INTRODUCTORY NOTE</h5>
@@ -1696,6 +1741,32 @@ def test_toc_refinement_keeps_terminal_note_after_last_chapter():
 
     assert headings == ["CHAPTER I", "CHAPTER II", "NOTE"]
     assert note_paragraph.div1 == "NOTE"
+
+
+def test_toc_refinement_keeps_terminal_authors_endnotes_after_same_rank_chapters():
+    html = _make_html("""
+    <p><a href="#ch1" class="pginternal">CHAPTER I</a> - Of Prophecy.</p>
+    <p><a href="#ch2" class="pginternal">CHAPTER II</a> - Of Miracles.</p>
+    <p><a href="#endnotes" class="pginternal">Author's Endnotes to the Treatise.</a></p>
+    <h3><a id="ch1"></a>CHAPTER I - Of Prophecy.</h3>
+    <p>Chapter one paragraph.</p>
+    <h3><a id="ch2"></a>CHAPTER II - Of Miracles.</h3>
+    <p>Chapter two paragraph.</p>
+    <h3><a id="endnotes"></a>Author's Endnotes to the Treatise.</h3>
+    <p>Endnotes paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+    endnotes_paragraph = next(
+        c for c in chunks if c.kind == "text" and c.content == "Endnotes paragraph."
+    )
+
+    assert headings == [
+        "CHAPTER I - Of Prophecy.",
+        "CHAPTER II - Of Miracles.",
+        "Author's Endnotes to the Treatise.",
+    ]
+    assert endnotes_paragraph.div1 == "Author's Endnotes to the Treatise."
 
 
 def test_toc_refinement_keeps_leading_preface_before_first_toc_section():
