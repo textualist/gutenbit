@@ -2,70 +2,118 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://gutenbit.textualist.org/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/cli/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/concepts/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/getting-started/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/python-api/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/reference/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/reference/SUMMARY/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/reference/gutenbit/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/reference/gutenbit/_cache/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/reference/gutenbit/_http/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/reference/gutenbit/_version/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/reference/gutenbit/catalog/</loc>
-         <lastmod>2026-03-14</lastmod>
-    </url>
-    <url>
-         <loc>https://gutenbit.textualist.org/reference/gutenbit/cli/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/reference/gutenbit/db/</loc>
-         <lastmod>2026-03-14</lastmod>
-    </url>
-    <url>
-         <loc>https://gutenbit.textualist.org/reference/gutenbit/display/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/reference/gutenbit/download/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/cli/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/cli/_commands/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/cli/_context/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/cli/_display/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/cli/_json/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/cli/_query/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/cli/_sections/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/cli/_text_utils/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/cli/_types/</loc>
+         <lastmod>2026-03-16</lastmod>
     </url>
     <url>
          <loc>https://gutenbit.textualist.org/reference/gutenbit/html_chunker/</loc>
-         <lastmod>2026-03-14</lastmod>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/html_chunker/_common/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/html_chunker/_headings/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/html_chunker/_scanning/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/html_chunker/_sections/</loc>
+         <lastmod>2026-03-16</lastmod>
+    </url>
+    <url>
+         <loc>https://gutenbit.textualist.org/reference/gutenbit/html_chunker/_toc/</loc>
+         <lastmod>2026-03-16</lastmod>
     </url>
 </urlset>
