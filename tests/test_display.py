@@ -226,6 +226,7 @@ def test_rich_section_summary_uses_simple_section_layout(tmp_path):
     assert rendered.index("gutenbit toc 1 --expand all") < rendered.index(
         'gutenbit search "Ishmael" --book 1'
     )
+    assert "Gutenberg ID" in rendered
 
 
 def test_rich_section_summary_shows_visible_section_count_when_collapsed(tmp_path):
@@ -273,6 +274,40 @@ def test_rich_section_summary_indents_long_nested_section_paths(tmp_path):
     assert "CHAPTER I. The Unexpected" in rendered
     assert ".../" not in rendered
     assert "BOOK ONE: 1805 / CHAPTER I." not in rendered
+
+
+def test_plain_section_summary_shows_gutenberg_id(tmp_path):
+    db = _make_db(tmp_path)
+    summary = _build_section_summary(db, 1)
+    assert summary is not None
+    out = StringIO()
+
+    CliDisplay(stdout=out, interactive=False).section_summary(summary)
+
+    rendered = out.getvalue()
+    assert "Gutenberg ID" in rendered
+    assert "Link" not in rendered
+
+
+def test_plain_passage_header_includes_gutenberg_link(tmp_path):
+    _make_db(tmp_path)
+    payload = _passage_payload(
+        book_id=1,
+        title="Moby Dick",
+        author="Melville, Herman",
+        section="CHAPTER 1",
+        section_number=1,
+        position=0,
+        forward=1,
+        radius=None,
+        content="CHAPTER 1",
+    )
+    out = StringIO()
+
+    CliDisplay(stdout=out, interactive=False).passage(payload)
+
+    rendered = out.getvalue()
+    assert "link=https://www.gutenberg.org/cache/epub/1/pg1-images.html" in rendered
 
 
 def test_plain_section_summary_indents_nested_section_paths(tmp_path):

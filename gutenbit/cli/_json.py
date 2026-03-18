@@ -6,6 +6,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from gutenbit.cli._text_utils import _single_line
+from gutenbit.download import gutenberg_book_url
 
 if TYPE_CHECKING:
     from gutenbit.db import ChunkRecord
@@ -94,6 +95,7 @@ def _book_payload(book: Any) -> dict[str, Any]:
         "bookshelves": _single_line(book.bookshelves),
         "issued": _single_line(book.issued),
         "type": _single_line(book.type),
+        "link": gutenberg_book_url(book.id),
     }
 
 
@@ -121,6 +123,7 @@ def _passage_payload(
         "forward": forward,
         "radius": radius,
         "all": all_scope,
+        "link": gutenberg_book_url(book_id),
         "content": content,
     }
     if extras:

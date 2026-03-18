@@ -15,12 +15,18 @@ from gutenbit._http import gutenberg_request_headers
 
 MAIN_SITE_HTML_ZIP_URL = "https://www.gutenberg.org/cache/epub/{id}/pg{id}-h.zip"
 MIRROR_HTML_URL = "https://{host}/cache/epub/{id}/pg{id}-images.html"
+GUTENBERG_CANONICAL_HOST = "www.gutenberg.org"
 ALEPH_PGLAF_HOST = "aleph.pglaf.org"
 GUTENBERG_PGLAF_HOST = "gutenberg.pglaf.org"
 HTML_MEMBER_SUFFIXES = (".html", ".htm")
 MIRROR_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0)
 MAIN_SITE_ZIP_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
 _LAST_DOWNLOAD_SOURCE: ContextVar[str | None] = ContextVar("_last_download_source", default=None)
+
+
+def gutenberg_book_url(book_id: int) -> str:
+    """Return the canonical Project Gutenberg HTML URL for a book."""
+    return MIRROR_HTML_URL.format(host=GUTENBERG_CANONICAL_HOST, id=book_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +43,7 @@ def get_last_download_source() -> str | None:
 def describe_download_source(source: str | None) -> str | None:
     if source in {ALEPH_PGLAF_HOST, GUTENBERG_PGLAF_HOST}:
         return "official mirror"
-    if source == "www.gutenberg.org":
+    if source == GUTENBERG_CANONICAL_HOST:
         return "main site fallback"
     return None
 

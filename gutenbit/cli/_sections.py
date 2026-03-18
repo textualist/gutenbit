@@ -38,6 +38,7 @@ from gutenbit.db import (
     _normalized_div_parts,
     div_parts_match,
 )
+from gutenbit.download import gutenberg_book_url
 
 # ---------------------------------------------------------------------------
 # Read time estimation
@@ -444,8 +445,10 @@ def _section_summary_json_payload(summary: _SectionSummary) -> dict[str, Any]:
         sec_json["opening_line"] = _preview(sec["opening_line"], JSON_OPENING_LINE_PREVIEW_CHARS)
         json_sections.append(sec_json)
 
+    book = dict(summary["book"])
+    book["link"] = gutenberg_book_url(book["id"])
     return {
-        "book": dict(summary["book"]),
+        "book": book,
         "overview": {
             **summary["overview"],
             "chunk_counts": dict(summary["overview"]["chunk_counts"]),
