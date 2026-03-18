@@ -226,8 +226,7 @@ def test_rich_section_summary_uses_simple_section_layout(tmp_path):
     assert rendered.index("gutenbit toc 1 --expand all") < rendered.index(
         'gutenbit search "Ishmael" --book 1'
     )
-    assert "Link" in rendered
-    assert "gutenberg.org" in rendered
+    assert "Gutenberg ID" in rendered
 
 
 def test_rich_section_summary_shows_visible_section_count_when_collapsed(tmp_path):
@@ -277,7 +276,7 @@ def test_rich_section_summary_indents_long_nested_section_paths(tmp_path):
     assert "BOOK ONE: 1805 / CHAPTER I." not in rendered
 
 
-def test_plain_section_summary_shows_gutenberg_link(tmp_path):
+def test_plain_section_summary_shows_gutenberg_id(tmp_path):
     db = _make_db(tmp_path)
     summary = _build_section_summary(db, 1)
     assert summary is not None
@@ -286,8 +285,8 @@ def test_plain_section_summary_shows_gutenberg_link(tmp_path):
     CliDisplay(stdout=out, interactive=False).section_summary(summary)
 
     rendered = out.getvalue()
-    assert "Link" in rendered
-    assert "https://www.gutenberg.org/cache/epub/1/pg1-images.html" in rendered
+    assert "Gutenberg ID" in rendered
+    assert "Link" not in rendered
 
 
 def test_plain_passage_header_includes_gutenberg_link(tmp_path):

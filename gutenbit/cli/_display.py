@@ -673,40 +673,38 @@ class CliDisplay:
             table = Table(box=box.SIMPLE_HEAD, header_style="muted", pad_edge=False)
             table.add_column("ID", justify="right", style="accent", no_wrap=True)
             table.add_column("Authors", max_width=40)
-            table.add_column("Subjects", max_width=40)
             table.add_column("Title", style="title")
-            table.add_column("Link", style="accent", no_wrap=True)
+            table.add_column("Subjects", max_width=40)
             for book in books:
                 authors = _summarize_semicolon_list(book.authors, max_items=2)[:40]
                 subjects = _summarize_semicolon_list(book.subjects, max_items=2)[:40]
-                link_text = Text("gutenberg.org")
-                link_text.stylize(f"link {gutenberg_book_url(book.id)}")
+                id_text = Text(str(book.id))
+                id_text.stylize(f"link {gutenberg_book_url(book.id)}")
                 table.add_row(
-                    str(book.id),
+                    id_text,
                     authors,
-                    subjects,
                     _single_line(book.title),
-                    link_text,
+                    subjects,
                 )
             self._out.print(table)
             if footer:
                 self._out.print(Text(footer, style="muted"))
         else:
             print(
-                f"  {'ID':>6}  {'AUTHORS':<40s}  {'SUBJECTS':<40s}  TITLE",
+                f"  {'ID':>6}  {'AUTHORS':<40s}  {'TITLE':<40s}  SUBJECTS",
                 file=self.stdout,
             )
             print(
                 f"  {'------':>6}  {'----------------------------------------':<40s}"
-                f"  {'----------------------------------------':<40s}  -----",
+                f"  {'----------------------------------------':<40s}  --------",
                 file=self.stdout,
             )
             for book in books:
                 authors = _summarize_semicolon_list(book.authors, max_items=2)[:40]
                 subjects = _summarize_semicolon_list(book.subjects, max_items=2)[:40]
-                title = _single_line(book.title)
+                title = _single_line(book.title)[:40]
                 print(
-                    f"  {book.id:>6}  {authors:<40s}  {subjects:<40s}  {title}",
+                    f"  {book.id:>6}  {authors:<40s}  {title:<40s}  {subjects}",
                     file=self.stdout,
                 )
             if footer:
@@ -755,7 +753,6 @@ class CliDisplay:
             rows.append(("Subjects", subjects))
         if shelves:
             rows.append(("Shelves", shelves))
-        rows.append(("Link", gutenberg_book_url(int(book["id"]))))
         return rows
 
     def section_summary(self, summary: Mapping[str, Any]) -> None:
@@ -772,11 +769,11 @@ class CliDisplay:
         book_grid.add_column(style="muted", justify="right", no_wrap=True)
         book_grid.add_column()
         for label, value in book_rows:
-            if label == "Link":
-                value_text = Text(value, style="accent")
-                value_text.stylize(f"link {value}")
-            elif label == "Title":
+            if label == "Title":
                 value_text = Text(value, style="title")
+            elif label == "Gutenberg ID":
+                value_text = Text(value, style="accent")
+                value_text.stylize(f"link {gutenberg_book_url(int(value))}")
             else:
                 value_text = Text(value)
             book_grid.add_row(Text(label, style="muted"), value_text)
