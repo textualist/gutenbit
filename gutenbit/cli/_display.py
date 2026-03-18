@@ -51,6 +51,7 @@ TOC_OVERVIEW_LIST_MAX_ITEMS = 7
 FOOTER_TITLE_MAX_CHARS = 32
 EMPTY_DISPLAY = "-"
 BOOK_ID_LABEL = "Book ID"
+GUTENBERG_ID_LABEL = "Gutenberg ID"
 BOOK_ID_KEY = "book_id"
 _INGEST_STAGE_LABELS = {
     "download": "Downloading",
@@ -729,7 +730,7 @@ class CliDisplay:
         """Build label/value pairs for a book overview section."""
         rows: list[tuple[str, str]] = [
             ("Title", str(book["title"])),
-            ("Gutenberg ID", str(book["id"])),
+            (GUTENBERG_ID_LABEL, str(book["id"])),
         ]
         if book.get("authors"):
             rows.append(("Authors", str(book["authors"])))
@@ -771,7 +772,7 @@ class CliDisplay:
         for label, value in book_rows:
             if label == "Title":
                 value_text = Text(value, style="title")
-            elif label == "Gutenberg ID":
+            elif label == GUTENBERG_ID_LABEL:
                 value_text = Text(value, style="accent")
                 value_text.stylize(f"link {gutenberg_book_url(int(value))}")
             else:
