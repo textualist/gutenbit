@@ -417,7 +417,7 @@ def _merge_chapter_description_paragraphs(
 
     for idx, sec in enumerate(new_sections):
         keyword = _heading_keyword(sec.heading_text)
-        if not keyword or keyword in _BROAD_KEYWORDS or not _is_bare_keyword_heading(sec.heading_text):
+        if not keyword or keyword in _BROAD_KEYWORDS or not _is_bare_keyword_heading(sec.heading_text, keyword):
             continue
 
         # Find the heading element and then the next <p> sibling.

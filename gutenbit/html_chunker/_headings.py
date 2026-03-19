@@ -471,15 +471,19 @@ def _is_front_matter_heading(heading_text: str) -> bool:
     )
 
 
-def _is_bare_keyword_heading(heading_text: str) -> bool:
+def _is_bare_keyword_heading(heading_text: str, keyword: str | None = None) -> bool:
     """Return True for keyword+index headings with no trailing subtitle.
 
     Matches headings like ``CHAPTER I``, ``CHAPTER THIRTY-SIX``, ``STAVE II``
     but NOT ``CHAPTER I THE BEGINNING`` (which has a subtitle).
     Reuses :func:`_heading_keyword` and :data:`_STRUCTURAL_INDEX_TOKEN_RE`
     so the number-word vocabulary is defined in exactly one place.
+
+    *keyword* may be passed to avoid a redundant :func:`_heading_keyword` call
+    when the caller has already extracted it.
     """
-    keyword = _heading_keyword(heading_text)
+    if keyword is None:
+        keyword = _heading_keyword(heading_text)
     if not keyword:
         return False
     if _BARE_HEADING_NUMBER_RE.fullmatch(heading_text):
