@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
-from bisect import bisect_right
-from collections import defaultdict
+from bisect import bisect_left, bisect_right
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 
 from bs4 import Tag
@@ -91,8 +91,11 @@ _TAIL_SECTION_HEADING_RE = re.compile(
 # NOTE: This is intentionally broad — it may match non-apparatus headings
 # like "Notes on the Author" in edge cases.  If that causes mis-truncation,
 # add a position-relative guard (e.g. only trigger past the last TOC entry).
+# The third alternative uses \b after "conclusion" to allow trailing text
+# (e.g. "A Review, and Conclusion of the Whole"); the fourth uses $ to
+# match bare "Conclusion" or "Conclusion " without requiring a word after it.
 _REFINEMENT_STOP_HEADING_RE = re.compile(
-    r"^(?:appendix|notes\s+on\b)",
+    r"^(?:appendix|notes\s+on\b|(?:a\s+)?review\s*[,;]?\s*(?:and\s+)?conclusion\b|conclusion\s*$)",
     re.IGNORECASE,
 )
 
@@ -177,6 +180,10 @@ def _parse_toc_sections(
             continue
 
         heading_level = _classify_level(heading_text, is_emphasized)
+        # Apparatus headings (APPENDIX, NOTES ON...) are structurally
+        # top-level even when the TOC link isn't emphasised.
+        if heading_level > 1 and _REFINEMENT_STOP_HEADING_RE.match(heading_text):
+            heading_level = 1
         if _toc_link_refines_body_heading(link_text, heading_text):
             sections.append(
                 _Section(anchor_id, heading_text, heading_level, body_anchor, heading_rank)
@@ -213,6 +220,54 @@ def _parse_toc_sections(
     if len(sections) >= 2 and sections[1].heading_text.startswith(sections[0].heading_text + " "):
         sections = sections[1:]
     return _respect_heading_rank_nesting(_merge_bare_heading_pairs(sections))
+
+
+def _normalize_toc_heading_ranks(sections: list[_Section]) -> list[_Section]:
+    """Correct anomalous heading ranks within keyword groups.
+
+    Some editions use inconsistent heading tags for the same keyword
+    (e.g. most CHAPTERs are ``<h2>`` but one is ``<h3>``).  Normalize
+    outlier ranks to the mode so that later rank-based refinement works
+    correctly.
+    """
+    if len(sections) < 3:
+        return sections
+
+    rank_counts: dict[str, Counter[int]] = {}
+    for section in sections:
+        kw = _heading_keyword(section.heading_text)
+        if not kw or section.heading_rank is None:
+            continue
+        if kw not in rank_counts:
+            rank_counts[kw] = Counter()
+        rank_counts[kw][section.heading_rank] += 1
+
+    mode_ranks = {kw: counts.most_common(1)[0][0] for kw, counts in rank_counts.items()}
+
+    changed = False
+    new_sections = []
+    for section in sections:
+        kw = _heading_keyword(section.heading_text)
+        if (
+            kw
+            and section.heading_rank is not None
+            and kw in mode_ranks
+            and section.heading_rank != mode_ranks[kw]
+        ):
+            new_sections.append(
+                _Section(
+                    section.anchor_id,
+                    section.heading_text,
+                    section.level,
+                    section.body_anchor,
+                    mode_ranks[kw],
+                )
+            )
+            changed = True
+        else:
+            new_sections.append(section)
+
+    return new_sections if changed else sections
 
 
 # ---------------------------------------------------------------------------
@@ -484,7 +539,41 @@ def _parse_heading_sections(
         )
         i += 1
 
-    return _respect_heading_rank_nesting(_drop_leading_repeated_title_sections(sections))
+    sections = _drop_leading_repeated_title_sections(sections)
+    sections = _collapse_degenerate_title_block(sections, doc_index=doc_index)
+    return _respect_heading_rank_nesting(sections)
+
+
+def _collapse_degenerate_title_block(
+    sections: list[_Section],
+    *,
+    doc_index: _DocumentIndex,
+) -> list[_Section]:
+    """Collapse title-only heading runs with no content into the last section.
+
+    When heading-scan finds only decorative title-page headings (no structural
+    keywords, no front-matter start headings) and no body paragraphs appear
+    before the final section, the headings are title fragments — not real
+    structure.  Keep only the last section, which owns all content.
+    """
+    if len(sections) < 2:
+        return sections
+    # Every section except the last must be a pure title-like heading.
+    if not all(
+        _is_title_like_heading(s.heading_text)
+        and not _FALLBACK_START_HEADING_RE.match(s.heading_text)
+        for s in sections[:-1]
+    ):
+        return sections
+    first_pos = _tag_position(sections[0].body_anchor, doc_index.tag_positions)
+    last_pos = _tag_position(sections[-1].body_anchor, doc_index.tag_positions)
+    if first_pos is None or last_pos is None:
+        return sections
+    lo = bisect_right(doc_index.paragraph_positions, first_pos)
+    hi = bisect_left(doc_index.paragraph_positions, last_pos)
+    if lo < hi:
+        return sections  # content exists before last section
+    return [sections[-1]]
 
 
 # ---------------------------------------------------------------------------
@@ -647,6 +736,11 @@ def _refined_candidate_section(
     allow_tail_title_like: bool,
 ) -> _Section | None:
     if _is_title_like_heading(candidate.heading_text):
+        # Structural titles always start with an uppercase letter; a lowercase
+        # opener or quotation mark signals descriptive content or dialogue.
+        first_char = candidate.heading_text[:1]
+        if first_char.islower() or first_char in "\"\u201c\u00ab":
+            return None
         if candidate.heading_rank is None or toc_section.heading_rank is None:
             return None
         if candidate.heading_rank != toc_section.heading_rank + 1 and not (
@@ -771,6 +865,53 @@ def _nest_broad_subdivisions(sections: list[_Section]) -> list[_Section]:
                 shifted_level = min(4, current_level + 1)
                 if shifted_level != current_level:
                     new_levels[inner_idx] = shifted_level
+                    changed = True
+
+    if not changed:
+        return sections
+
+    return [section._with_level(new_levels[idx]) for idx, section in enumerate(sections)]
+
+
+def _nest_chapters_under_broad_containers(sections: list[_Section]) -> list[_Section]:
+    """Nest chapter-level sections under broad keyword containers at the same level.
+
+    When BOOK and CHAPTER share the same heading rank (both ``<h3>``), the
+    broad keyword (BOOK) is a structural container and the chapter keyword
+    should sit one level deeper.  This handles works like Les Misérables
+    where VOLUME > BOOK > CHAPTER all appear in the TOC.
+    """
+    if len(sections) < 2:
+        return sections
+
+    new_levels = [section.level for section in sections]
+    changed = False
+
+    for idx, section in enumerate(sections):
+        keyword = _heading_keyword(section.heading_text)
+        if keyword not in _BROAD_KEYWORDS:
+            continue
+
+        broad_level = new_levels[idx]
+
+        for inner_idx in range(idx + 1, len(sections)):
+            inner_level = new_levels[inner_idx]
+            if inner_level < broad_level:
+                break
+            if inner_level == broad_level:
+                inner_kw = _heading_keyword(sections[inner_idx].heading_text)
+                if inner_kw and inner_kw in _BROAD_KEYWORDS:
+                    break  # next broad container at same level — stop
+                # Standalone structural headings and apparatus closures are
+                # top-level peers, not children of the preceding broad keyword.
+                inner_text = sections[inner_idx].heading_text
+                if _STANDALONE_STRUCTURAL_RE.search(inner_text):
+                    break
+                if _REFINEMENT_STOP_HEADING_RE.match(inner_text):
+                    break
+                shifted = min(4, inner_level + 1)
+                if shifted != inner_level:
+                    new_levels[inner_idx] = shifted
                     changed = True
 
     if not changed:
@@ -1002,3 +1143,51 @@ def _should_scan_paragraph_heading_rows(
         if non_toc_scanned >= 400:
             break
     return False
+
+
+# ---------------------------------------------------------------------------
+# Paragraph-text section fallback
+# ---------------------------------------------------------------------------
+
+# Matches paragraph text that starts with a structural keyword followed by
+# a number or Roman numeral — indicating a chapter/section heading encoded
+# as a plain <p>, not an <h1>–<h6>.
+_PARAGRAPH_SECTION_RE = re.compile(
+    r"^(?:CHAPTER|SECTION|BOOK|PART|VOLUME)\s+[IVXLCDM0-9]+\b",
+    re.IGNORECASE,
+)
+
+
+def _parse_paragraph_sections(
+    *,
+    doc_index: _DocumentIndex,
+) -> list[_Section]:
+    """Extract sections from paragraph text when no heading tags exist.
+
+    Some Gutenberg editions encode chapter headings as plain ``<p>`` elements
+    (e.g. ``<p class="xhtml_p_align">CHAPTER I. TITLE</p>``).  When neither
+    the TOC nor the heading scan finds structure, this function scans
+    paragraphs for structural keyword patterns and creates sections from them.
+    """
+    sections: list[_Section] = []
+    for ip in doc_index.paragraphs:
+        match = _PARAGRAPH_SECTION_RE.match(ip.text)
+        if not match:
+            continue
+        heading_text = _clean_heading_text(ip.text)
+        if not heading_text:
+            continue
+        # Paragraph text can be much longer than a real heading tag;
+        # truncate at a word boundary to keep div labels reasonable.
+        if len(heading_text) > 120:
+            last_space = heading_text.rfind(" ", 0, 120)
+            heading_text = heading_text[:last_space] if last_space > 0 else heading_text[:120]
+        level = _classify_level(heading_text, False)
+        anchor_id = ""
+        anchor = ip.tag.find("a", id=True)
+        if anchor:
+            anchor_id = str(anchor.get("id", ""))
+        sections.append(
+            _Section(anchor_id, heading_text, level, ip.tag, None)
+        )
+    return sections
