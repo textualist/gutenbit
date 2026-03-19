@@ -10,8 +10,8 @@ import click
 
 from gutenbit.catalog import BookRecord
 from gutenbit.cli._context import (
-    _CommandEnv,
     _command_error,
+    _CommandEnv,
     _common_options,
     _display_cli_path,
     _load_catalog,
@@ -298,7 +298,8 @@ def _cmd_add(
     if invalid_ids:
         return _command_error(
             "add",
-            f"Book IDs must be positive integers, got: {', '.join(str(bid) for bid in invalid_ids)}",
+            f"Book IDs must be positive integers, got: "
+            f"{', '.join(str(bid) for bid in invalid_ids)}",
             as_json=env.as_json,
             data={"invalid_ids": invalid_ids},
         )
@@ -793,8 +794,8 @@ def _parse_book_ids(
         return ()
     try:
         return tuple(int(x) for x in value.split())
-    except ValueError:
-        raise click.BadParameter("expected space-separated integers")
+    except ValueError as err:
+        raise click.BadParameter("expected space-separated integers") from err
 
 
 @click.command(
@@ -848,7 +849,7 @@ tip: use 'gutenbit toc <id>' first to see a book's structure, then
     type=click.Choice(["rank", "first", "last"]),
     default="rank",
     metavar="ORDER",
-    help="search result order: rank (BM25); first (book asc + position asc); last (book desc + position desc)",
+    help="search result order: rank (BM25); first (book+pos asc); last (book+pos desc)",
 )
 @click.option("--author", default=None, help="filter results by author (substring match)")
 @click.option("--title", default=None, help="filter results by title (substring match)")
@@ -1256,13 +1257,16 @@ selectors (choose at most one):
 @click.option(
     "--section",
     default=None,
-    help='read from a section selector: path prefix (e.g. PART ONE/CHAPTER I) or section number from `toc` (e.g. "3")',
+    help=(
+        "read from a section selector: path prefix "
+        '(e.g. PART ONE/CHAPTER I) or section number from `toc` (e.g. "3")'
+    ),
 )
 @click.option(
     "--all",
     "show_all",
     is_flag=True,
-    help="read the full selected scope (whole book or selected section, including nested subsections)",
+    help="read the full selected scope (whole book or section, including subsections)",
 )
 @click.option(
     "--forward",
@@ -1616,7 +1620,9 @@ def _cmd_view(
             else:
                 forward = _effective_forward(DEFAULT_VIEW_FORWARD)
                 all_scope = None
-                all_rows = [row for row in db_conn.chunk_records(book) if row.position >= anchor.position]
+                all_rows = [
+                    row for row in db_conn.chunk_records(book) if row.position >= anchor.position
+                ]
                 rows = _section_reading_window(all_rows, text_passages=forward)
             record = _view_payload(
                 section=resolved_section,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import gzip
 import re
@@ -271,10 +272,8 @@ class Catalog:
             raise
 
         payload = response.content
-        try:
+        with contextlib.suppress(OSError):
             write_bytes_atomic(payload_path, payload)
-        except OSError:
-            pass
         catalog = _catalog_from_payload(payload, policy=policy)
         catalog.fetch_info = CatalogFetchInfo(
             source="downloaded",

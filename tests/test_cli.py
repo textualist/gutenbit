@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import contextlib
-import re
 import io
+import re
 from pathlib import Path
 
 import pytest

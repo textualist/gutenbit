@@ -62,6 +62,8 @@ def _estimate_read_time(words: int, *, wpm: int = 250) -> str:
 
 def _section_selector_parts(raw: str) -> list[str]:
     parts = _normalized_div_parts(raw)
+    if parts is None:
+        return []
     if len(parts) > 4:
         raise ValueError("div path has too many segments (max 4: div1/div2/div3/div4)")
     return parts

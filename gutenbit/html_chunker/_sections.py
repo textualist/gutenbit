@@ -739,7 +739,7 @@ def _refined_candidate_section(
         # Structural titles always start with an uppercase letter; a lowercase
         # opener or quotation mark signals descriptive content or dialogue.
         first_char = candidate.heading_text[:1]
-        if first_char.islower() or first_char in "\"\u201c\u00ab":
+        if first_char.islower() or first_char in '"\u201c\u00ab':
             return None
         if candidate.heading_rank is None or toc_section.heading_rank is None:
             return None
@@ -1187,7 +1187,5 @@ def _parse_paragraph_sections(
         anchor = ip.tag.find("a", id=True)
         if anchor:
             anchor_id = str(anchor.get("id", ""))
-        sections.append(
-            _Section(anchor_id, heading_text, level, ip.tag, None)
-        )
+        sections.append(_Section(anchor_id, heading_text, level, ip.tag, None))
     return sections

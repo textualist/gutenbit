@@ -228,9 +228,8 @@ def _passage_footer_stats(
         _footer_book_id(payload[BOOK_ID_KEY]),
     ]
     if payload.get("section"):
-        stats.append(
-            f"section {_truncate_single_line(_section_label(payload['section']), FOOTER_TITLE_MAX_CHARS)}"
-        )
+        label = _truncate_single_line(_section_label(payload["section"]), FOOTER_TITLE_MAX_CHARS)
+        stats.append(f"section {label}")
     if payload.get("section_number") is not None:
         stats.append(f"section no. {payload['section_number']}")
     if payload.get("position") is not None:
@@ -678,9 +677,13 @@ class CliDisplay:
             table.add_column("Authors", max_width=BOOK_LIST_COLUMN_MAX_CHARS)
             table.add_column("Title", style="title")
             table.add_column("Subjects", max_width=BOOK_LIST_COLUMN_MAX_CHARS)
+            max_items = BOOK_LIST_SUMMARY_MAX_ITEMS
+            max_chars = BOOK_LIST_COLUMN_MAX_CHARS
             for book in books:
-                authors = _summarize_semicolon_list(book.authors, max_items=BOOK_LIST_SUMMARY_MAX_ITEMS)[:BOOK_LIST_COLUMN_MAX_CHARS]
-                subjects = _summarize_semicolon_list(book.subjects, max_items=BOOK_LIST_SUMMARY_MAX_ITEMS)[:BOOK_LIST_COLUMN_MAX_CHARS]
+                authors = _summarize_semicolon_list(book.authors, max_items=max_items)[:max_chars]
+                subjects = _summarize_semicolon_list(book.subjects, max_items=max_items)[
+                    :max_chars
+                ]
                 id_text = Text(str(book.id))
                 id_text.stylize(f"link {gutenberg_book_url(book.id)}")
                 table.add_row(
@@ -703,9 +706,10 @@ class CliDisplay:
                 f"  {'------':>6}  {sep:<{w}s}  {sep:<{w}s}  --------",
                 file=self.stdout,
             )
+            max_items = BOOK_LIST_SUMMARY_MAX_ITEMS
             for book in books:
-                authors = _summarize_semicolon_list(book.authors, max_items=BOOK_LIST_SUMMARY_MAX_ITEMS)[:w]
-                subjects = _summarize_semicolon_list(book.subjects, max_items=BOOK_LIST_SUMMARY_MAX_ITEMS)[:w]
+                authors = _summarize_semicolon_list(book.authors, max_items=max_items)[:w]
+                subjects = _summarize_semicolon_list(book.subjects, max_items=max_items)[:w]
                 title = _single_line(book.title)
                 print(
                     f"  {book.id:>6}  {authors:<{w}s}  {title:<{w}s}  {subjects}",

@@ -73,7 +73,7 @@ def test_documented_cli_commands_parse(command: str):
         pytest.fail(f"Command failed to parse: {command!r} — {exc}")
     # In Click 8.x, remaining tokens (subcommand + its args) are in protected_args;
     # Click 9.0 merges them into args. Support both.
-    cmd_args = (ctx.protected_args if ctx.protected_args else ctx.args)
+    cmd_args = ctx.protected_args if ctx.protected_args else ctx.args
     assert cmd_args, f"No subcommand found in: {command!r}"
     cmd_name = cmd_args[0]
     assert cmd_name in _cli.commands, f"Unknown subcommand {cmd_name!r} in: {command!r}"
