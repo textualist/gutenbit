@@ -52,7 +52,7 @@ _STRUCTURAL_INDEX_TOKEN_RE = re.compile(
     re.IGNORECASE,
 )
 _TRAILING_STRUCTURAL_HEADING_RE = re.compile(
-    r"^(?:THE\s+)?(?P<index>[A-Z0-9]+)\s+"
+    r"^(?:THE\s+)?(?P<index>[A-Z0-9]+(?:\s+AND\s+[A-Z]+)?)\s+"
     r"(?P<keyword>BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|"
     r"SCOENA|SECTION|ADVENTURE)\.?\s*$",
     re.IGNORECASE,
@@ -60,6 +60,19 @@ _TRAILING_STRUCTURAL_HEADING_RE = re.compile(
 _EMBEDDED_HEADING_RE = re.compile(
     r"(?:BOOK|PART|ACT|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)"
     r"\.?\s+[IVXLCDM0-9]+",
+    re.IGNORECASE,
+)
+# Matches an ordinal word followed by a structural keyword anywhere in
+# a heading, e.g. "FIRST PART. subtitle" or "title. SECOND PART.".
+# The keyword must be at a sentence boundary (followed by period or
+# end of string) to avoid false positives on titles like
+# "THE SECOND PART OF KING HENRY THE FOURTH".
+_EMBEDDED_ORDINAL_KEYWORD_RE = re.compile(
+    r"\b(?P<index>first|second|third|fourth|fifth|sixth|seventh|eighth|"
+    r"ninth|tenth|eleventh|twelfth)\s+"
+    r"(?P<keyword>book|part|act|actus|epilogue|volume|chapter|stave|"
+    r"scene|scena|scoena|section|adventure)"
+    r"(?:\.|[,;:\s]*$)",
     re.IGNORECASE,
 )
 _PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
@@ -124,15 +137,20 @@ def _heading_keyword(heading_text: str) -> str:
         return ""
 
     trailing_match = _TRAILING_STRUCTURAL_HEADING_RE.fullmatch(heading_text)
-    if not trailing_match:
-        return ""
+    if trailing_match:
+        index_token = trailing_match.group("index").lower().split()[0]
+        if _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(index_token):
+            keyword = trailing_match.group("keyword").lower()
+            return _STRUCTURAL_KEYWORD_ALIASES.get(keyword, keyword)
 
-    index_token = trailing_match.group("index").lower()
-    if not _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(index_token):
-        return ""
+    # Embedded ordinal + keyword, e.g. "FIRST PART. subtitle" or
+    # "title. SECOND PART." — common in older Gutenberg editions.
+    embedded_match = _EMBEDDED_ORDINAL_KEYWORD_RE.search(heading_text)
+    if embedded_match:
+        keyword = embedded_match.group("keyword").lower()
+        return _STRUCTURAL_KEYWORD_ALIASES.get(keyword, keyword)
 
-    keyword = trailing_match.group("keyword").lower()
-    return _STRUCTURAL_KEYWORD_ALIASES.get(keyword, keyword)
+    return ""
 
 
 def _heading_key(heading_text: str) -> str:
