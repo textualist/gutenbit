@@ -497,10 +497,17 @@ def test_jane_eyre_keeps_preface_and_note_before_chapter_one():
 
 
 def test_les_miserables_keeps_preface_and_final_letter():
-    heading_texts = [heading.content for heading in _headings(135)]
+    headings = _headings(135)
+    heading_texts = [heading.content for heading in headings]
 
     assert heading_texts[:3] == ["LES MISÉRABLES", "PREFACE", "VOLUME I FANTINE"]
     assert heading_texts[-1] == "LETTER TO M. DAELLI"
+
+    # Three-level nesting: Volume > Book > Chapter.
+    ch1 = next(h for h in headings if h.content == "CHAPTER I—M. MYRIEL")
+    assert ch1.div1 == "VOLUME I FANTINE"
+    assert ch1.div2 == "BOOK FIRST—A JUST MAN"
+    assert ch1.div3 == "CHAPTER I—M. MYRIEL"
 
 
 def test_christmas_carol_keeps_preface_before_stave_one():
@@ -738,14 +745,12 @@ def test_treasure_island_nests_chapters_under_six_parts():
     chapter_one = next(
         heading
         for heading in headings
-        if heading.content == 'I The Old Sea-dog at the \u201cAdmiral Benbow\u201d'
+        if heading.content == "I The Old Sea-dog at the \u201cAdmiral Benbow\u201d"
     )
     assert chapter_one.div1 == "PART ONE\u2014The Old Buccaneer"
-    assert chapter_one.div2 == 'I The Old Sea-dog at the \u201cAdmiral Benbow\u201d'
+    assert chapter_one.div2 == "I The Old Sea-dog at the \u201cAdmiral Benbow\u201d"
 
-    last_chapter = next(
-        heading for heading in headings if heading.content == "XXXIV And Last"
-    )
+    last_chapter = next(heading for heading in headings if heading.content == "XXXIV And Last")
     assert last_chapter.div1 == "PART SIX\u2014Captain Silver"
     assert last_chapter.div2 == "XXXIV And Last"
 
@@ -794,14 +799,427 @@ def test_zarathustra_preserves_all_eighty_discourses_and_four_parts():
 
     # All 80 discourses present (I through LXXX).
     discourse_headings = [
-        h for h in headings
-        if re.match(r"^[IVXLCDM]+\.\s+\S", h.content) and h.div2
+        h for h in headings if re.match(r"^[IVXLCDM]+\.\s+\S", h.content) and h.div2
     ]
     assert len(discourse_headings) == 80
     assert discourse_headings[0].content == "I. THE THREE METAMORPHOSES."
     assert discourse_headings[-1].content == "LXXX. THE SIGN."
 
-    # Appendix is a single flat section with no subsections.
-    assert "APPENDIX." in heading_texts
-    appendix_idx = heading_texts.index("APPENDIX.")
-    assert appendix_idx == len(heading_texts) - 1
+    # Appendix is a single flat section with no subsections at div1 level.
+    appendix = next(h for h in headings if h.content == "APPENDIX.")
+    assert appendix.div1 == "APPENDIX."
+    assert appendix.div2 == ""
+    assert heading_texts.index("APPENDIX.") == len(heading_texts) - 1
+
+
+# ---------------------------------------------------------------------------
+# KEI-123 batch: 25 new works
+# ---------------------------------------------------------------------------
+
+
+def test_pride_and_prejudice_keeps_preface_and_sixty_one_chapters():
+    headings = _headings(1342)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 62
+    assert heading_texts[0] == "PREFACE."
+    assert heading_texts[1] == "Chapter I."
+    assert heading_texts[-1] == "CHAPTER LXI."
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_anna_karenina_nests_chapters_under_eight_parts():
+    headings = _headings(1399)
+
+    parts = [h for h in headings if h.content.startswith("PART ")]
+    assert [h.content for h in parts] == [
+        "PART ONE",
+        "PART TWO",
+        "PART THREE",
+        "PART FOUR",
+        "PART FIVE",
+        "PART SIX",
+        "PART SEVEN",
+        "PART EIGHT",
+    ]
+
+    ch1_part1 = next(h for h in headings if h.content == "Chapter 1" and h.div1 == "PART ONE")
+    assert ch1_part1.div2 == "Chapter 1"
+
+    ch1_part8 = next(h for h in headings if h.content == "Chapter 1" and h.div1 == "PART EIGHT")
+    assert ch1_part8.div2 == "Chapter 1"
+
+
+def test_frankenstein_keeps_letters_and_chapters_flat():
+    headings = _headings(84)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 28
+    assert heading_texts[:5] == ["Letter 1", "Letter 2", "Letter 3", "Letter 4", "Chapter 1"]
+    assert heading_texts[-1] == "Chapter 24"
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_wuthering_heights_keeps_thirty_four_flat_chapters():
+    headings = _headings(768)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 34
+    assert heading_texts[0] == "CHAPTER I"
+    assert heading_texts[-1] == "CHAPTER XXXIV"
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_dorian_gray_keeps_preface_before_twenty_chapters():
+    heading_texts = [h.content for h in _headings(174)]
+
+    assert len(heading_texts) == 21
+    assert heading_texts[0] == "THE PREFACE"
+    assert heading_texts[1] == "CHAPTER I."
+    assert heading_texts[-1] == "CHAPTER XX."
+
+
+def test_sherlock_holmes_keeps_twelve_stories_with_subsections():
+    headings = _headings(1661)
+
+    assert len(headings) == 14
+    # First story has 3 subsections (I, II, III).
+    assert headings[0].content == "I. A SCANDAL IN BOHEMIA"
+    assert headings[1].content == "II."
+    assert headings[1].div1 == "I. A SCANDAL IN BOHEMIA"
+    assert headings[1].div2 == "II."
+
+    # Remaining 11 stories are flat.
+    assert headings[3].content == "II. THE RED-HEADED LEAGUE"
+    assert headings[-1].content == "XII. THE ADVENTURE OF THE COPPER BEECHES"
+
+
+def test_great_expectations_keeps_fifty_nine_flat_chapters():
+    heading_texts = [h.content for h in _headings(1400)]
+
+    assert len(heading_texts) == 59
+    assert heading_texts[0] == "Chapter I."
+    assert heading_texts[-1] == "Chapter LIX."
+
+
+def test_monte_cristo_nests_chapters_under_five_volumes():
+    headings = _headings(1184)
+
+    volumes = [h for h in headings if h.content.startswith("VOLUME ")]
+    assert len(volumes) == 5
+
+    chapters = [h for h in headings if h.content.startswith("Chapter ")]
+    assert len(chapters) == 117
+
+    assert chapters[0].div1 == "VOLUME ONE"
+    assert chapters[0].div2 == "Chapter 1. Marseilles\u2014The Arrival"
+    assert chapters[-1].div1 == "VOLUME FIVE"
+    assert chapters[-1].div2 == "Chapter 117. The Fifth of October"
+
+
+def test_sense_and_sensibility_keeps_fifty_flat_chapters():
+    heading_texts = [h.content for h in _headings(161)]
+
+    assert len(heading_texts) == 50
+    assert heading_texts[0] == "CHAPTER I."
+    assert heading_texts[-1] == "CHAPTER L."
+
+
+def test_oliver_twist_keeps_fifty_three_chapters_with_long_titles():
+    headings = _headings(730)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 53
+    assert "TREATS OF THE PLACE WHERE OLIVER TWIST WAS BORN" in heading_texts[0]
+    assert heading_texts[-1] == "CHAPTER LIII. AND LAST"
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_tess_nests_chapters_under_seven_phases():
+    headings = _headings(110)
+
+    phases = [h for h in headings if "Phase" in h.content]
+    assert len(phases) == 7
+    assert phases[0].content == "Phase the First: The Maiden"
+    assert phases[-1].content == "Phase the Seventh: Fulfilment"
+
+    ch1 = next(h for h in headings if h.content == "I" and h.div2 == "I")
+    assert ch1.div1 == "Phase the First: The Maiden"
+
+    assert len(headings) == 66
+
+
+def test_alice_in_wonderland_keeps_twelve_chapters():
+    heading_texts = [h.content for h in _headings(11)]
+
+    assert len(heading_texts) == 12
+    assert heading_texts[0] == "CHAPTER I. Down the Rabbit-Hole"
+    assert heading_texts[-1] == "CHAPTER XII. Alice\u2019s Evidence"
+
+
+def test_little_women_nests_chapters_under_two_parts():
+    headings = _headings(514)
+
+    parts = [h for h in headings if h.content.startswith("PART ")]
+    assert [h.content for h in parts] == ["PART 1", "PART 2"]
+
+    ch1 = next(h for h in headings if "PLAYING PILGRIMS" in h.content)
+    assert ch1.div1 == "PART 1"
+    assert ch1.div2 == "CHAPTER ONE PLAYING PILGRIMS"
+
+    assert len(headings) == 49
+
+
+def test_war_of_the_worlds_nests_chapters_under_two_books():
+    headings = _headings(36)
+
+    books = [h for h in headings if h.content.startswith("BOOK ")]
+    assert len(books) == 2
+
+    book1_chapters = [h for h in headings if h.div1 == books[0].content and h.div2]
+    book2_chapters = [h for h in headings if h.div1 == books[1].content and h.div2]
+    assert len(book1_chapters) == 17
+    assert len(book2_chapters) == 10
+
+
+def test_heart_of_darkness_keeps_title_and_three_parts():
+    headings = _headings(219)
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts == ["Heart of Darkness", "I", "II", "III"]
+
+
+def test_jekyll_and_hyde_keeps_ten_named_chapters():
+    headings = _headings(42)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 10
+    assert heading_texts[0] == "STORY OF THE DOOR"
+    assert heading_texts[-1] == "HENRY JEKYLL\u2019S FULL STATEMENT OF THE CASE"
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_great_gatsby_keeps_title_and_nine_chapters():
+    headings = _headings(64317)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 10
+    assert heading_texts[0] == "The Great Gatsby by F. Scott Fitzgerald"
+    assert heading_texts[1:] == ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"]
+
+
+def test_the_prince_nests_chapters_under_the_prince_heading():
+    headings = _headings(1232)
+
+    the_prince = next(h for h in headings if h.content == "THE PRINCE")
+    assert the_prince.div1 == "THE PRINCE"
+    assert the_prince.div2 == ""
+
+    ch1 = next(h for h in headings if h.content.startswith("CHAPTER I."))
+    assert ch1.div1 == "THE PRINCE"
+
+    chapters = [h for h in headings if h.content.startswith("CHAPTER ") and h.div1 == "THE PRINCE"]
+    assert len(chapters) == 26
+
+    assert len(headings) == 36
+
+
+def test_meditations_keeps_appendix_at_div1_and_excludes_content_subtitle():
+    headings = _headings(2680)
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts[1] == "HIS FIRST BOOK"
+    assert heading_texts[-2] == "THE TWELFTH BOOK"
+
+    # "concerning HIMSELF:" is a descriptive subtitle, not a structural heading.
+    assert "concerning HIMSELF:" not in heading_texts
+
+    # APPENDIX must be a top-level peer of the books, not nested under
+    # THE TWELFTH BOOK.
+    appendix = next(h for h in headings if h.content == "APPENDIX")
+    assert appendix.div1 == "APPENDIX"
+    assert appendix.div2 == ""
+
+    assert len(headings) == 14
+
+
+def test_beyond_good_and_evil_keeps_preface_and_nine_chapters():
+    heading_texts = [h.content for h in _headings(4363)]
+
+    assert len(heading_texts) == 11
+    assert heading_texts[0] == "PREFACE"
+    assert heading_texts[-1] == "FROM THE HEIGHTS"
+
+
+def test_grimms_fairy_tales_nests_stories_under_title():
+    headings = _headings(2591)
+
+    assert headings[0].content == "THE BROTHERS GRIMM FAIRY TALES"
+    assert headings[0].div2 == ""
+
+    stories = [h for h in headings if h.div2]
+    assert len(stories) == 62
+    assert stories[0].content == "THE GOLDEN BIRD"
+    assert stories[-1].content == "SNOW-WHITE AND ROSE-RED"
+
+
+def test_confessions_of_augustine_keeps_thirteen_books():
+    heading_texts = [h.content for h in _headings(3296)]
+
+    assert heading_texts == [
+        "BOOK I",
+        "BOOK II",
+        "BOOK III",
+        "BOOK IV",
+        "BOOK V",
+        "BOOK VI",
+        "BOOK VII",
+        "BOOK VIII",
+        "BOOK IX",
+        "BOOK X",
+        "BOOK XI",
+        "BOOK XII",
+        "BOOK XIII",
+    ]
+
+
+def test_robinson_crusoe_keeps_twenty_chapters():
+    heading_texts = [h.content for h in _headings(521)]
+
+    assert len(heading_texts) == 20
+    assert heading_texts[0] == "CHAPTER I. START IN LIFE"
+    assert heading_texts[-1] == "CHAPTER XX. FIGHT BETWEEN FRIDAY AND A BEAR"
+
+
+def test_dolls_house_keeps_three_acts():
+    heading_texts = [h.content for h in _headings(2542)]
+
+    assert heading_texts == ["ACT I", "ACT II", "ACT III"]
+
+
+def test_beowulf_merges_canto_pairs_and_captures_verse_content():
+    headings = _headings(16328)
+    heading_texts = [h.content for h in headings]
+    paragraphs = _paragraphs(16328)
+
+    # Frontmatter preserved.
+    assert heading_texts[:3] == ["PREFACE.", "THE STORY.", "ABBREVIATIONS USED IN THE NOTES."]
+
+    # Roman numerals merge with descriptive titles (43 cantos).
+    assert heading_texts[7] == "I. THE LIFE AND DEATH OF SCYLD"
+    assert heading_texts[-2] == "XLIII. THE BURNING OF BEOWULF"
+    assert heading_texts[-1] == "ADDENDA."
+    assert len(headings) == 51
+
+    # Verse content (in <div class="l"> tags) is captured.
+    canto_i_text = [p for p in paragraphs if "I. THE LIFE AND DEATH OF SCYLD" in p.div1]
+    assert len(canto_i_text) > 50
+    assert any("Spear-Dane" in p.content for p in canto_i_text)
+
+
+def test_leviathan_refines_ch_xlvii_subsections_despite_same_rank():
+    """PG 3207 — Ch XLVII is h3 (not h2) but its subsections should still refine."""
+    headings = _headings(3207)
+
+    ch47_subs = [h for h in headings if "XLVII" in h.div2 and h.div3]
+    assert len(ch47_subs) >= 15
+
+    first_sub = ch47_subs[0]
+    assert first_sub.div1 == "PART IV. OF THE KINDOME OF DARKNESSE"
+    assert "XLVII" in first_sub.div2
+    assert first_sub.div3 != ""
+
+
+def test_leviathan_review_and_conclusion_at_div1():
+    """PG 3207 — 'A REVIEW, AND CONCLUSION' is a top-level structural closure."""
+    headings = _headings(3207)
+
+    review = next(h for h in headings if "REVIEW" in h.content)
+    assert review.div1 == "A REVIEW, AND CONCLUSION"
+    assert review.div2 == ""
+
+
+def test_kjv_psalms_excludes_verse_reference_headings():
+    """PG 30 — Bible verse references (19:070:001...) are not structural headings."""
+    headings = _headings(30)
+    heading_texts = [h.content for h in headings]
+
+    assert "Book 19 Psalms" in heading_texts
+    # No verse references should leak as sections.
+    assert not any("19:070:001" in t or "19:092:001" in t for t in heading_texts)
+    # Psalms should be a single section (no subsections).
+    psalms_subs = [h for h in headings if h.div2 and "Psalm" in h.div1]
+    assert len(psalms_subs) == 0
+
+
+def test_divine_comedy_inferno_captures_all_cantos():
+    """PG 1995 — Sparse TOC (2 links) yields to heading scan for all 34 cantos."""
+    headings = _headings(1995)
+    heading_texts = [h.content for h in headings]
+
+    assert "INTRODUCTION." in heading_texts
+    assert "CANTO I." in heading_texts
+    assert "CANTO XXXIV." in heading_texts
+
+    cantos = [h for h in heading_texts if h.startswith("CANTO ")]
+    assert len(cantos) == 34
+
+
+def test_chinese_classics_extracts_chapters_from_paragraph_text():
+    """PG 3100 — No <h1>-<h6> tags; chapter structure recovered from <p> text."""
+    headings = _headings(3100)
+    paragraphs = _paragraphs(3100)
+    heading_texts = [h.content for h in headings]
+
+    # Chapters recovered from paragraph text containing structural keywords.
+    assert any("CHAPTER I" in t for t in heading_texts)
+    assert any("CHAPTER V" in t for t in heading_texts)
+    chapters = [h for h in heading_texts if "CHAPTER" in h]
+    assert len(chapters) == 6
+
+    # Sections nested under chapters.
+    sections = [h for h in heading_texts if h.startswith("SECTION")]
+    assert len(sections) >= 10
+
+    # Content is accessible.
+    assert len(paragraphs) > 600
+    assert any("Confucius" in p.content for p in paragraphs)
+
+
+def test_medical_essays_excludes_publication_metadata():
+    """PG 2700 — 'Printed in 1843; reprinted...' is metadata, not structure."""
+    headings = _headings(2700)
+    heading_texts = [h.content for h in headings]
+
+    assert "THE CONTAGIOUSNESS OF PUERPERAL FEVER" in heading_texts
+    assert not any("Printed" in t for t in heading_texts)
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_dolly_dialogues_excludes_dialogue_subheadings():
+    """PG 1203 — h3 dialogue lines should not leak into the TOC as subsections."""
+    headings = _headings(1203)
+    heading_texts = [h.content for h in headings]
+
+    # All sections are flat chapter titles — no subsections.
+    assert len(headings) == 20
+    assert all(h.div2 == "" for h in headings)
+
+    # Verify the previously leaking dialogue headings are excluded.
+    assert not any('"' in t for t in heading_texts)
+    assert "A REMINISCENCE" in heading_texts
+    assert "A QUICK CHANGE" in heading_texts
+
+
+def test_peter_rabbit_collapses_title_block_into_single_section():
+    """PG 14304 — title split across multiple h2 tags with no chapter structure."""
+    headings = _headings(14304)
+    paragraphs = _paragraphs(14304)
+
+    # Single-section work: title fragments collapse to one section.
+    assert len(headings) == 1
+    assert headings[0].div1 == "Peter Rabbit"
+
+    # All content captured under the single section.
+    assert len(paragraphs) > 40
+    assert any("four little rabbits" in p.content for p in paragraphs)

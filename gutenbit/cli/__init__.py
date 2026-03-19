@@ -9,6 +9,9 @@ from importlib.metadata import version as package_version
 
 import click
 
+from gutenbit.catalog import (
+    Catalog as Catalog,  # noqa: F401 — tests monkeypatch gutenbit.cli.Catalog.fetch
+)
 from gutenbit.cli._commands import (
     _cmd_add,
     _cmd_books,
@@ -18,7 +21,6 @@ from gutenbit.cli._commands import (
     _cmd_toc,
     _cmd_view,
 )
-from gutenbit.catalog import Catalog as Catalog  # noqa: F401 — tests monkeypatch gutenbit.cli.Catalog.fetch
 from gutenbit.cli._context import (
     _CONTEXT_SETTINGS,
     _DB_HELP,

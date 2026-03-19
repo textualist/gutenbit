@@ -9,19 +9,14 @@ from bs4 import Tag
 
 from gutenbit.html_chunker._common import (
     _FRONT_MATTER_HEADINGS,
-    _HEADING_TAGS,
     _HEADING_TAG_SET,
+    _HEADING_TAGS,
     _NON_ALNUM_RE,
     _NUMERIC_LINK_TEXT_RE,
     _ROMAN_NUMERAL_RE,
     _clean_heading_text,
     _front_matter_heading_key,
 )
-
-# Cache for paragraphs already checked by the multi-link TOC heuristic.
-# Using WeakSet so entries are garbage-collected when the soup is freed.
-_multi_link_toc_paragraphs: WeakSet[Tag] = WeakSet()
-_multi_link_toc_non_paragraphs: WeakSet[Tag] = WeakSet()
 from gutenbit.html_chunker._headings import (
     _heading_key,
     _is_non_structural_heading_text,
@@ -33,6 +28,11 @@ from gutenbit.html_chunker._scanning import (
     _is_dense_chapter_index_paragraph,
     _is_toc_paragraph,
 )
+
+# Cache for paragraphs already checked by the multi-link TOC heuristic.
+# Using WeakSet so entries are garbage-collected when the soup is freed.
+_multi_link_toc_paragraphs: WeakSet[Tag] = WeakSet()
+_multi_link_toc_non_paragraphs: WeakSet[Tag] = WeakSet()
 
 
 def _is_toc_context_link(link: Tag) -> bool:
@@ -77,9 +77,7 @@ def _is_toc_context_link(link: Tag) -> bool:
                 prev = paragraph.find_previous_sibling()
                 if prev is not None:
                     heading_el = (
-                        prev
-                        if prev.name in _HEADING_TAG_SET
-                        else prev.find(_HEADING_TAGS)
+                        prev if prev.name in _HEADING_TAG_SET else prev.find(_HEADING_TAGS)
                     )
                     if heading_el is not None:
                         prev_text = _front_matter_heading_key(heading_el.get_text())

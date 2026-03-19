@@ -1809,3 +1809,440 @@ def test_chunk_kinds():
     chunks = chunk_html(html)
     kinds = {c.kind for c in chunks}
     assert kinds == {"heading", "text"}
+
+
+# ------------------------------------------------------------------
+# Leaf-div verse blocks (cf. PG 16328, Beowulf)
+# ------------------------------------------------------------------
+
+
+def test_leaf_div_verse_lines_captured_as_paragraphs():
+    """Verse-line divs (<div class="l">) should be treated as paragraphs."""
+    html = _make_html("""
+    <p class="toc"><a href="#canto1" class="pginternal">I. THE LIFE AND DEATH OF SCYLD</a></p>
+    <h2><a id="canto1"></a>I. THE LIFE AND DEATH OF SCYLD</h2>
+    <div class="l">Lo! the Spear-Danes' glory through splendid achievements</div>
+    <div class="l">The folk-Loss of former days, far and wide we have heard,</div>
+    <p>A prose paragraph between verses.</p>
+    <div class="l">How Scyld Scefing seized many mead-benches.</div>
+    """)
+    chunks = chunk_html(html)
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert len(paragraphs) == 4
+    assert any("Spear-Dane" in p.content for p in paragraphs)
+    assert any("prose paragraph" in p.content for p in paragraphs)
+
+
+def test_leaf_div_with_block_children_not_treated_as_paragraph():
+    """Divs containing block children (p, div, etc.) are not leaf blocks."""
+    html = _make_html("""
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <div><p>Nested paragraph inside a div.</p></div>
+    <p>Standalone paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    # Only the <p> tags should be captured, not the wrapper div.
+    assert len(paragraphs) == 2
+    assert paragraphs[0].content == "Nested paragraph inside a div."
+    assert paragraphs[1].content == "Standalone paragraph."
+
+
+# ------------------------------------------------------------------
+# Bare Roman numeral heading merge (cf. PG 16328, Beowulf cantos)
+# ------------------------------------------------------------------
+
+
+def test_bare_roman_numeral_with_period_merges_with_subtitle():
+    """Standalone 'I.' merges with the following descriptive title."""
+    html = _make_html("""
+    <h2><a id="c1"></a>I.</h2>
+    <h2>THE LIFE AND DEATH OF SCYLD</h2>
+    <p>First canto content.</p>
+    <h2><a id="c2"></a>II.</h2>
+    <h2>SCYLD'S BURIAL</h2>
+    <p>Second canto content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 2
+    assert headings[0].content == "I. THE LIFE AND DEATH OF SCYLD"
+    assert headings[1].content == "II. SCYLD'S BURIAL"
+
+
+# ------------------------------------------------------------------
+# Degenerate title-block collapse (cf. PG 14304, Peter Rabbit)
+# ------------------------------------------------------------------
+
+
+def test_title_block_collapse_when_no_content_between_headings():
+    """Multiple decorative title-page headings collapse to the last one."""
+    html = _make_html("""
+    <h2><a id="t1"></a>THE TALE OF</h2>
+    <h2><a id="t2"></a>PETER RABBIT</h2>
+    <p>Once upon a time there were four little rabbits.</p>
+    <p>Their names were Flopsy, Mopsy, Cotton-tail, and Peter.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+
+    assert len(headings) == 1
+    assert headings[0].content == "PETER RABBIT"
+    assert len(paragraphs) == 2
+
+
+def test_title_block_not_collapsed_when_content_between():
+    """Title headings with content paragraphs between them are real sections."""
+    html = _make_html("""
+    <h2><a id="t1"></a>INTRODUCTION</h2>
+    <p>Some introductory text here.</p>
+    <h2><a id="t2"></a>THE TALE OF PETER RABBIT</h2>
+    <p>Once upon a time there were four little rabbits.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 2
+
+
+# ------------------------------------------------------------------
+# TOC heading rank normalization (cf. PG 3207, Leviathan Ch XLVII)
+# ------------------------------------------------------------------
+
+
+def test_toc_heading_rank_normalization_for_outlier():
+    """One chapter at a different heading rank should be normalized to the mode.
+
+    Modelled on PG 3207 (Leviathan) where Ch XLVII uses <h3> while all
+    other chapters use <h2>.  Without normalization the outlier chapter
+    would be incorrectly nested under its predecessor.
+    """
+    html = _make_html("""
+    <p><a href="#ch1" class="pginternal"><b>CHAPTER I</b></a></p>
+    <p><a href="#ch2" class="pginternal"><b>CHAPTER II</b></a></p>
+    <p><a href="#ch3" class="pginternal"><b>CHAPTER III</b></a></p>
+    <p><a href="#ch4" class="pginternal"><b>CHAPTER IV</b></a></p>
+
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>First chapter.</p>
+    <h2><a id="ch2"></a>CHAPTER II</h2>
+    <p>Second chapter.</p>
+    <h3><a id="ch3"></a>CHAPTER III</h3>
+    <p>Third chapter — outlier heading rank.</p>
+    <h2><a id="ch4"></a>CHAPTER IV</h2>
+    <p>Fourth chapter.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    chapters = [h for h in headings if h.content.startswith("CHAPTER")]
+    assert len(chapters) == 4
+    # All chapters at div1 — the outlier h3 is normalized to match the h2 mode.
+    assert all(h.div2 == "" for h in chapters)
+
+
+# ------------------------------------------------------------------
+# Chapter nesting under broad containers (cf. PG 135, Les Misérables)
+# ------------------------------------------------------------------
+
+
+def test_chapters_nested_under_broad_containers_at_same_rank():
+    """When BOOK and CHAPTER share the same heading rank, chapters should
+    nest one level deeper under the BOOK container.
+
+    Modelled on PG 135 (Les Misérables) where VOLUME > BOOK > CHAPTER
+    all appear in the TOC at the same <h3> rank.
+    """
+    html = _make_html("""
+    <p><a href="#v1" class="pginternal"><b>VOLUME I</b></a></p>
+    <p><a href="#b1" class="pginternal"><b>BOOK FIRST</b></a></p>
+    <p><a href="#ch1" class="pginternal"><b>CHAPTER I</b></a></p>
+    <p><a href="#ch2" class="pginternal"><b>CHAPTER II</b></a></p>
+    <p><a href="#v2" class="pginternal"><b>VOLUME II</b></a></p>
+    <p><a href="#b2" class="pginternal"><b>BOOK THIRD</b></a></p>
+    <p><a href="#ch3" class="pginternal"><b>CHAPTER I</b></a></p>
+
+    <h3><a id="v1"></a>VOLUME I</h3>
+    <h3><a id="b1"></a>BOOK FIRST</h3>
+    <h3><a id="ch1"></a>CHAPTER I</h3>
+    <p>Chapter one content.</p>
+    <h3><a id="ch2"></a>CHAPTER II</h3>
+    <p>Chapter two content.</p>
+    <h3><a id="v2"></a>VOLUME II</h3>
+    <h3><a id="b2"></a>BOOK THIRD</h3>
+    <h3><a id="ch3"></a>CHAPTER I</h3>
+    <p>Volume two chapter one content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    ch1 = next(h for h in headings if h.content == "CHAPTER I" and h.div2 == "BOOK FIRST")
+    assert ch1.div1 == "VOLUME I"
+    assert ch1.div3 == "CHAPTER I"
+
+    ch3 = next(h for h in headings if h.content == "CHAPTER I" and h.div2 == "BOOK THIRD")
+    assert ch3.div1 == "VOLUME II"
+    assert ch3.div3 == "CHAPTER I"
+
+
+def test_broad_nesting_stops_at_standalone_structural_heading():
+    """Standalone structural headings (EPILOGUE, etc.) are peers, not children."""
+    html = _make_html("""
+    <p><a href="#b1" class="pginternal"><b>BOOK ONE</b></a></p>
+    <p><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <p><a href="#ep" class="pginternal"><b>EPILOGUE</b></a></p>
+
+    <h2><a id="b1"></a>BOOK ONE</h2>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Chapter content.</p>
+    <h2><a id="ep"></a>EPILOGUE</h2>
+    <p>Epilogue content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    epilogue = next(h for h in headings if h.content == "EPILOGUE")
+    assert epilogue.div1 == "EPILOGUE"
+    assert epilogue.div2 == ""
+
+
+# ------------------------------------------------------------------
+# Dialogue heading rejection (cf. PG 1203, The Dolly Dialogues)
+# ------------------------------------------------------------------
+
+
+def test_double_quote_heading_rejected_as_refinement_candidate():
+    """Headings starting with quotation marks are dialogue, not structure."""
+    html = _make_html("""
+    <p class="toc"><a href="#ch1" class="pginternal">A REMINISCENCE</a></p>
+    <p class="toc"><a href="#ch2" class="pginternal">A QUICK CHANGE</a></p>
+
+    <h2><a id="ch1"></a>A REMINISCENCE</h2>
+    <h3>\u201cCarter is a very good name.\u201d</h3>
+    <p>First chapter content.</p>
+    <h3>\u201cYes, it is,\u201d said Lady Doris.</h3>
+    <p>More dialogue content.</p>
+    <h2><a id="ch2"></a>A QUICK CHANGE</h2>
+    <p>Second chapter content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts == ["A REMINISCENCE", "A QUICK CHANGE"]
+    assert all(h.div2 == "" for h in headings)
+
+
+# ------------------------------------------------------------------
+# Publication metadata exclusion (cf. PG 2700, Medical Essays)
+# ------------------------------------------------------------------
+
+
+def test_publication_metadata_headings_excluded():
+    """'Printed in...', 'Published...', 'Reprinted...' are metadata, not structure."""
+    html = _make_html("""
+    <p class="toc"><a href="#e1" class="pginternal">PUERPERAL FEVER</a></p>
+    <p class="toc"><a href="#e2" class="pginternal">COUNTER-CURRENTS</a></p>
+
+    <h2><a id="e1"></a>PUERPERAL FEVER</h2>
+    <h4>Printed in 1843; reprinted in 1855.</h4>
+    <p>Essay content here.</p>
+    <h2><a id="e2"></a>COUNTER-CURRENTS</h2>
+    <h4>Published in 1861.</h4>
+    <p>Second essay content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts == ["PUERPERAL FEVER", "COUNTER-CURRENTS"]
+    assert not any("Printed" in t or "Published" in t for t in heading_texts)
+
+
+# ------------------------------------------------------------------
+# Verse reference heading exclusion (cf. PG 30, KJV Psalms)
+# ------------------------------------------------------------------
+
+
+def test_verse_reference_headings_excluded():
+    """Bible-style verse references (N:N:N) are not structural headings."""
+    html = _make_html("""
+    <p class="toc"><a href="#psalms" class="pginternal"><b>Book 19 Psalms</b></a></p>
+
+    <h2><a id="psalms"></a>Book 19 Psalms</h2>
+    <h3>19:070:001</h3>
+    <p>Make haste, O God, to deliver me.</p>
+    <h3>19:070:002</h3>
+    <p>Let them be ashamed and confounded.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts == ["Book 19 Psalms"]
+    assert not any("19:070" in t for t in heading_texts)
+
+
+# ------------------------------------------------------------------
+# Sparse TOC bypass (cf. PG 1995, Dante's Inferno)
+# ------------------------------------------------------------------
+
+
+def test_sparse_toc_bypassed_for_richer_heading_scan():
+    """When heading scan finds >3x more structure than a sparse TOC (<=5),
+    prefer the heading scan."""
+    toc_links = "".join(
+        f'<p class="toc"><a href="#s{i}" class="pginternal">Section {i}</a></p>'
+        for i in range(1, 3)  # only 2 TOC links
+    )
+    body_headings = "".join(
+        f'<h2><a id="c{i}"></a>CANTO {i}.</h2>\n<p>Canto {i} content.</p>\n'
+        for i in range(1, 11)  # 10 heading-scan sections
+    )
+    anchors = (
+        '<h2><a id="s1"></a>Section 1</h2><p>Text.</p>'
+        '<h2><a id="s2"></a>Section 2</h2><p>Text.</p>'
+    )
+    html = _make_html(f"{toc_links}\n{anchors}\n{body_headings}")
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    cantos = [h for h in headings if h.content.startswith("CANTO")]
+    assert len(cantos) == 10
+
+
+# ------------------------------------------------------------------
+# Paragraph-text section fallback (cf. PG 3100, Chinese Classics)
+# ------------------------------------------------------------------
+
+
+def test_paragraph_section_fallback_extracts_chapters():
+    """When no <h1>-<h6> headings exist, recover structure from <p> text."""
+    html = _make_html("""
+    <p>CHAPTER I. OF THE CHINESE CLASSICS GENERALLY.</p>
+    <p>Introduction to the classics.</p>
+    <p>More introductory text.</p>
+    <p>SECTION I. BOOKS INCLUDED.</p>
+    <p>Description of the books.</p>
+    <p>CHAPTER II. OF THE CONFUCIAN ANALECTS.</p>
+    <p>Analysis of the Analects.</p>
+    <p>SECTION I. FORMATION OF THE TEXT.</p>
+    <p>Text formation details.</p>
+    <p>SECTION II. AUTHORSHIP AND PLAN.</p>
+    <p>Authorship discussion.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    paragraphs = [c for c in chunks if c.kind == "text"]
+    heading_texts = [h.content for h in headings]
+
+    assert "CHAPTER I. OF THE CHINESE CLASSICS GENERALLY" in heading_texts[0]
+    assert "CHAPTER II. OF THE CONFUCIAN ANALECTS" in heading_texts[2]
+
+    chapters = [h for h in heading_texts if "CHAPTER" in h]
+    sections = [h for h in heading_texts if h.startswith("SECTION")]
+    assert len(chapters) == 2
+    assert len(sections) == 3
+
+    assert len(paragraphs) >= 5
+
+
+def test_paragraph_section_fallback_not_used_when_headings_exist():
+    """Paragraph fallback should not activate when real heading tags exist."""
+    html = _make_html("""
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>CHAPTER II. This paragraph looks like a chapter but isn't.</p>
+    <p>Regular content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 1
+    assert headings[0].content == "CHAPTER I"
+
+
+# ------------------------------------------------------------------
+# Flat paragraph fallback (cf. PG 3100, Chinese Classics — no structure)
+# ------------------------------------------------------------------
+
+
+def test_flat_paragraph_fallback_when_no_structure_detected():
+    """Documents with >=10 paragraphs but no structure emit flat text chunks."""
+    paragraphs = "".join(
+        f"<p>Paragraph {i} with enough text to not be filtered.</p>\n" for i in range(1, 15)
+    )
+    html = _make_html(paragraphs)
+    chunks = chunk_html(html)
+
+    assert len(chunks) >= 10
+    assert all(c.kind == "text" for c in chunks)
+    assert all(c.div1 == "" for c in chunks)
+
+
+def test_flat_paragraph_fallback_not_triggered_for_few_paragraphs():
+    """Documents with fewer than 10 paragraphs and no structure return empty."""
+    paragraphs = "".join(f"<p>Short paragraph {i}.</p>\n" for i in range(1, 5))
+    html = _make_html(paragraphs)
+    chunks = chunk_html(html)
+
+    assert chunks == []
+
+
+# ------------------------------------------------------------------
+# Paragraph heading truncation (cf. PG 3100, Chinese Classics — long headings)
+# ------------------------------------------------------------------
+
+
+def test_paragraph_section_heading_truncated_at_word_boundary():
+    """Paragraph-derived headings exceeding 120 chars are truncated at a word boundary."""
+    long_title = "CHAPTER I. " + "WORD " * 30  # ~160 chars
+    html = _make_html(f"""
+    <p>{long_title}</p>
+    <p>Chapter content follows.</p>
+    <p>CHAPTER II. SHORT TITLE</p>
+    <p>Second chapter content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 2
+    assert len(headings[0].content) <= 120
+    assert headings[0].content.startswith("CHAPTER I.")
+    # Should not break mid-word.
+    assert not headings[0].content.endswith("WOR")
+    assert headings[1].content == "CHAPTER II. SHORT TITLE"
+
+
+# ------------------------------------------------------------------
+# Level cap at div4 (prevents overflow)
+# ------------------------------------------------------------------
+
+
+def test_section_levels_capped_at_four():
+    """Deeply nested sections are capped at div4, not overflowing."""
+    html = _make_html("""
+    <p><a href="#v1" class="pginternal"><b>VOLUME I</b></a></p>
+    <p><a href="#b1" class="pginternal"><b>BOOK I</b></a></p>
+    <p><a href="#p1" class="pginternal">PART I</a></p>
+    <p><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <p><a href="#s1" class="pginternal">Section 1</a></p>
+
+    <h1><a id="v1"></a>VOLUME I</h1>
+    <h2><a id="b1"></a>BOOK I</h2>
+    <h3><a id="p1"></a>PART I</h3>
+    <h4><a id="ch1"></a>CHAPTER I</h4>
+    <h5><a id="s1"></a>Section 1</h5>
+    <p>Deeply nested content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    # div4 is the deepest allowed level — no IndexError.
+    assert len(headings) >= 4
+    deepest = headings[-1]
+    assert deepest.div4 != "" or deepest.div3 != ""

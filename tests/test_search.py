@@ -1613,9 +1613,7 @@ def test_view_section_forward_extends_into_next_section(tmp_path):
     db.close()
 
     # CHAPTER 1 has 2 text chunks; forward=3 should extend into CHAPTER 2
-    code, out, _err = _run_cli(
-        db_path, "view", "1", "--section", "CHAPTER 1", "--forward", "3"
-    )
+    code, out, _err = _run_cli(db_path, "view", "1", "--section", "CHAPTER 1", "--forward", "3")
     assert code == 0
     assert "Call me Ishmael" in out  # CHAPTER 1 text
     assert "It is a way I have" in out  # CHAPTER 1 text

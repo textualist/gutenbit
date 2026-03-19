@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from gutenbit.html_chunker._common import (
     _HEADING_TAGS,
@@ -28,8 +28,11 @@ from gutenbit.html_chunker._sections import (
     _find_non_structural_boundary_after,
     _merge_adjacent_duplicate_sections,
     _nest_broad_subdivisions,
+    _nest_chapters_under_broad_containers,
     _normalize_collection_titles,
+    _normalize_toc_heading_ranks,
     _parse_heading_sections,
+    _parse_paragraph_sections,
     _parse_toc_sections,
     _promote_more_prominent_heading_runs,
     _refine_toc_sections,
@@ -84,21 +87,39 @@ def chunk_html(html: str) -> list[Chunk]:
     # Build section list from TOC links and refine with body headings when the
     # TOC is a coarse but valid subsequence of the body structure.
     toc_sections = _parse_toc_sections(doc_index=doc_index)
+    heading_sections = _parse_heading_sections(doc_index=doc_index)
     if toc_sections:
-        heading_sections = _parse_heading_sections(doc_index=doc_index)
-        sections = _refine_toc_sections(
-            toc_sections,
-            heading_sections,
-            doc_index=doc_index,
-        )
+        # When the heading scan finds far more structure than the sparse TOC,
+        # the TOC links are navigational but not structurally representative
+        # (e.g. Dante's Inferno: 2 TOC links vs 37 heading-scan sections).
+        # Prefer the richer heading scan in that case.
+        if len(heading_sections) > 3 * len(toc_sections) and len(toc_sections) <= 5:
+            sections = heading_sections
+        else:
+            toc_sections = _normalize_toc_heading_ranks(toc_sections)
+            sections = _refine_toc_sections(
+                toc_sections,
+                heading_sections,
+                doc_index=doc_index,
+            )
     else:
-        # Some Gutenberg editions expose page-number TOC links only.
-        sections = _parse_heading_sections(doc_index=doc_index)
+        sections = heading_sections
     if not sections:
-        return []
+        # Try paragraph-text section scan: some editions encode chapter
+        # headings as plain <p> elements instead of <h1>–<h6>.
+        sections = _parse_paragraph_sections(doc_index=doc_index)
+    if not sections:
+        # Final fallback: emit all paragraphs as flat unsectioned text.
+        if len(doc_index.paragraphs) < 10:
+            return []
+        chunks: list[Chunk] = []
+        for pos_idx, ip in enumerate(doc_index.paragraphs):
+            chunks.append(Chunk(pos_idx, "", "", "", "", ip.text, "text"))
+        return chunks
 
     sections = _normalize_collection_titles(sections)
     sections = _nest_broad_subdivisions(sections)
+    sections = _nest_chapters_under_broad_containers(sections)
     sections = _promote_more_prominent_heading_runs(sections)
     sections = _merge_adjacent_duplicate_sections(sections)
 
@@ -107,6 +128,9 @@ def chunk_html(html: str) -> list[Chunk]:
     min_level = min(s.level for s in sections)
     if min_level > 1:
         sections = [s._with_level(s.level - min_level + 1) for s in sections]
+    # Cap at 4 levels (div1–div4); deeper nesting is flattened.
+    max_div = 4
+    sections = [s._with_level(min(max_div, s.level)) for s in sections]
 
     chunks: list[Chunk] = []
     pos = 0

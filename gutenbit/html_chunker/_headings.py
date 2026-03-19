@@ -85,11 +85,16 @@ _FRONT_MATTER_ATTRIBUTION_RE = re.compile(
     r"^(?:by|translated\s+by|edited\s+by|illustrated\s+by)\s",
     re.IGNORECASE,
 )
+_PUBLICATION_METADATA_RE = re.compile(
+    r"^(?:printed|published|reprinted|first\s+published|originally\s+published)\b",
+    re.IGNORECASE,
+)
 _FRONT_MATTER_ATTRIBUTION_HEADING_RE = re.compile(
     r"^(?:introduction|preface|foreword|afterword)\s+by\b",
     re.IGNORECASE,
 )
 _PLAIN_NUMBER_HEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.?$", re.IGNORECASE)
+_VERSE_REFERENCE_HEADING_RE = re.compile(r"^\d+:\d+:\d+")
 _NON_SUBTITLE_HEADING_RE = re.compile(r"^(?:chap(?:ters?)?)\.?$", re.IGNORECASE)
 _SYNOPSIS_SUFFIX_RE = re.compile(r"\s+SYNOPSIS OF\b.*$", re.IGNORECASE)
 _EDITORIAL_PLACEHOLDER_HEADING_RE = re.compile(
@@ -172,6 +177,10 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
     if _PAGE_HEADING_RE.match(text):
         return True
     if _FRONT_MATTER_ATTRIBUTION_RE.match(text):
+        return True
+    if _PUBLICATION_METADATA_RE.match(text):
+        return True
+    if _VERSE_REFERENCE_HEADING_RE.match(text):
         return True
     return _NON_STRUCTURAL_HEADING_RE.match(text) is not None
 

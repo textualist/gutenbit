@@ -1,8 +1,6 @@
 from copy import deepcopy
 from io import StringIO
 
-from gutenbit.cli._json import _passage_payload
-from gutenbit.cli._sections import _build_section_summary
 from gutenbit.cli._display import (
     CliDisplay,
     _footer_title,
@@ -11,6 +9,8 @@ from gutenbit.cli._display import (
     format_search_summary_count,
     format_summary_stats,
 )
+from gutenbit.cli._json import _passage_payload
+from gutenbit.cli._sections import _build_section_summary
 from tests.test_search import _make_db, _make_nested_sections_db
 
 
