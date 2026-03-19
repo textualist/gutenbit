@@ -602,3 +602,206 @@ def test_candide_keeps_front_matter_headings_and_skips_attribution_noise():
         "I",
     ]
     assert "INTRODUCTION BY PHILIP LITTELL" not in heading_texts
+
+
+def test_tale_of_two_cities_nests_chapters_under_books_with_subtitles():
+    headings = _headings(98)
+
+    book_headings = [h for h in headings if not h.div2]
+    assert [h.content for h in book_headings] == [
+        "Book the First\u2014Recalled to Life",
+        "Book the Second\u2014the Golden Thread",
+        "Book the Third\u2014the Track of a Storm",
+    ]
+
+    book1_chapters = [h for h in headings if "First" in h.div1 and h.div2]
+    book2_chapters = [h for h in headings if "Second" in h.div1 and h.div2]
+    book3_chapters = [h for h in headings if "Third" in h.div1 and h.div2]
+    assert len(book1_chapters) == 6
+    assert len(book2_chapters) == 24
+    assert len(book3_chapters) == 15
+
+    first_chapter = book1_chapters[0]
+    assert first_chapter.div1 == "Book the First\u2014Recalled to Life"
+    assert first_chapter.div2 == "CHAPTER I. The Period"
+    assert first_chapter.div3 == ""
+
+    last_chapter = book3_chapters[-1]
+    assert last_chapter.div1 == "Book the Third\u2014the Track of a Storm"
+    assert last_chapter.div2 == "CHAPTER XV. The Footsteps Die Out For Ever"
+
+
+def test_crime_and_punishment_keeps_epilogue_as_top_level_peer_of_parts():
+    headings = _headings(2554)
+
+    part_headings = [heading for heading in headings if heading.content.startswith("PART ")]
+    epilogue = next(heading for heading in headings if heading.content == "EPILOGUE")
+    epilogue_chapters = [
+        heading
+        for heading in headings
+        if heading.div1 == "EPILOGUE" and heading.content in ("I", "II")
+    ]
+
+    assert [heading.content for heading in part_headings] == [
+        "PART I",
+        "PART II",
+        "PART III",
+        "PART IV",
+        "PART V",
+        "PART VI",
+    ]
+    assert epilogue.div1 == "EPILOGUE"
+    assert epilogue.div2 == ""
+    assert len(epilogue_chapters) == 2
+    assert epilogue_chapters[0].div2 == "I"
+    assert epilogue_chapters[1].div2 == "II"
+
+
+def test_huck_finn_keeps_notice_and_explanatory_text_before_chapter_one():
+    chunks = _chunks(76)
+    headings = _headings(76)
+    heading_texts = [h.content for h in headings]
+
+    # Chapter structure is preserved.
+    assert heading_texts[:3] == ["CHAPTER I.", "CHAPTER II.", "CHAPTER III."]
+    assert heading_texts[-1] == "CHAPTER THE LAST"
+    assert len(headings) == 43
+
+    # NOTICE and EXPLANATORY front matter is not dropped — their prose
+    # appears before the first chapter section.
+    pre_chapter_text = [
+        c.content for c in chunks if c.kind == "text" and c.position < headings[0].position
+    ]
+    assert any("prosecuted" in t for t in pre_chapter_text)
+    assert any("dialects" in t for t in pre_chapter_text)
+
+
+def test_emma_preserves_volumes_with_chapters_nested_under_them():
+    headings = _headings(158)
+    heading_texts = [heading.content for heading in headings]
+
+    assert len(headings) == 58
+    assert heading_texts[:3] == ["VOLUME I", "CHAPTER I", "CHAPTER II"]
+    assert [text for text in heading_texts if text.startswith("VOLUME")] == [
+        "VOLUME I",
+        "VOLUME II",
+        "VOLUME III",
+    ]
+
+    vol_i = next(heading for heading in headings if heading.content == "VOLUME I")
+    assert vol_i.div1 == "VOLUME I"
+    assert vol_i.div2 == ""
+
+    ch_i_under_vol_ii = next(
+        heading
+        for heading in headings
+        if heading.content == "CHAPTER I" and heading.div1 == "VOLUME II"
+    )
+    assert ch_i_under_vol_ii.div2 == "CHAPTER I"
+
+    vol_iii_chapters = [
+        heading
+        for heading in headings
+        if heading.div1 == "VOLUME III" and heading.div2.startswith("CHAPTER")
+    ]
+    assert len(vol_iii_chapters) == 19
+    assert vol_iii_chapters[-1].content == "CHAPTER XIX"
+
+
+def test_scarlet_letter_keeps_custom_house_essay_before_narrative_chapters():
+    heading_texts = [heading.content for heading in _headings(33)]
+
+    assert heading_texts[:4] == [
+        "THE CUSTOM-HOUSE",
+        "THE SCARLET LETTER",
+        "I. THE PRISON DOOR",
+        "II. THE MARKET-PLACE",
+    ]
+    assert heading_texts[-1] == "XXIV. CONCLUSION"
+    assert len(heading_texts) == 26
+
+
+def test_treasure_island_nests_chapters_under_six_parts():
+    headings = _headings(120)
+
+    part_headings = [heading for heading in headings if heading.content.startswith("PART ")]
+    assert [heading.content for heading in part_headings] == [
+        "PART ONE\u2014The Old Buccaneer",
+        "PART TWO\u2014The Sea-cook",
+        "PART THREE\u2014My Shore Adventure",
+        "PART FOUR\u2014The Stockade",
+        "PART FIVE\u2014My Sea Adventure",
+        "PART SIX\u2014Captain Silver",
+    ]
+    assert all(heading.div2 == "" for heading in part_headings)
+
+    chapter_one = next(
+        heading
+        for heading in headings
+        if heading.content == 'I The Old Sea-dog at the \u201cAdmiral Benbow\u201d'
+    )
+    assert chapter_one.div1 == "PART ONE\u2014The Old Buccaneer"
+    assert chapter_one.div2 == 'I The Old Sea-dog at the \u201cAdmiral Benbow\u201d'
+
+    last_chapter = next(
+        heading for heading in headings if heading.content == "XXXIV And Last"
+    )
+    assert last_chapter.div1 == "PART SIX\u2014Captain Silver"
+    assert last_chapter.div2 == "XXXIV And Last"
+
+    assert headings[0].content == "TREASURE ISLAND"
+    assert len(headings) == 41
+
+
+def test_dubliners_keeps_all_fifteen_story_titles_flat():
+    headings = _headings(2814)
+    heading_texts = [heading.content for heading in headings]
+
+    assert heading_texts == [
+        "THE SISTERS",
+        "AN ENCOUNTER",
+        "ARABY",
+        "EVELINE",
+        "AFTER THE RACE",
+        "TWO GALLANTS",
+        "THE BOARDING HOUSE",
+        "A LITTLE CLOUD",
+        "COUNTERPARTS",
+        "CLAY",
+        "A PAINFUL CASE",
+        "IVY DAY IN THE COMMITTEE ROOM",
+        "A MOTHER",
+        "GRACE",
+        "THE DEAD",
+    ]
+    assert all(heading.div2 == "" for heading in headings)
+
+
+def test_zarathustra_preserves_all_eighty_discourses_and_four_parts():
+    headings = _headings(1998)
+    heading_texts = [heading.content for heading in headings]
+
+    # Introduction is separate from the main text.
+    assert heading_texts[0] == "INTRODUCTION BY MRS FORSTER-NIETZSCHE."
+
+    # All four parts present at div1 level.
+    first = next(h for h in headings if h.content == "FIRST PART. ZARATHUSTRA\u2019S DISCOURSES.")
+    second = next(h for h in headings if h.content == "THUS SPAKE ZARATHUSTRA. SECOND PART.")
+    third = next(h for h in headings if h.content == "THIRD PART.")
+    fourth = next(h for h in headings if h.content == "FOURTH AND LAST PART.")
+    for part in (first, second, third, fourth):
+        assert part.div2 == "", f"{part.content} should be div1, not nested"
+
+    # All 80 discourses present (I through LXXX).
+    discourse_headings = [
+        h for h in headings
+        if re.match(r"^[IVXLCDM]+\.\s+\S", h.content) and h.div2
+    ]
+    assert len(discourse_headings) == 80
+    assert discourse_headings[0].content == "I. THE THREE METAMORPHOSES."
+    assert discourse_headings[-1].content == "LXXX. THE SIGN."
+
+    # Appendix is a single flat section with no subsections.
+    assert "APPENDIX." in heading_texts
+    appendix_idx = heading_texts.index("APPENDIX.")
+    assert appendix_idx == len(heading_texts) - 1
