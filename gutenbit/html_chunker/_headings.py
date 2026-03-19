@@ -43,9 +43,11 @@ _STRUCTURAL_KEYWORD_ALIASES = {
 _STRUCTURAL_INDEX_TOKEN_RE = re.compile(
     r"^(?:[IVXLCDM]+|[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|"
     r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
-    r"nineteen|twenty|first|second|third|fourth|fifth|sixth|seventh|eighth|"
+    r"nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|"
+    r"first|second|third|fourth|fifth|sixth|seventh|eighth|"
     r"ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|"
     r"sixteenth|seventeenth|eighteenth|nineteenth|twentieth|"
+    r"thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|"
     r"primus|prima|secundus|secunda|tertius|tertia|quartus|quarta|"
     r"quintus|quinta|sextus|sexta|septimus|septima|octavus|octava|"
     r"nonus|nona|decimus|decima)$",
@@ -91,6 +93,17 @@ _PUBLICATION_METADATA_RE = re.compile(
 )
 _FRONT_MATTER_ATTRIBUTION_HEADING_RE = re.compile(
     r"^(?:introduction|preface|foreword|afterword)\s+by\b",
+    re.IGNORECASE,
+)
+_FRONT_MATTER_PREFIX_RE = re.compile(
+    r"^(?:PREFACE|FOREWORD|AFTERWORD|POSTSCRIPT|DEDICATION|"
+    r"ACKNOWLEDGEMENTS?|ACKNOWLEDGMENTS?)\b",
+    re.IGNORECASE,
+)
+_STANDALONE_FRONT_MATTER_RE = re.compile(
+    r"^(?:PREFACE|FOREWORD|AFTERWORD|POSTSCRIPT|DEDICATION|"
+    r"ACKNOWLEDGEMENTS?|ACKNOWLEDGMENTS?|AUTHOR'?S?\s*NOTE|"
+    r"BIOGRAPHICAL\s+NOTICE|NOTE\s+ON\s+THE\s+TEXT)\.?\s*$",
     re.IGNORECASE,
 )
 _PLAIN_NUMBER_HEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.?$", re.IGNORECASE)
@@ -202,6 +215,11 @@ def _classify_level(heading_text: str, is_emphasized_in_toc: bool) -> int:
     keyword = _heading_keyword(heading_text)
     if keyword:
         if keyword in _BROAD_KEYWORDS:
+            # Front-matter headings like "PREFACE TO THE FIRST VOLUME"
+            # match "volume" as a broad keyword but are not structural
+            # containers — demote to chapter level.
+            if _FRONT_MATTER_PREFIX_RE.match(heading_text):
+                return 2
             return 1
         if keyword == "section":
             return 3
@@ -432,6 +450,11 @@ def _is_front_matter_attribution_heading(row: _HeadingRow) -> bool:
     if row.rank < 4:
         return False
     return _FRONT_MATTER_ATTRIBUTION_HEADING_RE.match(row.heading_text) is not None
+
+
+def _is_standalone_front_matter_heading(heading_text: str) -> bool:
+    """Return True for standalone front/back-matter headings like PREFACE."""
+    return _STANDALONE_FRONT_MATTER_RE.match(heading_text) is not None
 
 
 # ---------------------------------------------------------------------------

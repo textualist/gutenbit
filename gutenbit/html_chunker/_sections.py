@@ -24,6 +24,7 @@ from gutenbit.html_chunker._common import (
     _Section,
 )
 from gutenbit.html_chunker._headings import (
+    _FRONT_MATTER_PREFIX_RE,
     _broad_heading_with_enumerated_child,
     _broad_nesting_depth,
     _classify_level,
@@ -39,6 +40,7 @@ from gutenbit.html_chunker._headings import (
     _is_empty_front_matter_stub_heading,
     _is_front_matter_attribution_heading,
     _is_ignorable_fallback_heading,
+    _is_standalone_front_matter_heading,
     _is_non_structural_heading_text,
     _is_rank5_subheading_under_nonchapter_section,
     _is_refinement_heading,
@@ -337,8 +339,70 @@ def _merge_adjacent_duplicate_sections(sections: list[_Section]) -> list[_Sectio
     return merged
 
 
-def _respect_heading_rank_nesting(sections: list[_Section]) -> list[_Section]:
-    """Raise levels when heading ranks show a section was flattened too far."""
+def _merge_chapter_subtitle_sections(
+    sections: list[_Section],
+    *,
+    toc_anchor_ids: frozenset[str] = frozenset(),
+) -> list[_Section]:
+    """Merge a chapter heading with an immediately following non-keyword subtitle.
+
+    Handles the pattern where ``<h2>CHAPTER ONE</h2>`` is followed by
+    ``<h3>INTRODUCTORY, CONCERNING THE PEDIGREE…</h3>`` — the subtitle should
+    be part of the chapter title, not a separate sub-section.
+
+    Merging is skipped when the subtitle has a structural keyword, or when the
+    subtitle's anchor appears in *toc_anchor_ids* (it was a deliberate TOC
+    entry and should remain a standalone section).
+    """
+    if len(sections) < 2:
+        return sections
+
+    merged: list[_Section] = []
+    i = 0
+    while i < len(sections):
+        sec = sections[i]
+        if i + 1 < len(sections):
+            nxt = sections[i + 1]
+            keyword = _heading_keyword(sec.heading_text)
+            if (
+                keyword
+                and keyword not in _BROAD_KEYWORDS
+                and not _heading_keyword(nxt.heading_text)
+                and nxt.heading_rank is not None
+                and sec.heading_rank is not None
+                and nxt.heading_rank == sec.heading_rank + 1
+                and nxt.level > sec.level
+                and nxt.anchor_id not in toc_anchor_ids
+            ):
+                combined = f"{sec.heading_text} {nxt.heading_text}"
+                merged.append(
+                    _Section(
+                        sec.anchor_id,
+                        combined,
+                        sec.level,
+                        sec.body_anchor,
+                        sec.heading_rank,
+                    )
+                )
+                i += 2
+                continue
+        merged.append(sec)
+        i += 1
+    return merged
+
+
+def _respect_heading_rank_nesting(
+    sections: list[_Section],
+    *,
+    infer_from_rank: bool = False,
+) -> list[_Section]:
+    """Raise levels when heading ranks show a section was flattened too far.
+
+    When *infer_from_rank* is True (heading-scan fallback only), non-keyword
+    headings may serve as parents when the rank gap is exactly 1 (e.g. h2 "OUR
+    PARISH" → h3 "CHAPTER I").  In the TOC path the hierarchy is already
+    authoritative, so this relaxation is disabled by default.
+    """
     if len(sections) < 2:
         return sections
 
@@ -354,7 +418,15 @@ def _respect_heading_rank_nesting(sections: list[_Section]) -> list[_Section]:
             if previous.heading_rank is None or previous.heading_rank >= section.heading_rank:
                 continue
             if not _is_refinement_heading(previous.heading_text):
-                continue
+                # In heading-scan mode, allow non-refinement headings
+                # (e.g. h2 "OUR PARISH") as parents when the rank gap is
+                # exactly 1 (adjacent HTML heading levels like h2→h3).
+                # But never let standalone front-matter headings (PREFACE,
+                # POSTSCRIPT, etc.) act as container parents.
+                if not infer_from_rank or section.heading_rank - previous.heading_rank != 1:
+                    continue
+                if _is_standalone_front_matter_heading(previous.heading_text):
+                    continue
             parent = previous
             break
 
@@ -364,7 +436,9 @@ def _respect_heading_rank_nesting(sections: list[_Section]) -> list[_Section]:
         if new_levels[idx] > parent.level:
             continue
 
-        if _heading_keyword(section.heading_text) == _heading_keyword(parent.heading_text):
+        parent_kw = _heading_keyword(parent.heading_text)
+        child_kw = _heading_keyword(section.heading_text)
+        if parent_kw and parent_kw == child_kw:
             continue
 
         new_levels[idx] = min(4, parent.level + 1)
@@ -541,7 +615,7 @@ def _parse_heading_sections(
 
     sections = _drop_leading_repeated_title_sections(sections)
     sections = _collapse_degenerate_title_block(sections, doc_index=doc_index)
-    return _respect_heading_rank_nesting(sections)
+    return _respect_heading_rank_nesting(sections, infer_from_rank=True)
 
 
 def _collapse_degenerate_title_block(
@@ -890,6 +964,12 @@ def _nest_chapters_under_broad_containers(sections: list[_Section]) -> list[_Sec
     for idx, section in enumerate(sections):
         keyword = _heading_keyword(section.heading_text)
         if keyword not in _BROAD_KEYWORDS:
+            continue
+        # Front-matter headings like "PREFACE TO THE FIRST VOLUME" match a
+        # broad keyword but are not structural containers.
+        if _is_standalone_front_matter_heading(
+            section.heading_text
+        ) or _FRONT_MATTER_PREFIX_RE.match(section.heading_text):
             continue
 
         broad_level = new_levels[idx]

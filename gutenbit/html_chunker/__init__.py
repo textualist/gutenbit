@@ -27,6 +27,7 @@ from gutenbit.html_chunker._scanning import (
 from gutenbit.html_chunker._sections import (
     _find_non_structural_boundary_after,
     _merge_adjacent_duplicate_sections,
+    _merge_chapter_subtitle_sections,
     _nest_broad_subdivisions,
     _nest_chapters_under_broad_containers,
     _normalize_collection_titles,
@@ -43,7 +44,7 @@ from gutenbit.html_chunker._sections import (
 # ---------------------------------------------------------------------------
 
 HTML_PARSER_BACKEND = "lxml"
-CHUNKER_VERSION = 29
+CHUNKER_VERSION = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +88,14 @@ def chunk_html(html: str) -> list[Chunk]:
     # Build section list from TOC links and refine with body headings when the
     # TOC is a coarse but valid subsequence of the body structure.
     toc_sections = _parse_toc_sections(doc_index=doc_index)
+    # Collect ALL TOC-linked anchor IDs (not just those that pass section
+    # parsing) so _merge_chapter_subtitle_sections can preserve TOC entries
+    # that become sub-sections through refinement.
+    toc_anchor_ids = frozenset(
+        str(link.get("href", ""))[1:]
+        for link in doc_index.toc_links
+        if str(link.get("href", "")).startswith("#")
+    )
     heading_sections = _parse_heading_sections(doc_index=doc_index)
     if toc_sections:
         # When the heading scan finds far more structure than the sparse TOC,
@@ -121,6 +130,9 @@ def chunk_html(html: str) -> list[Chunk]:
     sections = _nest_broad_subdivisions(sections)
     sections = _nest_chapters_under_broad_containers(sections)
     sections = _promote_more_prominent_heading_runs(sections)
+    sections = _merge_chapter_subtitle_sections(
+        sections, toc_anchor_ids=toc_anchor_ids
+    )
     sections = _merge_adjacent_duplicate_sections(sections)
 
     # Compact levels so the shallowest level maps to div1.

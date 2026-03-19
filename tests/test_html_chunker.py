@@ -2323,3 +2323,114 @@ def test_fallback_backward_scan_does_not_pull_h2_into_paragraph_headings():
     assert "HAMLET" not in headings
     assert "ACT I" in headings
     assert "SCENE I" in headings
+
+
+def test_number_words_thirty_and_above_recognized_as_chapter_keyword():
+    """Regression: CHAPTER THIRTY-SIX must be recognized as a chapter keyword.
+
+    The structural index token regex previously only covered number words up
+    to "twenty", causing CHAPTER THIRTY, CHAPTER FORTY, etc. to be treated
+    as non-keyword headings.
+    """
+    html = _make_html("""
+    <h2>CHAPTER TWENTY-NINE</h2>
+    <p>Content of chapter 29.</p>
+    <h2>CHAPTER THIRTY</h2>
+    <h3>A DESCRIPTIVE SUBTITLE</h3>
+    <p>Content of chapter 30.</p>
+    <h2>CHAPTER THIRTY-SIX</h2>
+    <h3>TOM DEPARTS</h3>
+    <p>Content of chapter 36.</p>
+    <h2>CHAPTER FIFTY-FOUR</h2>
+    <p>Content of chapter 54.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    # All chapters must be recognized (subtitle merged into chapter title)
+    assert any("CHAPTER THIRTY" in h and "DESCRIPTIVE" in h for h in headings)
+    assert any("CHAPTER THIRTY-SIX" in h and "TOM DEPARTS" in h for h in headings)
+    assert "CHAPTER FIFTY-FOUR" in headings
+    # Subtitles should NOT appear as separate headings
+    assert "A DESCRIPTIVE SUBTITLE" not in headings
+    assert "TOM DEPARTS" not in headings
+
+
+def test_preface_does_not_nest_chapters_as_container():
+    """Regression: standalone PREFACE must not act as a container parent.
+
+    In Bleak House (PG 1023), h3 PREFACE was nesting all h4 chapters under
+    it because the rank gap was exactly 1.  Front-matter headings should
+    remain siblings of chapters.
+    """
+    html = _make_html("""
+    <h3>PREFACE</h3>
+    <p>Preface text.</p>
+    <h4>CHAPTER I</h4>
+    <p>Content of chapter 1.</p>
+    <h4>CHAPTER II</h4>
+    <p>Content of chapter 2.</p>
+    <h4>CHAPTER III</h4>
+    <p>Content of chapter 3.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    # PREFACE and chapters should be at the same div1 level, not nested
+    preface = [c for c in headings if c.content == "PREFACE"][0]
+    ch1 = [c for c in headings if "CHAPTER I" in c.content and "II" not in c.content and "III" not in c.content][0]
+    assert preface.div2 == "", "PREFACE should be at div1 level"
+    assert ch1.div2 == "", "Chapter should be at div1 level, not nested under PREFACE"
+
+
+def test_preface_to_volume_not_broad_container():
+    """Regression: 'PREFACE TO THE FIRST VOLUME' must not act as a VOLUME container.
+
+    In Master Humphrey's Clock (PG 588), the embedded ordinal keyword match
+    classified 'PREFACE TO THE FIRST VOLUME' as a broad 'volume' keyword,
+    causing all subsequent sections to be nested under it.
+    """
+    html = _make_html("""
+    <h2>PREFACE TO THE FIRST VOLUME</h2>
+    <p>Preface text.</p>
+    <h2>PREFACE TO THE SECOND VOLUME</h2>
+    <p>Second preface text.</p>
+    <h2>I</h2>
+    <h3>THE CLOCK-CASE</h3>
+    <p>Content of section I.</p>
+    <h2>II</h2>
+    <p>Content of section II.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    sec_i = [c for c in headings if c.content == "I"][0]
+    # Section I should be at div1, not nested under a PREFACE
+    assert sec_i.div1 == "I" or (sec_i.div2 == "" and "PREFACE" not in sec_i.div1)
+
+
+def test_non_keyword_headings_nest_chapters_by_rank():
+    """Regression: Sketches by Boz nesting — h2 'OUR PARISH' must nest h3 chapters.
+
+    Non-keyword headings like 'OUR PARISH' at h2 should serve as containers
+    for h3 chapters when the rank gap is exactly 1, via infer_from_rank.
+    """
+    html = _make_html("""
+    <h2>OUR PARISH</h2>
+    <h3>CHAPTER I—THE BEADLE</h3>
+    <p>Content of chapter 1.</p>
+    <h3>CHAPTER II—THE CURATE</h3>
+    <p>Content of chapter 2.</p>
+    <h2>SCENES</h2>
+    <h3>CHAPTER I—THE STREETS</h3>
+    <p>Content of scenes chapter 1.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    ch1 = [c for c in headings if "BEADLE" in c.content][0]
+    assert ch1.div1 == "OUR PARISH", "Chapter should nest under OUR PARISH"
+    assert "CHAPTER" in ch1.div2, "Chapter should be at div2 level"
+
+    scenes_ch1 = [c for c in headings if "STREETS" in c.content][0]
+    assert scenes_ch1.div1 == "SCENES", "Chapter should nest under SCENES"
