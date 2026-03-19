@@ -41,7 +41,6 @@ _STRUCTURAL_KEYWORD_ALIASES = {
     "scoena": "scene",
 }
 
-_SINGLE_LETTER_INDEX_RE = re.compile(r"^[A-Za-z]$")
 _STRUCTURAL_INDEX_TOKEN_RE = re.compile(
     r"^(?:[IVXLCDM]+|[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|"
     r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
@@ -158,7 +157,7 @@ def _heading_keyword(heading_text: str) -> str:
         if _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(index_token):
             return canonical
         # Single-letter indices (A, B, C) are only valid for SECTION.
-        if canonical == "section" and _SINGLE_LETTER_INDEX_RE.fullmatch(index_token):
+        if canonical == "section" and len(index_token) == 1 and index_token.isalpha():
             return canonical
         return ""
 
@@ -512,7 +511,7 @@ def _is_bare_keyword_heading(heading_text: str, keyword: str | None = None) -> b
                 continue
             if _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(part):
                 continue
-            if allow_letter and _SINGLE_LETTER_INDEX_RE.fullmatch(part):
+            if allow_letter and len(part) == 1 and part.isalpha():
                 continue
             return False
     return True
