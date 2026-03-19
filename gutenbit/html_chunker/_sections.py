@@ -32,12 +32,12 @@ from gutenbit.html_chunker._headings import (
     _heading_keyword,
     _heading_text_suggests_play_structure,
     _headings_have_text_between,
+    _is_bare_keyword_heading,
     _is_deep_rank_bare_numeral_heading,
     _is_dialogue_speaker_heading,
     _is_editorial_placeholder_heading,
     _is_emphasized_toc_link,
     _is_empty_front_matter_stub_heading,
-    _is_bare_keyword_heading,
     _is_front_matter_attribution_heading,
     _is_front_matter_heading,
     _is_ignorable_fallback_heading,
@@ -71,6 +71,17 @@ from gutenbit.html_chunker._toc import (
     _toc_context_text,
     _toc_entry_matches_heading,
 )
+
+# ---------------------------------------------------------------------------
+# Thresholds for _merge_chapter_description_paragraphs
+# ---------------------------------------------------------------------------
+
+# Longest description paragraph to merge (chars).  Gutenberg chapter
+# descriptions are typically 1–2 lines; anything longer is body prose.
+_MAX_DESCRIPTION_PARAGRAPH_LEN = 300
+# Minimum fraction of alpha chars that must be uppercase for the paragraph
+# to be considered an ALL-CAPS description (allows minor OCR artifacts).
+_MIN_UPPERCASE_RATIO = 0.9
 
 # ---------------------------------------------------------------------------
 # Compiled regex patterns (used only within this module)
@@ -417,7 +428,11 @@ def _merge_chapter_description_paragraphs(
 
     for idx, sec in enumerate(new_sections):
         keyword = _heading_keyword(sec.heading_text)
-        if not keyword or keyword in _BROAD_KEYWORDS or not _is_bare_keyword_heading(sec.heading_text, keyword):
+        if (
+            not keyword
+            or keyword in _BROAD_KEYWORDS
+            or not _is_bare_keyword_heading(sec.heading_text, keyword)
+        ):
             continue
 
         # Find the heading element and then the next <p> sibling.
@@ -436,7 +451,7 @@ def _merge_chapter_description_paragraphs(
             continue
 
         ptext = " ".join(next_p.get_text().split()).strip()
-        if not ptext or len(ptext) > 300:
+        if not ptext or len(ptext) > _MAX_DESCRIPTION_PARAGRAPH_LEN:
             continue
 
         # Check if the text is ALL-CAPS (allow minor non-alpha chars).
@@ -444,7 +459,7 @@ def _merge_chapter_description_paragraphs(
         if not alpha_chars:
             continue
         upper_ratio = sum(1 for c in alpha_chars if c.isupper()) / len(alpha_chars)
-        if upper_ratio < 0.9:
+        if upper_ratio < _MIN_UPPERCASE_RATIO:
             continue
 
         # Merge description into heading text.
@@ -506,6 +521,9 @@ def _should_skip_same_keyword_nesting(
         return False
     if not infer_from_rank:
         return True
+    # Broad keywords (BOOK, PART, …) are handled by the separate
+    # _nest_chapters_under_broad_containers pass, so always skip here
+    # to avoid double-nesting.
     if parent_kw in _BROAD_KEYWORDS:
         return True
     if parent.heading_rank is None or child.heading_rank is None:

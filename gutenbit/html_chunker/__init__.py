@@ -134,6 +134,14 @@ def chunk_html(html: str) -> list[Chunk]:
     sections = _merge_chapter_subtitle_sections(
         sections, toc_anchor_ids=toc_anchor_ids
     )
+    # Merge ALL-CAPS description paragraphs into bare chapter headings so
+    # that e.g. "CHAPTER I" followed by a <p>TREATING OF SHOES...</p> becomes
+    # "CHAPTER I TREATING OF SHOES...".  The merged <p> tags are excluded
+    # from body-text emission below.  Runs before level compaction alongside
+    # _merge_chapter_subtitle_sections so all heading-text transforms are
+    # grouped together.
+    sections, skip_paragraph_ids = _merge_chapter_description_paragraphs(sections)
+    _skip_tag_ids = frozenset(skip_paragraph_ids) if skip_paragraph_ids else None
     sections = _merge_adjacent_duplicate_sections(sections)
 
     # Compact levels so the shallowest level maps to div1.
@@ -144,13 +152,6 @@ def chunk_html(html: str) -> list[Chunk]:
     # Cap at 4 levels (div1–div4); deeper nesting is flattened.
     max_div = 4
     sections = [s._with_level(min(max_div, s.level)) for s in sections]
-
-    # Merge ALL-CAPS description paragraphs into bare chapter headings so
-    # that e.g. "CHAPTER I" followed by a <p>TREATING OF SHOES...</p> becomes
-    # "CHAPTER I TREATING OF SHOES...".  The merged <p> tags are excluded
-    # from body-text emission below.
-    sections, skip_paragraph_ids = _merge_chapter_description_paragraphs(sections)
-    _skip_tag_ids = frozenset(skip_paragraph_ids) if skip_paragraph_ids else None
 
     chunks: list[Chunk] = []
     pos = 0

@@ -1,5 +1,7 @@
 """Tests for HTML chunker: TOC-driven structural parsing."""
 
+import re
+
 from gutenbit.html_chunker import chunk_html
 
 # ------------------------------------------------------------------
@@ -2376,7 +2378,7 @@ def test_preface_does_not_nest_chapters_as_container():
 
     # PREFACE and chapters should be at the same div1 level, not nested
     preface = [c for c in headings if c.content == "PREFACE"][0]
-    ch1 = [c for c in headings if "CHAPTER I" in c.content and "II" not in c.content and "III" not in c.content][0]
+    ch1 = [c for c in headings if re.match(r"CHAPTER I\b(?!I)", c.content)][0]
     assert preface.div2 == "", "PREFACE should be at div1 level"
     assert ch1.div2 == "", "Chapter should be at div1 level, not nested under PREFACE"
 

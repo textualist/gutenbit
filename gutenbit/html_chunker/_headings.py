@@ -41,8 +41,9 @@ _STRUCTURAL_KEYWORD_ALIASES = {
     "scoena": "scene",
 }
 
+_SINGLE_LETTER_INDEX_RE = re.compile(r"^[A-Za-z]$")
 _STRUCTURAL_INDEX_TOKEN_RE = re.compile(
-    r"^(?:[IVXLCDM]+|[0-9]+|[A-Z]|one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"^(?:[IVXLCDM]+|[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|"
     r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
     r"nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|"
     r"first|second|third|fourth|fifth|sixth|seventh|eighth|"
@@ -96,14 +97,17 @@ _FRONT_MATTER_ATTRIBUTION_HEADING_RE = re.compile(
     r"^(?:introduction|preface|foreword|afterword)\s+by\b",
     re.IGNORECASE,
 )
+# Front/back-matter keyword base shared by both prefix and standalone regexes.
+_FRONT_MATTER_KEYWORD_ALT = (
+    r"PREFACE|FOREWORD|AFTERWORD|POSTSCRIPT|DEDICATION|"
+    r"ACKNOWLEDGEMENTS?|ACKNOWLEDGMENTS?"
+)
 _FRONT_MATTER_PREFIX_RE = re.compile(
-    r"^(?:PREFACE|FOREWORD|AFTERWORD|POSTSCRIPT|DEDICATION|"
-    r"ACKNOWLEDGEMENTS?|ACKNOWLEDGMENTS?)\b",
+    rf"^(?:{_FRONT_MATTER_KEYWORD_ALT})\b",
     re.IGNORECASE,
 )
 _STANDALONE_FRONT_MATTER_RE = re.compile(
-    r"^(?:PREFACE|FOREWORD|AFTERWORD|POSTSCRIPT|DEDICATION|"
-    r"ACKNOWLEDGEMENTS?|ACKNOWLEDGMENTS?|AUTHOR'?S?\s*NOTE|"
+    rf"^(?:{_FRONT_MATTER_KEYWORD_ALT}|AUTHOR'?S?\s*NOTE|"
     r"BIOGRAPHICAL\s+NOTICE|NOTE\s+ON\s+THE\s+TEXT)\.?\s*$",
     re.IGNORECASE,
 )
@@ -152,6 +156,9 @@ def _heading_keyword(heading_text: str) -> str:
             return canonical
         index_token = tokens[1] if len(tokens) > 1 and tokens[0] == "the" else tokens[0]
         if _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(index_token):
+            return canonical
+        # Single-letter indices (A, B, C) are only valid for SECTION.
+        if canonical == "section" and _SINGLE_LETTER_INDEX_RE.fullmatch(index_token):
             return canonical
         return ""
 
@@ -494,12 +501,20 @@ def _is_bare_keyword_heading(heading_text: str, keyword: str | None = None) -> b
     if len(tokens) < 2:
         return False
     idx = 1
+    # Skip optional article "THE" (e.g. "CHAPTER THE FIRST"), but only
+    # when more tokens follow — "CHAPTER THE" alone is not bare.
     if tokens[idx].upper() == "THE" and len(tokens) > idx + 1:
         idx += 1
+    allow_letter = keyword == "section"
     for token in tokens[idx:]:
         for part in token.rstrip(".,;:!?").split("-"):
-            if part and not _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(part):
-                return False
+            if not part:
+                continue
+            if _STRUCTURAL_INDEX_TOKEN_RE.fullmatch(part):
+                continue
+            if allow_letter and _SINGLE_LETTER_INDEX_RE.fullmatch(part):
+                continue
+            return False
     return True
 
 
