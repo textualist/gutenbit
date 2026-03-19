@@ -1086,6 +1086,23 @@ def _fallback_start_index(heading_rows: list[_HeadingRow]) -> int | None:
     start_rank = min(row.rank for _, row in start_rows)
     for idx, row in start_rows:
         if row.rank == start_rank:
+            # When the first structural heading has peer or slightly-
+            # higher-rank headings before it (e.g. h2 DEDICATION before
+            # h2 PREFACE, or h2 story titles before h3 "Section C"),
+            # extend backwards to include them.  Only extend to headings
+            # at rank 2+ (skip h1 titles) and within 1 rank of
+            # start_rank (avoid pulling h2 titles into rank-7 paragraph-
+            # heading structures like plays).
+            if start_rank >= 2 and idx > 0:
+                min_rank = max(2, start_rank - 1)
+                new_start = idx
+                for j in range(idx - 1, -1, -1):
+                    if min_rank <= heading_rows[j].rank <= start_rank:
+                        new_start = j
+                    else:
+                        break
+                if new_start < idx:
+                    return new_start
             return idx
     return None
 

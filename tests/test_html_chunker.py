@@ -2246,3 +2246,80 @@ def test_section_levels_capped_at_four():
     assert len(headings) >= 4
     deepest = headings[-1]
     assert deepest.div4 != "" or deepest.div3 != ""
+
+
+def test_fallback_extends_backwards_to_peer_rank_headings():
+    """Regression: h2 titles before h3 structural headings must be included.
+
+    Modelled on PG 912 (Mudfog Papers) where h2 story titles precede the
+    first h3 "Section" heading.  Without the backward-scan fix, the parser
+    started at the h3, skipping the story titles entirely.
+    """
+    html = _make_html("""
+    <h1>THE MUDFOG PAPERS</h1>
+    <h2>PUBLIC LIFE OF MR. TULRUMBLE</h2>
+    <p>Story paragraph one.</p>
+    <h2>FULL REPORT OF THE FIRST MEETING</h2>
+    <p>Meeting intro paragraph.</p>
+    <h3>Section A.—Zoology and Botany.</h3>
+    <p>Zoology paragraph.</p>
+    <h3>Section B.—Anatomy and Medicine.</h3>
+    <p>Anatomy paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert "PUBLIC LIFE OF MR. TULRUMBLE" in headings
+    assert "FULL REPORT OF THE FIRST MEETING" in headings
+    assert "Section A.\u2014Zoology and Botany." in headings or any(
+        "Zoology" in h for h in headings
+    )
+
+
+def test_fallback_extends_backwards_to_same_rank_before_keyword_heading():
+    """Regression: h2 DEDICATION/ADDRESS before h2 PREFACE must be included.
+
+    Modelled on PG 588 (Master Humphrey's Clock) where DEDICATION and
+    ADDRESS at h2 precede a keyword-bearing h2 PREFACE.  The backward scan
+    must include same-rank headings immediately before the structural start.
+    """
+    html = _make_html("""
+    <h1>MASTER HUMPHREY'S CLOCK</h1>
+    <h2>DEDICATION</h2>
+    <p>Dedication text.</p>
+    <h2>ADDRESS</h2>
+    <p>Address text.</p>
+    <h2>PREFACE TO THE FIRST VOLUME</h2>
+    <p>Preface text.</p>
+    <h2>I</h2>
+    <h3>THE CLOCK-CASE</h3>
+    <p>Content of chapter I.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert "DEDICATION" in headings
+    assert "ADDRESS" in headings
+    assert "PREFACE TO THE FIRST VOLUME" in headings
+
+
+def test_fallback_backward_scan_does_not_pull_h2_into_paragraph_headings():
+    """Ensure the backward scan stays within 1 rank of the structural start.
+
+    When paragraph-level play headings (rank 7) are detected, an h2 title
+    like HAMLET must NOT be pulled in — the rank gap is too wide.
+    """
+    html = _make_html("""
+    <h2>HAMLET</h2>
+    <p>ACT I</p>
+    <p>SCENE I</p>
+    <p>Opening speech.</p>
+    <p>SCENE II</p>
+    <p>Another speech.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c.content for c in chunks if c.kind == "heading"]
+
+    assert "HAMLET" not in headings
+    assert "ACT I" in headings
+    assert "SCENE I" in headings
