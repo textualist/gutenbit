@@ -49,7 +49,7 @@ _BARE_HEADING_NUMBER_RE = re.compile(
 )
 
 _HEADING_KEYWORD_RE = re.compile(
-    r"^(?:(?:BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|SCOENA|SECTION|ADVENTURE)\.?\s|EPILOGUE\b|INDUCTION\b)",
+    r"^(?:(?:BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|SCOENA|SCAENA|SC\u0153NA|SECTION|ADVENTURE)\.?\s|EPILOGUE\b|INDUCTION\b)",
     re.IGNORECASE,
 )
 _START_DELIMITER_RE = re.compile(
@@ -74,9 +74,9 @@ _BRACKETED_NUMERIC_HEADING_RE = re.compile(r"^\[\s*\d+\s*\]$")
 _NUMERIC_LINK_TEXT_RE = re.compile(r"^\[?\d+\]?$")
 _ROMAN_NUMERAL_RE = re.compile(r"^[IVXLCDM]+$")
 _PLAY_HEADING_PARAGRAPH_RE = re.compile(
-    r"^(?:(?P<act>(?:ACTUS|ACT)\s+[A-Z0-9IVXLCDM]+\.?)"
-    r"(?:\s+(?P<scene>(?:SC(?:OE|E)NA|SCENE)\s+[A-Z0-9IVXLCDM]+\.?))?"
-    r"|(?P<scene_only>(?:SC(?:OE|E)NA|SCENE)\s+[A-Z0-9IVXLCDM]+\.?))$",
+    r"^(?:(?P<act>(?:ACTUS|ACT)\s+[A-Za-z0-9]+\.?)"
+    r"(?:[,.:\s]+(?P<scene>(?:SC(?:OE|AE|E|\u0153)NA|SCAENA|SCENE)\s+[A-Za-z0-9]+\.?))?"
+    r"|(?P<scene_only>(?:SC(?:OE|AE|E|\u0153)NA|SCAENA|SCENE)\s+[A-Za-z0-9]+\.?))$",
     re.IGNORECASE,
 )
 _NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]+")

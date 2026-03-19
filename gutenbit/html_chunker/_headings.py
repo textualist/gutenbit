@@ -39,6 +39,8 @@ _STRUCTURAL_KEYWORD_ALIASES = {
     "actus": "act",
     "scena": "scene",
     "scoena": "scene",
+    "scaena": "scene",
+    "sc\u0153na": "scene",
 }
 
 _STRUCTURAL_INDEX_TOKEN_RE = re.compile(
@@ -57,7 +59,7 @@ _STRUCTURAL_INDEX_TOKEN_RE = re.compile(
 _TRAILING_STRUCTURAL_HEADING_RE = re.compile(
     r"^(?:THE\s+)?(?P<index>[A-Z0-9]+(?:\s+AND\s+[A-Z]+)?)\s+"
     r"(?P<keyword>BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|"
-    r"SCOENA|SECTION|ADVENTURE)\.?\s*$",
+    r"SCOENA|SCAENA|SC\u0153NA|SECTION|ADVENTURE)\.?\s*$",
     re.IGNORECASE,
 )
 _EMBEDDED_HEADING_RE = re.compile(
@@ -74,16 +76,22 @@ _EMBEDDED_ORDINAL_KEYWORD_RE = re.compile(
     r"\b(?P<index>first|second|third|fourth|fifth|sixth|seventh|eighth|"
     r"ninth|tenth|eleventh|twelfth)\s+"
     r"(?P<keyword>book|part|act|actus|epilogue|volume|chapter|stave|"
-    r"scene|scena|scoena|section|adventure)"
+    r"scene|scena|scoena|scaena|sc\u0153na|section|adventure)"
     r"(?:\.|[,;:\s]*$)",
     re.IGNORECASE,
 )
 _PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
 _NON_STRUCTURAL_HEADING_RE = re.compile(
-    r"^(?:notes|footnotes?|endnotes?|transcriber's note|transcribers note|"
-    r"editor's note|editors note|finis)\b",
+    r"^(?:(?:notes|footnotes?|endnotes?|transcriber's note|transcribers note|"
+    r"editor's note|editors note|finis)\b"
+    r"|(?:song|sennet)\.?\s*$)",
     re.IGNORECASE,
 )
+_DEEP_RANK_NON_STRUCTURAL_RE = re.compile(
+    r"^the\s+end\.?\s*$",
+    re.IGNORECASE,
+)
+_DEEP_RANK_NON_STRUCTURAL_MIN_RANK = 4
 _FRONT_MATTER_ATTRIBUTION_RE = re.compile(
     r"^(?:by|translated\s+by|edited\s+by|illustrated\s+by)\s",
     re.IGNORECASE,

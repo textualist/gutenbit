@@ -24,6 +24,8 @@ from gutenbit.html_chunker._common import (
     _Section,
 )
 from gutenbit.html_chunker._headings import (
+    _DEEP_RANK_NON_STRUCTURAL_MIN_RANK,
+    _DEEP_RANK_NON_STRUCTURAL_RE,
     _broad_heading_with_enumerated_child,
     _broad_nesting_depth,
     _classify_level,
@@ -332,10 +334,26 @@ def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
     return merged
 
 
-def _merge_adjacent_duplicate_sections(sections: list[_Section]) -> list[_Section]:
-    """Drop immediately repeated section headings such as duplicate running headers."""
+_MIN_PARAGRAPHS_BETWEEN_DUPLICATES = 5
+
+
+def _merge_adjacent_duplicate_sections(
+    sections: list[_Section],
+    doc_index: _DocumentIndex,
+) -> list[_Section]:
+    """Drop immediately repeated section headings such as duplicate running headers.
+
+    Skips the merge when *many* body paragraphs intervene between the two
+    anchors — that signals genuinely distinct positions in the text (e.g. a
+    First Folio misnumbered act whose content must be preserved).  A few
+    paragraphs (< ``_MIN_PARAGRAPHS_BETWEEN_DUPLICATES``) are allowed because
+    some editions repeat a heading after a short preamble or attribution block.
+    """
     if len(sections) < 2:
         return sections
+
+    tag_positions = doc_index.tag_positions
+    para_positions = doc_index.paragraph_positions
 
     merged = [sections[0]]
     for section in sections[1:]:
@@ -345,6 +363,17 @@ def _merge_adjacent_duplicate_sections(sections: list[_Section]) -> list[_Sectio
             and previous.heading_rank == section.heading_rank
             and _same_heading_text(previous.heading_text, section.heading_text)
         ):
+            # Count body paragraphs between the two anchors.
+            prev_pos = _tag_position(previous.body_anchor, tag_positions)
+            cur_pos = _tag_position(section.body_anchor, tag_positions)
+            if prev_pos is not None and cur_pos is not None and cur_pos > prev_pos:
+                lo = bisect_right(para_positions, prev_pos)
+                hi = bisect_left(para_positions, cur_pos)
+                if hi - lo >= _MIN_PARAGRAPHS_BETWEEN_DUPLICATES:
+                    # Substantial content between them — treat as distinct.
+                    merged.append(section)
+                    continue
+            # Few or no paragraphs between — safe to merge.
             continue
         merged.append(section)
     return merged
@@ -607,6 +636,10 @@ def _parse_heading_sections(
             continue
         rank = _heading_tag_rank(ih.tag)
         if rank is None:
+            continue
+        if rank >= _DEEP_RANK_NON_STRUCTURAL_MIN_RANK and _DEEP_RANK_NON_STRUCTURAL_RE.match(
+            ih.text
+        ):
             continue
         anchor = ih.tag.find("a", id=True) or ih.tag
         heading_rows.append(_HeadingRow(ih.tag, anchor, ih.text, rank))

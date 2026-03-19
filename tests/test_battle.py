@@ -205,7 +205,7 @@ def test_macbeth_uses_paragraph_fallback_for_full_play_structure():
         "Scena Sexta.",
         "Scena Septima.",
     ]
-    assert len(headings) == 28
+    assert len(headings) == 32
     assert "Actus Quintus." in heading_texts
     assert "FINIS" not in heading_texts
 
@@ -487,7 +487,7 @@ def test_dracula_keeps_the_final_note_section():
 def test_middlemarch_keeps_the_finale_section():
     heading_texts = [heading.content for heading in _headings(145)]
 
-    assert heading_texts[-2:] == ["FINALE.", "THE END"]
+    assert heading_texts[-1] == "FINALE."
 
 
 def test_jane_eyre_keeps_preface_and_note_before_chapter_one():
@@ -1112,7 +1112,12 @@ def test_beowulf_merges_canto_pairs_and_captures_verse_content():
     assert len(headings) == 51
 
     # Verse content (in <div class="l"> tags) is captured.
-    canto_i_text = [p for p in paragraphs if "I. THE LIFE AND DEATH OF SCYLD" in p.div1]
+    # Cantos nest under "BEOWULF." at div1; the canto title is div2.
+    canto_i_text = [
+        p
+        for p in paragraphs
+        if p.div1 == "BEOWULF." and p.div2 == "I. THE LIFE AND DEATH OF SCYLD"
+    ]
     assert len(canto_i_text) > 50
     assert any("Spear-Dane" in p.content for p in canto_i_text)
 
@@ -1223,3 +1228,104 @@ def test_peter_rabbit_collapses_title_block_into_single_section():
     # All content captured under the single section.
     assert len(paragraphs) > 40
     assert any("four little rabbits" in p.content for p in paragraphs)
+
+
+# ---------------------------------------------------------------------------
+# KEI-172 batch: Shakespeare corpus
+# ---------------------------------------------------------------------------
+
+
+def test_twelfth_night_recovers_all_five_acts_with_comma_scaena():
+    """PG 1123 — comma separators and SCAENA spelling in act/scene labels."""
+    headings = _headings(1123)
+
+    acts = [h for h in headings if h.content.startswith("Actus") and not h.div2]
+    assert len(acts) == 5
+
+    scenes = [h for h in headings if h.div2]
+    assert len(scenes) == 18  # 23 total - 5 acts = 18 scenes
+
+    # Scene nesting under acts.
+    act_i_scenes = [h for h in headings if "Primus" in h.div1 and h.div2]
+    assert len(act_i_scenes) == 5
+
+
+def test_tempest_recovers_act_five_with_colon_separator():
+    """PG 1135 — colon separator in 'Actus quintus: Scoena Prima.'."""
+    headings = _headings(1135)
+
+    acts = [h for h in headings if h.content.startswith("Actus") and not h.div2]
+    assert len(acts) == 5
+
+    act_v = next(h for h in headings if "quintus" in h.content.lower() and not h.div2)
+    assert act_v.div1.startswith("Actus")
+
+
+def test_henry_vi_part1_excludes_sennet_stage_directions():
+    """PG 1100 — SENNET stage direction should not be a structural heading."""
+    headings = _headings(1100)
+    heading_texts = [h.content for h in headings]
+
+    assert "SENNET." not in heading_texts
+    acts = [h for h in headings if h.content.startswith("Actus") and not h.div2]
+    assert len(acts) == 5
+
+
+def test_cymbeline_excludes_song_stage_directions():
+    """PG 1133 — SONG stage direction should not be a structural heading."""
+    headings = _headings(1133)
+    heading_texts = [h.content for h in headings]
+
+    assert "SONG." not in heading_texts
+    assert "SONG" not in heading_texts
+    acts = [h for h in headings if h.content.startswith("Actus") and not h.div2]
+    assert len(acts) == 5
+
+    # All 5 acts with scenes.
+    assert len(headings) == 33
+
+
+def test_loves_labours_lost_preserves_duplicate_act_heading():
+    """PG 1109 — two 'Actus Quartus.' headings separated by content are preserved."""
+    headings = _headings(1109)
+    heading_texts = [h.content for h in headings]
+
+    # The First Folio has two "Actus Quartus." headings (a misnumbering).
+    assert heading_texts.count("Actus Quartus.") == 2
+    assert len(headings) == 5
+
+
+def test_sonnets_alt_excludes_the_end_heading():
+    """PG 1105 — 'THE END' at h4 should not be the only structural heading."""
+    headings = _headings(1105)
+
+    assert len(headings) == 1
+    assert headings[0].content == "THE SONNETS"
+
+
+def test_lovers_complaint_excludes_the_end_heading():
+    """PG 1137 — 'THE END' at h5 should not outrank the poem title."""
+    headings = _headings(1137)
+
+    assert len(headings) == 1
+    assert headings[0].content == "A LOVER'S COMPLAINT"
+
+
+def test_shakespeare_sonnets_keeps_all_154_sonnets():
+    """PG 1041 — all 154 numbered sonnets present under THE SONNETS."""
+    headings = _headings(1041)
+
+    assert headings[0].content == "THE SONNETS"
+    sonnets = [h for h in headings if h.div2]
+    assert len(sonnets) == 154
+
+
+def test_two_noble_kinsmen_keeps_prologue_and_epilogue():
+    """PG 1506 — Prologue and Epilogue preserved alongside 5 acts."""
+    headings = _headings(1506)
+    heading_texts = [h.content for h in headings]
+
+    assert "Prologue" in heading_texts or "PROLOGUE" in heading_texts
+    assert "Epilogue" in heading_texts or "EPILOGUE" in heading_texts
+    acts = [h for h in headings if h.div2 and ("Act" in h.div1 or "ACT" in h.div1)]
+    assert len(acts) > 20  # scenes nested under acts

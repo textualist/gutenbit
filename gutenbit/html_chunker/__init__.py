@@ -45,7 +45,7 @@ from gutenbit.html_chunker._sections import (
 # ---------------------------------------------------------------------------
 
 HTML_PARSER_BACKEND = "lxml"
-CHUNKER_VERSION = 31
+CHUNKER_VERSION = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,9 +131,7 @@ def chunk_html(html: str) -> list[Chunk]:
     sections = _nest_broad_subdivisions(sections)
     sections = _nest_chapters_under_broad_containers(sections)
     sections = _promote_more_prominent_heading_runs(sections)
-    sections = _merge_chapter_subtitle_sections(
-        sections, toc_anchor_ids=toc_anchor_ids
-    )
+    sections = _merge_chapter_subtitle_sections(sections, toc_anchor_ids=toc_anchor_ids)
     # Merge ALL-CAPS description paragraphs into bare chapter headings so
     # that e.g. "CHAPTER I" followed by a <p>TREATING OF SHOES...</p> becomes
     # "CHAPTER I TREATING OF SHOES...".  The merged <p> tags are excluded
@@ -142,7 +140,7 @@ def chunk_html(html: str) -> list[Chunk]:
     # grouped together.
     sections, skip_paragraph_ids = _merge_chapter_description_paragraphs(sections)
     _skip_tag_ids = frozenset(skip_paragraph_ids) if skip_paragraph_ids else None
-    sections = _merge_adjacent_duplicate_sections(sections)
+    sections = _merge_adjacent_duplicate_sections(sections, doc_index)
 
     # Compact levels so the shallowest level maps to div1.
     # e.g. chapter-only books (min_level=2) shift chapters to div1.
