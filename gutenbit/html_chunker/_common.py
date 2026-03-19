@@ -40,8 +40,11 @@ _HEADING_TAG_SET = frozenset(_HEADING_TAGS)
 # Bare chapter-number headings: "CHAPTER I", "CHAPTER IV.", "BOOK 2" etc.
 # with no subtitle text — used to merge consecutive number + title headings.
 _BARE_HEADING_NUMBER_RE = re.compile(
-    r"^(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)"
-    r"\.?\s+[IVXLCDM0-9]+\.?$",
+    r"^(?:"
+    r"(?:BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)"
+    r"\.?\s+[IVXLCDM0-9]+\.?"
+    r"|[IVXLCDM]+\."  # standalone Roman numeral with period (e.g. "I.", "XLIII.")
+    r")$",
     re.IGNORECASE,
 )
 

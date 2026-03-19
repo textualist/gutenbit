@@ -143,6 +143,18 @@ def _scan_document(soup: BeautifulSoup) -> _DocumentIndex:
                     blocks.append(node)
                     block_stack.append(node)
 
+                # Verse-line divs (<div class="l"> etc.) are leaf blocks
+                # that contain only inline content — treat as paragraphs.
+                if (
+                    in_body
+                    and name == "div"
+                    and not block_stack
+                    and not node.find(["p", "div", "pre", "table", "blockquote"])
+                    and node.get_text(strip=True)
+                ):
+                    blocks.append(node)
+                    block_stack.append(node)
+
                 if in_body and block_stack:
                     current_block = block_stack[-1]
                     if name == "span" and "pagenum" in (node.get("class") or []):
@@ -187,7 +199,12 @@ def _scan_document(soup: BeautifulSoup) -> _DocumentIndex:
         if isinstance(node, Tag) and node is not soup:
             if node.name == "body":
                 in_body = False
-            if in_body and node.name in ("p", "pre") and block_stack and block_stack[-1] is node:
+            if (
+                in_body
+                and node.name in ("p", "pre", "div")
+                and block_stack
+                and block_stack[-1] is node
+            ):
                 block_stack.pop()
 
         end_pos = tag_positions.get(id(node))
