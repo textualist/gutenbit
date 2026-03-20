@@ -304,7 +304,11 @@ def _next_heading_is_subtitle(heading_text: str) -> bool:
     if _EMBEDDED_HEADING_RE.search(heading_text):
         return False
     # EPILOGUE, PROLOGUE, APPENDIX are almost always structural divisions.
-    return not _STANDALONE_STRUCTURAL_RE.search(heading_text)
+    if _STANDALONE_STRUCTURAL_RE.search(heading_text):
+        return False
+    # Headings starting with "NOTE" / "A NOTE" / "NOTES" are editorial
+    # apparatus, not chapter subtitles.
+    return not re.match(r"^(?:a\s+)?notes?\b", heading_text, re.IGNORECASE)
 
 
 def _normalize_heading_subtitle(heading_text: str) -> str:

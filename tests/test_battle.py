@@ -1223,3 +1223,283 @@ def test_peter_rabbit_collapses_title_block_into_single_section():
     # All content captured under the single section.
     assert len(paragraphs) > 40
     assert any("four little rabbits" in p.content for p in paragraphs)
+
+
+# ---------------------------------------------------------------------------
+# KEI-230 batch: Johnson & Austen (20 works)
+# ---------------------------------------------------------------------------
+
+
+# -- Jane Austen --
+
+
+def test_persuasion_keeps_twenty_four_flat_chapters():
+    """PG 105 — 24 flat chapters, no nesting."""
+    headings = _headings(105)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 24
+    assert heading_texts[0] == "CHAPTER I."
+    assert heading_texts[-1] == "CHAPTER XXIV."
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_northanger_abbey_separates_note_from_chapter_31():
+    """PG 121 — 'A NOTE ON THE TEXT' is a standalone section, not merged into CHAPTER 31."""
+    headings = _headings(121)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 33
+    assert heading_texts[0] == "ADVERTISEMENT BY THE AUTHORESS, TO NORTHANGER ABBEY"
+    assert heading_texts[1] == "CHAPTER 1"
+    assert heading_texts[-2] == "CHAPTER 31"
+    assert heading_texts[-1] == "A NOTE ON THE TEXT"
+    # Regression: these must not be merged.
+    assert "CHAPTER 31 A NOTE ON THE TEXT" not in heading_texts
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_mansfield_park_keeps_forty_eight_flat_chapters():
+    """PG 141 — 48 flat chapters."""
+    headings = _headings(141)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 48
+    assert heading_texts[0] == "CHAPTER I"
+    assert heading_texts[-1] == "CHAPTER XLVIII"
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_lady_susan_nests_letters_and_conclusion_under_title():
+    """PG 946 — LADY SUSAN at div1, 41 Roman numeral letters + CONCLUSION nested at div2."""
+    headings = _headings(946)
+
+    assert len(headings) == 43
+    assert headings[0].content == "LADY SUSAN"
+    assert headings[0].div1 == "LADY SUSAN"
+    assert headings[0].div2 == ""
+
+    letters = [h for h in headings if h.div2 and h.div2 not in ("CONCLUSION",)]
+    assert len(letters) == 41
+    assert letters[0].content == "I"
+    assert letters[-1].content == "XLI"
+    assert all(h.div1 == "LADY SUSAN" for h in letters)
+
+    conclusion = next(h for h in headings if h.content == "CONCLUSION")
+    assert conclusion.div1 == "LADY SUSAN"
+    assert conclusion.div2 == "CONCLUSION"
+
+
+def test_love_and_freindship_nests_works_under_collection_titles():
+    """PG 1212 — Collection with nested works under div1 headings."""
+    headings = _headings(1212)
+
+    assert len(headings) == 43
+    assert headings[0].content == "LOVE AND FREINDSHIP"
+    assert headings[0].div1 == "LOVE AND FREINDSHIP"
+
+    # Letters nested under LOVE AND FREINDSHIP
+    letter1 = next(h for h in headings if "LETTER the FIRST" in h.content)
+    assert letter1.div1 == "LOVE AND FREINDSHIP"
+    assert letter1.div2 != ""
+
+    # A TALE is a standalone work at div1
+    tale = next(h for h in headings if h.content == "A TALE.")
+    assert tale.div1 == "A TALE."
+    assert tale.div2 == ""
+
+
+# -- Samuel Johnson --
+
+
+def test_rasselas_keeps_introduction_and_forty_nine_chapters():
+    """PG 652 — INTRODUCTION + 49 chapters (I through XLIX), all flat."""
+    headings = _headings(652)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 50
+    assert heading_texts[0] == "INTRODUCTION."
+    assert "CHAPTER I" in heading_texts[1]
+    assert "CHAPTER XLIX" in heading_texts[-1]
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_preface_to_shakespeare_keeps_selected_notes_sections():
+    """PG 5429 — PREFACE TO SHAKESPEARE + SELECTED NOTES with play sections."""
+    headings = _headings(5429)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 10
+    assert "PREFACE TO SHAKESPEARE" in heading_texts
+    assert "SELECTED NOTES FROM SOME OF THE PLAYS" in heading_texts
+    assert "MEASURE FOR MEASURE" in heading_texts
+    assert "HAMLET" in heading_texts
+    assert "OTHELLO" in heading_texts
+
+
+def test_journey_western_islands_nests_locations_under_title():
+    """PG 2064 — Title + 30 location sections nested under it."""
+    headings = _headings(2064)
+
+    assert len(headings) == 31
+    assert headings[0].content == "A JOURNEY TO THE WESTERN ISLANDS OF SCOTLAND"
+    assert headings[0].div2 == ""
+
+    locations = [h for h in headings if h.div2]
+    assert len(locations) == 30
+    assert locations[0].content == "INCH KEITH"
+    assert all(h.div1 == "A JOURNEY TO THE WESTERN ISLANDS OF SCOTLAND" for h in locations)
+
+
+def test_preface_to_dictionary_has_two_sections():
+    """PG 5430 — Single main section + THE END."""
+    headings = _headings(5430)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 2
+    assert heading_texts[0] == "PREFACE TO A DICTIONARY OF THE ENGLISH LANGUAGE"
+    assert heading_texts[1] == "THE END"
+
+
+def test_lives_poets_vol1_keeps_introduction_and_three_lives():
+    """PG 4679 — INTRODUCTION + ADDISON + SAVAGE + SWIFT, all flat."""
+    headings = _headings(4679)
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts == ["INTRODUCTION.", "ADDISON.", "SAVAGE.", "SWIFT."]
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_lives_poets_vol3_keeps_waller_milton_cowley():
+    """PG 5098 — INTRODUCTION + WALLER + MILTON (with nested subsections) + COWLEY."""
+    headings = _headings(5098)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 10
+    assert heading_texts[0] == "INTRODUCTION."
+    assert "WALLER." in heading_texts
+    assert "MILTON." in heading_texts
+    assert "COWLEY." in heading_texts
+
+    # Milton has nested subsections (Paradise Lost, etc.)
+    paradise = next(h for h in headings if h.content == "Paradise Lost.")
+    assert paradise.div1 == "MILTON."
+    assert paradise.div2 == "Paradise Lost."
+
+
+def test_lives_prior_congreve_blackmore_pope():
+    """PG 5101 — INTRODUCTION + 4 flat poet lives."""
+    headings = _headings(5101)
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts == [
+        "INTRODUCTION.",
+        "PRIOR.",
+        "CONGREVE.",
+        "BLACKMORE.",
+        "POPE.",
+    ]
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_lives_poets_vol4_keeps_twenty_one_flat_sections():
+    """PG 4678 — INTRODUCTION + 20 poet lives, all flat."""
+    headings = _headings(4678)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 21
+    assert heading_texts[0] == "INTRODUCTION."
+    assert heading_texts[-1] == "LYTTELTON."
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_vanity_human_wishes_keeps_introduction_and_poems():
+    """PG 13350 — Scholarly edition with intro, poems, and publication apparatus."""
+    headings = _headings(13350)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 14
+    assert "INTRODUCTION" in heading_texts
+    assert "THE VANITY OF HUMAN WISHES." in heading_texts
+    assert "SAMUEL JOHNSON" in heading_texts
+
+
+def test_voyage_to_abyssinia_nests_chapters_under_two_parts():
+    """PG 1436 — INTRODUCTION + PREFACE + 2 parts with chapters."""
+    headings = _headings(1436)
+
+    assert len(headings) == 27
+    assert headings[0].content == "INTRODUCTION."
+    assert headings[1].content == "THE PREFACE"
+
+    part1 = next(h for h in headings if "PART I" in h.content)
+    assert part1.div2 == ""
+
+    part1_chapters = [
+        h
+        for h in headings
+        if h.div1 == "PART I\u2014THE VOYAGE TO ABYSSINIA" and h.content.startswith("CHAPTER")
+    ]
+    part2_chapters = [
+        h
+        for h in headings
+        if h.div1 == "PART II\u2014A DESCRIPTION OF ABYSSINIA" and h.content.startswith("CHAPTER")
+    ]
+    assert len(part1_chapters) == 8
+    assert len(part2_chapters) == 15
+
+
+def test_rambler_vol1_nests_essays_under_contents():
+    """PG 43656 — PREFATORY NOTICE + CONTENTS + 105 numbered essays."""
+    headings = _headings(43656)
+
+    assert len(headings) == 107
+    assert headings[0].content == "PREFATORY NOTICE"
+    assert headings[1].content == "CONTENTS OF THE FIRST VOLUME."
+
+    essays = [h for h in headings if h.content.startswith("No. ")]
+    assert len(essays) == 105
+    assert essays[0].content == "No. 1. TUESDAY, MARCH 20, 1749-50."
+    assert essays[-1].content == "No. 105. TUESDAY, MARCH 19, 1751."
+    assert all(h.div1 == "CONTENTS OF THE FIRST VOLUME." for h in essays)
+
+
+def test_rambler_vol2_captures_title_fragments():
+    """PG 11397 — Vol III/IV with title-page heading fragments from HTML."""
+    headings = _headings(11397)
+
+    assert len(headings) == 35
+    assert headings[0].content == "VOLUME THE THIRD."
+
+
+def test_adventurer_idler_captures_contents_structure():
+    """PG 12050 — Adventurer + Idler essays nested under CONTENTS heading."""
+    headings = _headings(12050)
+
+    assert len(headings) == 47
+    assert headings[0].content == "CONTENTS OF THE FOURTH VOLUME."
+    assert any("ADVENTURER" in h.content for h in headings)
+    assert any("IDLER" in h.content for h in headings)
+
+
+def test_lives_poets_vol2_keeps_twenty_six_flat_lives():
+    """PG 24218 — 26 flat poet lives (no introduction in this volume)."""
+    headings = _headings(24218)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 26
+    assert heading_texts[0] == "PRIOR."
+    assert heading_texts[-1] == "LYTTELTON."
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_notes_shakespeare_keeps_play_sections():
+    """PG 7780 — Scholarly edition with genre grouping and comedy notes."""
+    headings = _headings(7780)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 18
+    assert "COMEDIES" in heading_texts
+    assert "SAMUEL JOHNSON" in heading_texts
+    assert "THE TEMPEST" in heading_texts
+    assert "THE WINTER'S TALE" in heading_texts
