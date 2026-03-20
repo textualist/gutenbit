@@ -1112,7 +1112,7 @@ def test_beowulf_merges_canto_pairs_and_captures_verse_content():
     assert len(headings) == 51
 
     # Verse content (in <div class="l"> tags) is captured.
-    canto_i_text = [p for p in paragraphs if "I. THE LIFE AND DEATH OF SCYLD" in p.div1]
+    canto_i_text = [p for p in paragraphs if "I. THE LIFE AND DEATH OF SCYLD" in p.div2]
     assert len(canto_i_text) > 50
     assert any("Spear-Dane" in p.content for p in canto_i_text)
 
