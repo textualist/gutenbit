@@ -16,6 +16,7 @@ from gutenbit.html_chunker._common import (
     _HEADING_TAGS,
     _NUMERIC_LINK_TEXT_RE,
     _PLAY_HEADING_PARAGRAPH_RE,
+    _ROMAN_NUMERAL_RE,
     _STANDALONE_STRUCTURAL_RE,
     _clean_heading_text,
     _extract_heading_text,
@@ -130,6 +131,20 @@ def _parse_toc_sections(
 
     anchor_map = doc_index.anchor_map
 
+    # Count bare Roman numeral TOC links.  When there are many (>5),
+    # they represent the primary structure (e.g. Lady Susan's 41
+    # epistolary letters) and should be accepted as sections.  When
+    # there are few (e.g. Heart of Darkness's 3 parts), the heading-
+    # scan fallback provides better structure by including the title.
+    _MIN_ROMAN_NUMERAL_TOC_ENTRIES = 5
+    roman_numeral_count = sum(
+        1
+        for link in toc_links
+        if _tag_within_bounds(link, tag_positions, bounds)
+        and _ROMAN_NUMERAL_RE.fullmatch(_clean_heading_text(" ".join(link.get_text().split())))
+    )
+    accept_roman_numerals = roman_numeral_count > _MIN_ROMAN_NUMERAL_TOC_ENTRIES
+
     for link in toc_links:
         if not _tag_within_bounds(link, tag_positions, bounds):
             continue
@@ -137,12 +152,14 @@ def _parse_toc_sections(
         link_text = raw_link_text
         if not _is_structural_toc_link(link, raw_link_text, doc_index=doc_index):
             context_text = _toc_context_text(link)
-            if not (
-                _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text)
-                and _looks_enumerated_toc_entry(context_text)
+            if _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text) and _looks_enumerated_toc_entry(
+                context_text
             ):
+                link_text = context_text
+            elif accept_roman_numerals and _ROMAN_NUMERAL_RE.fullmatch(raw_link_text):
+                pass  # Accept: many Roman numeral entries → primary structure
+            else:
                 continue
-            link_text = context_text
         href = str(link.get("href", ""))
         if not href.startswith("#"):
             continue
