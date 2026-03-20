@@ -2604,11 +2604,11 @@ def test_conclusion_nests_under_title_with_roman_numeral_siblings():
     assert conc is not None
 
 
-def test_few_roman_numeral_toc_links_rejected():
-    """When there are few (<=5) bare Roman numeral TOC links, they are rejected.
+def test_few_roman_numeral_toc_links_accepted():
+    """Bare Roman numeral TOC links are accepted as primary sections regardless of count.
 
-    Works like Heart of Darkness (3 parts) should fall through to heading-scan
-    so the title is included as a structural heading.
+    Works like Heart of Darkness (3 parts) have I, II, III as the top-level
+    divisions.  The work title is not a section — it names the whole work.
     """
     toc_links = "\n".join(
         f'    <p><a href="#p{i}" class="pginternal">{num}</a></p>'
@@ -2627,9 +2627,7 @@ def test_few_roman_numeral_toc_links_rejected():
     headings = [c for c in chunks if c.kind == "heading"]
     heading_texts = [h.content for h in headings]
 
-    # The title should appear as a structural heading (heading-scan fallback).
-    assert "HEART OF DARKNESS" in heading_texts
-    # Bare Roman numerals should nest under the title, not be flat div1 sections.
-    roman_headings = [h for h in headings if h.content in ("I", "II", "III")]
-    for h in roman_headings:
-        assert h.div1 == "HEART OF DARKNESS"
+    # Bare Roman numerals are the primary structure — no count threshold.
+    assert heading_texts == ["I", "II", "III"]
+    # The work title is not a div1 section.
+    assert "HEART OF DARKNESS" not in heading_texts

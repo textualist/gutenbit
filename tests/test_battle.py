@@ -982,11 +982,11 @@ def test_war_of_the_worlds_nests_chapters_under_two_books():
     assert len(book2_chapters) == 10
 
 
-def test_heart_of_darkness_keeps_title_and_three_parts():
+def test_heart_of_darkness_keeps_three_parts():
     headings = _headings(219)
     heading_texts = [h.content for h in headings]
 
-    assert heading_texts == ["Heart of Darkness", "I", "II", "III"]
+    assert heading_texts == ["I", "II", "III"]
 
 
 def test_jekyll_and_hyde_keeps_ten_named_chapters():

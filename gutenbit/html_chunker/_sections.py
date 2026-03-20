@@ -16,7 +16,6 @@ from gutenbit.html_chunker._common import (
     _HEADING_TAGS,
     _NUMERIC_LINK_TEXT_RE,
     _PLAY_HEADING_PARAGRAPH_RE,
-    _ROMAN_NUMERAL_RE,
     _STANDALONE_STRUCTURAL_RE,
     _clean_heading_text,
     _extract_heading_text,
@@ -83,10 +82,6 @@ _MAX_DESCRIPTION_PARAGRAPH_LEN = 300
 # Minimum fraction of alpha chars that must be uppercase for the paragraph
 # to be considered an ALL-CAPS description (allows minor OCR artifacts).
 _MIN_UPPERCASE_RATIO = 0.9
-# Minimum number of bare Roman numeral TOC links required to accept them
-# as primary structural entries (e.g. Lady Susan's epistolary letters).
-_MIN_ROMAN_NUMERAL_TOC_ENTRIES = 5
-
 # ---------------------------------------------------------------------------
 # Compiled regex patterns (used only within this module)
 # ---------------------------------------------------------------------------
@@ -134,19 +129,6 @@ def _parse_toc_sections(
 
     anchor_map = doc_index.anchor_map
 
-    # Count bare Roman numeral TOC links.  When there are many (>5),
-    # they represent the primary structure (e.g. Lady Susan's 41
-    # epistolary letters) and should be accepted as sections.  When
-    # there are few (e.g. Heart of Darkness's 3 parts), the heading-
-    # scan fallback provides better structure by including the title.
-    roman_numeral_count = sum(
-        1
-        for link in toc_links
-        if _tag_within_bounds(link, tag_positions, bounds)
-        and _ROMAN_NUMERAL_RE.fullmatch(_clean_heading_text(" ".join(link.get_text().split())))
-    )
-    accept_roman_numerals = roman_numeral_count > _MIN_ROMAN_NUMERAL_TOC_ENTRIES
-
     for link in toc_links:
         if not _tag_within_bounds(link, tag_positions, bounds):
             continue
@@ -158,8 +140,6 @@ def _parse_toc_sections(
                 context_text
             ):
                 link_text = context_text
-            elif accept_roman_numerals and _ROMAN_NUMERAL_RE.fullmatch(raw_link_text):
-                pass  # Accept: many Roman numeral entries → primary structure
             else:
                 continue
         href = str(link.get("href", ""))
