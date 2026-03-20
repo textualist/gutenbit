@@ -1350,3 +1350,53 @@ def test_measure_for_measure_recovers_all_five_acts_and_nests_scenes():
     # Editorial notes are top-level peers, not nested under ACT V.
     notes = [h for h in headings if h.content.startswith("Note") and not h.div2]
     assert len(notes) == 22
+
+
+def test_first_folio_parses_all_plays_with_act_scene_hierarchy():
+    """PG 2270 — Shakespeare's First Folio.
+
+    All 35 plays appear as top-level entries with Play > Act > Scene nesting.
+    Special headings (INDVCTION, EPILOGVE, THE PROLOGVE) nest under their
+    plays rather than dominating the structure.
+    """
+    headings = _headings(2270)
+
+    # All 35 plays present as top-level entries.
+    top_level = [h for h in headings if not h.div2]
+    play_names = [h.content for h in top_level]
+    assert "The Tempest" in play_names
+    assert "The Taming of the Shrew" in play_names
+    assert "The Second Part of Henry the Fourth" in play_names
+    assert "The Life of Henry the Fift" in play_names
+    assert "The Tragedie of Hamlet" in play_names
+    assert "The Tragedie of Macbeth" in play_names
+    assert "The Tragedie of Cymbeline" in play_names
+    assert "The Tragedie of King Lear" in play_names
+    assert "The Famous History of the Life of King Henry the Eight" in play_names
+
+    # INDVCTION and EPILOGVE nest under Henry IV Part 2, not at top level.
+    indvction = [h for h in headings if h.content == "INDVCTION."]
+    assert len(indvction) == 1
+    assert indvction[0].div1 == "The Second Part of Henry the Fourth"
+
+    epilogve = [h for h in headings if h.content == "EPILOGVE."]
+    assert len(epilogve) == 1
+    assert epilogve[0].div1 == "The Second Part of Henry the Fourth"
+
+    # THE PROLOGVE nests under Henry VIII.
+    prologve = [h for h in headings if h.content == "THE PROLOGVE."]
+    assert len(prologve) == 1
+    assert prologve[0].div1 == "The Famous History of the Life of King Henry the Eight"
+
+    # The Tempest has proper Act > Scene hierarchy.
+    tempest_acts = [
+        h for h in headings
+        if h.div1 == "The Tempest" and h.div2 and h.content.startswith("Actus")
+    ]
+    assert len(tempest_acts) == 5
+
+    tempest_scenes = [
+        h for h in headings
+        if h.div1 == "The Tempest" and h.div3
+    ]
+    assert len(tempest_scenes) >= 8

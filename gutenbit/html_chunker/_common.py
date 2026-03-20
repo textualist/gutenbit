@@ -49,7 +49,7 @@ _BARE_HEADING_NUMBER_RE = re.compile(
 )
 
 _HEADING_KEYWORD_RE = re.compile(
-    r"^(?:(?:BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|SCOENA|SCAENA|SC\u0153NA|SECTION|ADVENTURE)\.?\s|EPILOGUE\b|INDUCTION\b)",
+    r"^(?:(?:BOOK|PART|ACT|ACTUS|EPILOG[UV]E|VOLUME|CHAPTER|STAVE|SCENE|SCENA|SCOENA|SCAENA|SC\u0153NA|SECTION|ADVENTURE)\.?\s|EPILOG[UV]E\b|IND[UV]?CTION\b)",
     re.IGNORECASE,
 )
 _START_DELIMITER_RE = re.compile(
@@ -82,12 +82,14 @@ _PLAY_HEADING_PARAGRAPH_RE = re.compile(
 _NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]+")
 
 # Keywords that are almost exclusively structural even without a trailing number.
+# Early modern English V↔U variants (INDVCTION, EPILOGVE, PROLOGVE) are
+# included for First Folio and similar period editions.
 _STANDALONE_STRUCTURAL_RE = re.compile(
-    r"\bEPILOGUE\b|\bPROLOGUE\b|\bAPPENDIX\b|\bINDUCTION\b",
+    r"\bEPILOG[UV]E\b|\bPROLOG[UV]E\b|\bAPPENDIX\b|\bIND[UV]?CTION\b",
     re.IGNORECASE,
 )
 _FALLBACK_START_HEADING_RE = re.compile(
-    r"^(?:preface|introduction|introductory note|prelude|prologue\b|"
+    r"^(?:preface|introduction|introductory note|prelude|prolog[uv]e\b|"
     r"note\b|note to\b|letter\b|a letter from\b|the publisher to the reader\b|"
     r"before the curtain\b|etymology\b|extracts\b|some commendatory verses\b)",
     re.IGNORECASE,

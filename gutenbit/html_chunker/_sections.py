@@ -12,6 +12,7 @@ from bs4 import Tag
 from gutenbit.html_chunker._common import (
     _BARE_HEADING_NUMBER_RE,
     _BROAD_KEYWORDS,
+    _BROAD_NESTING_DEPTHS,
     _FALLBACK_START_HEADING_RE,
     _HEADING_TAGS,
     _NUMERIC_LINK_TEXT_RE,
@@ -650,8 +651,16 @@ def _parse_heading_sections(
         anchor = ih.tag.find("a", id=True) or ih.tag
         heading_rows.append(_HeadingRow(ih.tag, anchor, ih.text, rank))
 
+    has_paragraph_play_titles = False
     if _should_scan_paragraph_heading_rows(heading_rows, doc_index.paragraphs):
-        heading_rows.extend(_paragraph_heading_rows(doc_index))
+        para_rows = _paragraph_heading_rows(doc_index)
+        # When paragraph-derived play titles exist, act-level HTML headings
+        # like INDVCTION or EPILOGVE should not dominate as top-level
+        # containers — they are act-level peers within a play.
+        has_paragraph_play_titles = any(
+            _is_title_like_heading(r.heading_text) for r in para_rows
+        )
+        heading_rows.extend(para_rows)
 
     if not heading_rows:
         return []
@@ -662,6 +671,26 @@ def _parse_heading_sections(
     heading_rows = _filter_fallback_heading_rows(heading_rows)
     if not heading_rows:
         return []
+
+    # When paragraph-derived play titles exist, demote HTML heading tags
+    # whose keyword is a play-structure marker (induction, epilogue) or
+    # whose text matches PROLOGUE to act/scene rank so they nest under
+    # play titles instead of sitting as peers.
+    if has_paragraph_play_titles:
+        _ACT_SCENE_RANK = 6
+        demoted: list[_HeadingRow] = []
+        for row in heading_rows:
+            kw = _heading_keyword(row.heading_text)
+            if row.rank < _ACT_SCENE_RANK and (
+                kw in {"induction", "epilogue"}
+                or _STANDALONE_STRUCTURAL_RE.search(row.heading_text)
+            ):
+                demoted.append(
+                    _HeadingRow(row.tag, row.anchor, row.heading_text, _ACT_SCENE_RANK)
+                )
+            else:
+                demoted.append(row)
+        heading_rows = demoted
 
     bare_numeral_run_indices = _deep_rank_bare_numeral_run_indices(heading_rows)
 
@@ -776,6 +805,13 @@ def _parse_heading_sections(
             continue
 
         level = _classify_level(heading_text, False)
+        # When paragraph-derived play titles exist, demote act-level broad
+        # keywords (induction, epilogue) from level 1 to level 2 so they
+        # sit as peers of play titles, not containers that swallow them.
+        if has_paragraph_play_titles and level == 1:
+            kw = _heading_keyword(heading_text)
+            if kw in {"induction", "epilogue"}:
+                level = 2
         anchor_id = str(row.anchor.get("id", ""))
         sections.append(_Section(anchor_id, heading_text, level, row.anchor, row.rank))
         previous_kept_heading = heading_text
@@ -1163,6 +1199,7 @@ def _nest_chapters_under_broad_containers(sections: list[_Section]) -> list[_Sec
             continue
 
         broad_level = new_levels[idx]
+        broad_depth = _BROAD_NESTING_DEPTHS.get(keyword, 3)
 
         for inner_idx in range(idx + 1, len(sections)):
             inner_level = new_levels[inner_idx]
@@ -1181,6 +1218,11 @@ def _nest_chapters_under_broad_containers(sections: list[_Section]) -> list[_Sec
                     break
                 # Apparatus entries like "Note I." are peers, not children.
                 if _FALLBACK_START_HEADING_RE.match(inner_text):
+                    break
+                # Play-structure keywords (act, induction, epilogue) should
+                # not swallow title-like headings at the same level — those
+                # are play titles or equivalent containers, not children.
+                if keyword in {"act", "induction", "epilogue"} and _is_title_like_heading(inner_text):
                     break
                 shifted = min(4, inner_level + 1)
                 if shifted != inner_level:
@@ -1332,6 +1374,35 @@ def _fallback_start_index(heading_rows: list[_HeadingRow]) -> int | None:
         for idx, row in enumerate(heading_rows)
         if _heading_keyword(row.heading_text) or _STANDALONE_STRUCTURAL_RE.search(row.heading_text)
     ]
+    # When play-structure keywords (act/scene) are present in a
+    # multi-play collection, title-like headings at a matching or better
+    # rank are structural containers (play titles).  Include them so the
+    # start index extends to the first play.  Only activate for
+    # collections (multiple first-act keywords), not single plays.
+    if any(_heading_keyword(row.heading_text) in {"act", "scene"} for _, row in structural_rows):
+        act_scene_min_rank = min(
+            (row.rank for _, row in structural_rows if _heading_keyword(row.heading_text) in {"act", "scene"}),
+            default=99,
+        )
+        title_candidates = [
+            row for _, row in enumerate(heading_rows)
+            if _is_title_like_heading(row.heading_text) and row.rank <= act_scene_min_rank
+        ]
+        first_act_count = sum(
+            1 for _, row in structural_rows
+            if _heading_keyword(row.heading_text) == "act"
+            and re.match(r"(?:actus|act)\s+(?:primus|prima|I\b|1\b)", row.heading_text, re.IGNORECASE)
+        )
+        if len(title_candidates) > 1 and first_act_count > 1:
+            structural_rows = [
+                (idx, row)
+                for idx, row in enumerate(heading_rows)
+                if (
+                    _heading_keyword(row.heading_text)
+                    or _STANDALONE_STRUCTURAL_RE.search(row.heading_text)
+                    or (_is_title_like_heading(row.heading_text) and row.rank <= act_scene_min_rank)
+                )
+            ]
     if first_front_matter_idx is not None and (
         not structural_rows or first_front_matter_idx < structural_rows[0][0]
     ):
@@ -1404,14 +1475,90 @@ def _filter_fallback_heading_rows(heading_rows: list[_HeadingRow]) -> list[_Head
 def _paragraph_heading_rows(
     doc_index: _DocumentIndex,
 ) -> list[_HeadingRow]:
-    """Return strict paragraph-based structural rows for heading-scan fallback."""
+    """Return strict paragraph-based structural rows for heading-scan fallback.
+
+    When a first-act paragraph (``Actus primus`` / ``Act I``) is found,
+    scans backward through preceding paragraphs for a short title that
+    names the play or work.  These title paragraphs are emitted at rank 6
+    (one level above the act/scene rank of 7) so that
+    ``_normalize_collection_titles`` can later promote them to containers.
+    """
     rows: list[_HeadingRow] = []
-    for paragraph in doc_index.paragraphs:
+    paragraphs = doc_index.paragraphs
+    # Build a set of paragraph indices that are first-act paragraphs so we
+    # can efficiently scan backward from them.
+    first_act_indices: list[int] = []
+    for idx, paragraph in enumerate(paragraphs):
         if paragraph.is_toc:
             continue
+        if _FIRST_ACT_PARAGRAPH_RE.match(paragraph.text):
+            first_act_indices.append(idx)
+
+    # Collect title paragraphs that precede first-act paragraphs.
+    # Only emit titles for multi-play collections (multiple first-acts);
+    # standalone single-play editions should not get an extra title heading.
+    title_paragraph_indices: set[int] = set()
+    if len(first_act_indices) > 1:
+        for act_idx in first_act_indices:
+            title_idx = _find_play_title_paragraph(paragraphs, act_idx)
+            if title_idx is not None:
+                title_paragraph_indices.add(title_idx)
+
+    # Emit heading rows.  Title rows use rank 5 (matching ``<h5>`` tags that
+    # may coexist in the same document) so that ``_normalize_collection_titles``
+    # can promote them to containers.  Act/scene rows use rank 6.
+    _TITLE_RANK = 5
+    _ACT_SCENE_RANK = 6
+    for idx, paragraph in enumerate(paragraphs):
+        if paragraph.is_toc:
+            continue
+        if idx in title_paragraph_indices:
+            title_text = _clean_heading_text(paragraph.text)
+            if title_text:
+                rows.append(_HeadingRow(paragraph.tag, paragraph.tag, title_text, _TITLE_RANK))
         for heading_text in _split_play_heading_paragraph(paragraph.text):
-            rows.append(_HeadingRow(paragraph.tag, paragraph.tag, heading_text, 7))
+            rows.append(_HeadingRow(paragraph.tag, paragraph.tag, heading_text, _ACT_SCENE_RANK))
     return rows
+
+
+def _find_play_title_paragraph(
+    paragraphs: list[_IndexedParagraph],
+    first_act_idx: int,
+) -> int | None:
+    """Scan backward from a first-act paragraph to find a short title paragraph.
+
+    Returns the paragraph index of the **closest** qualifying title paragraph
+    before the first-act paragraph.  Long paragraphs (body text, prologue
+    speeches) and act/scene labels are skipped.  A FINIS marker stops the
+    backward search.  Subtitle-like paragraphs (starting with "Containing",
+    "with", etc.) are skipped so we pick the actual title.
+    """
+    start = max(0, first_act_idx - _PLAY_TITLE_LOOKBACK)
+    for idx in range(first_act_idx - 1, start - 1, -1):
+        candidate = paragraphs[idx]
+        if candidate.is_toc:
+            continue
+        text = candidate.text.strip()
+        if not text:
+            continue
+        if len(text) > _MAX_PLAY_TITLE_PARAGRAPH_LEN:
+            continue  # skip long paragraphs (body text / prologue speech)
+        if _PLAY_HEADING_PARAGRAPH_RE.fullmatch(text):
+            continue  # skip act/scene labels
+        if _PLAY_TITLE_STOP_RE.match(text):
+            break  # hit a FINIS marker — stop searching
+        if _NON_TITLE_PARAGRAPH_RE.match(text):
+            continue  # skip stage directions and apparatus
+        if _PLAY_SUBTITLE_RE.match(text):
+            continue  # skip subtitle continuations
+        # Must start with an uppercase letter.
+        if not text[0].isupper():
+            continue
+        # Must contain at least one alphabetic word.
+        if not any(c.isalpha() for c in text):
+            continue
+        return idx
+    return None
 
 
 def _should_scan_paragraph_heading_rows(
@@ -1445,6 +1592,43 @@ def _should_scan_paragraph_heading_rows(
 # as a plain <p>, not an <h1>–<h6>.
 _PARAGRAPH_SECTION_RE = re.compile(
     r"^(?:CHAPTER|SECTION|BOOK|PART|VOLUME)\s+[IVXLCDM0-9]+\b",
+    re.IGNORECASE,
+)
+
+# Matches a paragraph that begins a new play/work: "Actus primus" / "Act I"
+# (first act only — used to locate preceding title paragraphs).
+_FIRST_ACT_PARAGRAPH_RE = re.compile(
+    r"^(?:ACTUS|ACT)\s+(?:primus|prima|I\b|1\b)",
+    re.IGNORECASE,
+)
+
+# Maximum length for a paragraph to be considered a play/work title
+# (vs. body text like a prologue speech).
+_MAX_PLAY_TITLE_PARAGRAPH_LEN = 80
+
+# How many paragraphs to scan backward from a first-act paragraph
+# to find a title (some editions have stage directions in between).
+_PLAY_TITLE_LOOKBACK = 5
+
+# Paragraph text that should not be treated as a play title but indicates
+# we've passed the play boundary and should stop searching backward.
+_PLAY_TITLE_STOP_RE = re.compile(
+    r"^(?:FINIS\b|THE END\b)",
+    re.IGNORECASE,
+)
+
+# Paragraph text that is not a title but should be skipped (not a stop).
+_NON_TITLE_PARAGRAPH_RE = re.compile(
+    r"^(?:Enter\b|Exit\b|Exeunt\b|Alarum|Flourish|Epilogue\b|"
+    r"Rumour\b|Chorus\.?$|DRAMATIS\b|PERSONAE\b|ACTORS?\b|"
+    r"The Names of the Actors|The Names of the Princip)",
+    re.IGNORECASE,
+)
+# Subtitle continuations that appear between a play title and the first act.
+# E.g. "Containing his Death: and the Coronation of King Henry the Fift"
+# or "with the Life and Death of Henry Sirnamed Hot-Spvrre".
+_PLAY_SUBTITLE_RE = re.compile(
+    r"^(?:Containing\b|with the\b|with\b|or,?\s)",
     re.IGNORECASE,
 )
 

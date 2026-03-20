@@ -41,6 +41,9 @@ _STRUCTURAL_KEYWORD_ALIASES = {
     "scoena": "scene",
     "scaena": "scene",
     "sc\u0153na": "scene",
+    "indvction": "induction",
+    "epilogve": "epilogue",
+    "prologve": "prologue",
 }
 
 _STRUCTURAL_INDEX_TOKEN_RE = re.compile(
@@ -84,7 +87,8 @@ _PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
 _NON_STRUCTURAL_HEADING_RE = re.compile(
     r"^(?:(?:notes|footnotes?|endnotes?|transcriber's note|transcribers note|"
     r"editor's note|editors note|finis)\b"
-    r"|(?:song|sennet)\.?\s*$)",
+    r"|(?:song|sennet|(?:the\s+)?actors?\s*names?)\.?\s*$"
+    r"|dramatis\s+personae\b)",
     re.IGNORECASE,
 )
 _DEEP_RANK_NON_STRUCTURAL_RE = re.compile(
