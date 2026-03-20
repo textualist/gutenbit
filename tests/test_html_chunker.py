@@ -2564,3 +2564,44 @@ def test_note_on_sources_not_merged_as_subtitle():
     assert "CHAPTER X" in heading_texts
     assert "NOTE ON THE SOURCES" in heading_texts
     assert "CHAPTER X NOTE ON THE SOURCES" not in heading_texts
+
+
+def test_conclusion_nests_under_title_with_roman_numeral_siblings():
+    """CONCLUSION stays nested under a parent title alongside bare Roman numerals.
+
+    In PG 946 (Lady Susan), the epistolary structure is: title heading
+    (h2) followed by Roman-numeral letters (I–XLI at h3) and CONCLUSION
+    (h3).  CONCLUSION must nest under the title as div2, not break out
+    as a new div1.
+    """
+    html = _make_html("""
+    <p><a href="#title" class="pginternal">LADY SUSAN</a></p>
+    <p><a href="#l1" class="pginternal">I</a></p>
+    <p><a href="#l2" class="pginternal">II</a></p>
+    <p><a href="#l3" class="pginternal">III</a></p>
+    <p><a href="#conc" class="pginternal">CONCLUSION</a></p>
+    <h2><a id="title"></a>LADY SUSAN</h2>
+    <h3><a id="l1"></a>I</h3>
+    <p>Letter one.</p>
+    <h3><a id="l2"></a>II</h3>
+    <p>Letter two.</p>
+    <h3><a id="l3"></a>III</h3>
+    <p>Letter three.</p>
+    <h3><a id="conc"></a>CONCLUSION</h3>
+    <p>This correspondence was collected.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert headings[0].content == "LADY SUSAN"
+    assert headings[0].div1 == "LADY SUSAN"
+    assert headings[0].div2 == ""
+
+    # Letters nest under title.
+    assert headings[1].div1 == "LADY SUSAN"
+    assert headings[1].div2 == "I"
+
+    # CONCLUSION also nests under title, not at div1.
+    conc = next(h for h in headings if h.content == "CONCLUSION")
+    assert conc.div1 == "LADY SUSAN"
+    assert conc.div2 == "CONCLUSION"
