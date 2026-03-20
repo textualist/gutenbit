@@ -133,6 +133,9 @@ def test_metamorphosis_uses_heading_scan_and_skips_front_matter_attribution():
     assert not any(text.startswith("by ") for text in lowered)
     assert not any("translated by" in text for text in lowered)
 
+    # Sections must be div1 — the title is a peer, not a wrapper.
+    assert all(h.div2 == "" for h in headings)
+
 
 def test_odyssey_endnotes_do_not_leak_into_book_twenty_four():
     book_xxiv_paragraphs = [
@@ -987,6 +990,7 @@ def test_heart_of_darkness_keeps_three_parts():
     heading_texts = [h.content for h in headings]
 
     assert heading_texts == ["I", "II", "III"]
+    assert all(h.div2 == "" for h in headings)
 
 
 def test_jekyll_and_hyde_keeps_ten_named_chapters():
@@ -1007,10 +1011,15 @@ def test_great_gatsby_keeps_title_and_nine_chapters():
     assert heading_texts[0] == "The Great Gatsby by F. Scott Fitzgerald"
     assert heading_texts[1:] == ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"]
 
+    # Chapters must be div1 — the title is a peer, not a wrapper.
+    assert all(h.div2 == "" for h in headings)
 
-def test_the_prince_nests_chapters_under_the_prince_heading():
+
+def test_the_prince_nests_chapters_under_collection_works():
     headings = _headings(1232)
 
+    # PG 1232 is a collection of three works — chapters nest under each
+    # work title as div2, which is correct anthology behaviour.
     the_prince = next(h for h in headings if h.content == "THE PRINCE")
     assert the_prince.div1 == "THE PRINCE"
     assert the_prince.div2 == ""
@@ -1112,7 +1121,7 @@ def test_beowulf_merges_canto_pairs_and_captures_verse_content():
     assert len(headings) == 51
 
     # Verse content (in <div class="l"> tags) is captured.
-    canto_i_text = [p for p in paragraphs if "I. THE LIFE AND DEATH OF SCYLD" in p.div2]
+    canto_i_text = [p for p in paragraphs if "I. THE LIFE AND DEATH OF SCYLD" in p.div1]
     assert len(canto_i_text) > 50
     assert any("Spear-Dane" in p.content for p in canto_i_text)
 

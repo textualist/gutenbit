@@ -582,6 +582,67 @@ def test_single_work_title_is_not_promoted_above_parts():
     assert headings[2].div2 == "CHAPTER I"
 
 
+def test_single_title_wrapping_keyword_chapters_is_flattened():
+    """A lone title-like heading wrapping keyword chapters should be flattened.
+
+    The title-like h1 may be dropped entirely by the heading-scan pipeline;
+    the key assertion is that chapters are div1 peers, not div2.
+    """
+    html = _make_html("""
+    <h1><a id="title"></a>MY NOVEL</h1>
+    <h2><a id="c1"></a>CHAPTER I</h2>
+    <p>First chapter.</p>
+    <h2><a id="c2"></a>CHAPTER II</h2>
+    <p>Second chapter.</p>
+    <h2><a id="c3"></a>CHAPTER III</h2>
+    <p>Third chapter.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) >= 3
+    chapters = [h for h in headings if h.content.startswith("CHAPTER")]
+    assert len(chapters) == 3
+    assert all(h.div2 == "" for h in chapters)
+
+
+def test_single_title_wrapping_roman_numerals_is_flattened():
+    """A lone title-like heading wrapping bare Roman numerals should be flattened."""
+    html = _make_html("""
+    <h1><a id="title"></a>SHORT STORY</h1>
+    <h2><a id="s1"></a>I</h2>
+    <p>Part one.</p>
+    <h2><a id="s2"></a>II</h2>
+    <p>Part two.</p>
+    <h2><a id="s3"></a>III</h2>
+    <p>Part three.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 4
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_single_title_wrapping_titled_stories_is_not_flattened():
+    """A lone title wrapping titled stories (anthology) should keep nesting."""
+    html = _make_html("""
+    <h1><a id="title"></a>FAIRY TALES</h1>
+    <h2><a id="s1"></a>THE GOLDEN BIRD</h2>
+    <p>Once upon a time.</p>
+    <h2><a id="s2"></a>HANSEL AND GRETEL</h2>
+    <p>Near a great forest.</p>
+    <h2><a id="s3"></a>SNOW WHITE</h2>
+    <p>A queen sat sewing.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert headings[0].div1 == "FAIRY TALES"
+    assert headings[1].div1 == "FAIRY TALES"
+    assert headings[1].div2 == "THE GOLDEN BIRD"
+
+
 def test_illustration_links_ignored():
     html = _make_html("""
     <p><a href="#stave1" class="pginternal">MARLEY'S GHOST</a></p>
@@ -2496,7 +2557,9 @@ def test_mixed_case_description_not_merged():
 def test_section_letter_indices_parsed_as_structural():
     """Regression: SECTION A, SECTION B etc. are valid structural headings.
 
-    Mudfog Papers uses SECTION A–D for report sub-sections.
+    Mudfog Papers uses SECTION A–D for report sub-sections.  In a minimal
+    heading-scan context (no sibling chapters), the lone title-like parent
+    is flattened so all headings land at div1.
     """
     html = _make_html("""
     <h2><a id="report"></a>FULL REPORT OF THE FIRST MEETING</h2>
@@ -2510,8 +2573,9 @@ def test_section_letter_indices_parsed_as_structural():
 
     sa = [c for c in headings if "SECTION A" in c.content][0]
     sb = [c for c in headings if "SECTION B" in c.content][0]
-    assert sa.div1 == "FULL REPORT OF THE FIRST MEETING"
-    assert sb.div1 == "FULL REPORT OF THE FIRST MEETING"
+    assert len(headings) == 3
+    assert sa.div1 == "SECTION A. ZOOLOGY AND BOTANY"
+    assert sb.div1 == "SECTION B. ANATOMY AND MEDICINE"
 
 
 def test_note_heading_not_merged_as_chapter_subtitle():
@@ -2595,13 +2659,17 @@ def test_conclusion_nests_under_title_with_roman_numeral_siblings():
     headings = [c for c in chunks if c.kind == "heading"]
 
     # Roman numeral letters are accepted from TOC and rendered as flat
-    # sections (no nesting under the h1 title).
+    # div1 sections (no nesting under the h1 title).
     assert len(headings) == 8  # I–VII + CONCLUSION
     assert headings[0].content == "I"
     assert headings[6].content == "VII"
 
     conc = next(h for h in headings if h.content == "CONCLUSION")
     assert conc is not None
+
+    # All headings should be flat div1 — no empty-div1 gaps.
+    assert all(h.div2 == "" for h in headings)
+    assert all(h.div1 != "" for h in headings)
 
 
 def test_few_roman_numeral_toc_links_accepted():

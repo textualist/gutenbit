@@ -37,6 +37,8 @@ from gutenbit.html_chunker._sections import (
     _parse_paragraph_sections,
     _parse_toc_sections,
     _promote_more_prominent_heading_runs,
+    _equalize_orphan_level_gap,
+    _flatten_single_work_title_wrapper,
     _refine_toc_sections,
 )
 
@@ -45,7 +47,7 @@ from gutenbit.html_chunker._sections import (
 # ---------------------------------------------------------------------------
 
 HTML_PARSER_BACKEND = "lxml"
-CHUNKER_VERSION = 31
+CHUNKER_VERSION = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +133,8 @@ def chunk_html(html: str) -> list[Chunk]:
     sections = _nest_broad_subdivisions(sections)
     sections = _nest_chapters_under_broad_containers(sections)
     sections = _promote_more_prominent_heading_runs(sections)
+    sections = _flatten_single_work_title_wrapper(sections)
+    sections = _equalize_orphan_level_gap(sections)
     sections = _merge_chapter_subtitle_sections(sections, toc_anchor_ids=toc_anchor_ids)
     # Merge ALL-CAPS description paragraphs into bare chapter headings so
     # that e.g. "CHAPTER I" followed by a <p>TREATING OF SHOES...</p> becomes

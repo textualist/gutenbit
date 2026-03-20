@@ -1187,6 +1187,143 @@ def _promote_more_prominent_heading_runs(sections: list[_Section]) -> list[_Sect
 
 
 # ---------------------------------------------------------------------------
+# Single-work title wrapper flattening
+# ---------------------------------------------------------------------------
+
+_LEADING_INDEX_RE = re.compile(
+    r"^(?:[IVXLCDM]+|[0-9]+)(?:\.|—|\s|$)",
+    re.IGNORECASE,
+)
+
+
+def _is_enumerated_or_keyword_heading(heading_text: str) -> bool:
+    """True when *heading_text* looks like a numbered or keyword section heading.
+
+    Matches chapter/book keywords (``CHAPTER I``), standalone structural labels
+    (``EPILOGUE``), pure number headings (``III``), and headings that start with
+    an index token (``I. THE LIFE AND DEATH OF SCYLD``).
+    """
+    if _is_refinement_heading(heading_text):
+        return True
+    return bool(_LEADING_INDEX_RE.match(heading_text.strip()))
+
+
+def _flatten_single_work_title_wrapper(sections: list[_Section]) -> list[_Section]:
+    """Flatten title-like headings that wrap structural children.
+
+    When a non-keyword heading (e.g. "Metamorphosis", "THE PRINCE") sits one
+    level above enumerated chapters, it is a work title — not a structural
+    container.  Promote its children so chapters become peers at min_level.
+
+    Guards:
+    * ≥ 3 title-like wrappers at *min_level* → anthology (Shakespeare) → skip.
+    * Majority of direct children are *not* enumerated → titled collection
+      (Grimm's Fairy Tales) → skip.
+    """
+    if len(sections) < 2:
+        return sections
+
+    min_level = min(s.level for s in sections)
+
+    # Identify title-like sections at min_level that have children one level deeper.
+    wrapper_indices: list[int] = []
+    for idx, section in enumerate(sections):
+        if section.level != min_level:
+            continue
+        if not _is_title_like_heading(section.heading_text):
+            continue
+        # Indexed headings (e.g. "I. A SCANDAL IN BOHEMIA") are sections
+        # within a larger work, not work titles — don't flatten them.
+        if _LEADING_INDEX_RE.match(section.heading_text.strip()):
+            continue
+        # Check for at least one direct child at min_level + 1.
+        for next_idx in range(idx + 1, len(sections)):
+            if sections[next_idx].level <= min_level:
+                break
+            if sections[next_idx].level == min_level + 1:
+                wrapper_indices.append(idx)
+                break
+
+    if not wrapper_indices or len(wrapper_indices) >= 2:
+        return sections
+
+    # For each wrapper, verify that the majority of direct children are
+    # enumerated/keyword-bearing (not independently-titled works).
+    new_levels = [s.level for s in sections]
+    changed = False
+
+    for wrapper_idx in wrapper_indices:
+        # Find the span of children (up to the next min_level section).
+        span_end = len(sections)
+        for next_idx in range(wrapper_idx + 1, len(sections)):
+            if sections[next_idx].level <= min_level:
+                span_end = next_idx
+                break
+
+        direct_children = [
+            sections[i]
+            for i in range(wrapper_idx + 1, span_end)
+            if sections[i].level == min_level + 1
+        ]
+        if not direct_children:
+            continue
+
+        enumerated_count = sum(
+            1 for c in direct_children if _is_enumerated_or_keyword_heading(c.heading_text)
+        )
+        if enumerated_count <= len(direct_children) // 2:
+            continue  # Majority are titled → anthology-like, skip.
+
+        # Flatten: shift every descendant up by 1.
+        for i in range(wrapper_idx + 1, span_end):
+            new_levels[i] = max(1, new_levels[i] - 1)
+            changed = True
+
+    if not changed:
+        return sections
+
+    return [s._with_level(new_levels[i]) for i, s in enumerate(sections)]
+
+
+def _equalize_orphan_level_gap(sections: list[_Section]) -> list[_Section]:
+    """Demote orphan min-level sections when the vast majority sit one level deeper.
+
+    In PG 946 (Lady Susan) the TOC puts CONCLUSION at level 1 while the 41
+    Roman-numeral letters land at level 2, producing empty div1 slots.  When
+    only a tiny minority (≤ 2) of non-keyword sections occupy min_level and the
+    next level has ≥ 3× as many sections, flatten the outliers down.
+    """
+    if len(sections) < 3:
+        return sections
+
+    min_level = min(s.level for s in sections)
+    at_min = [i for i, s in enumerate(sections) if s.level == min_level]
+    at_next = [i for i, s in enumerate(sections) if s.level == min_level + 1]
+
+    if len(at_min) > 2 or len(at_next) < len(at_min) * 3:
+        return sections
+
+    # Don't demote structural containers (BOOK, PART, etc.).
+    if any(_heading_keyword(sections[i].heading_text) in _BROAD_KEYWORDS for i in at_min):
+        return sections
+
+    # Don't demote sections that have children at the next level — they are
+    # legitimate wrappers (e.g. a collection title), not orphans.
+    for i in at_min:
+        for j in range(i + 1, len(sections)):
+            if sections[j].level <= min_level:
+                break
+            if sections[j].level == min_level + 1:
+                return sections  # This min-level section wraps children.
+
+    new_levels = [s.level for s in sections]
+    for i in at_min:
+        new_levels[i] = min_level + 1
+
+    return [s._with_level(new_levels[i]) for i, s in enumerate(sections)]
+
+
+# ---------------------------------------------------------------------------
 # Leading title deduplication
 # ---------------------------------------------------------------------------
 
