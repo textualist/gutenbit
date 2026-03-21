@@ -2776,3 +2776,8 @@ def test_standalone_roman_numerals_not_merged_into_part_heading():
     assert "PART I" in heading_texts
     assert "PART II" in heading_texts
     assert "PART III" in heading_texts
+
+    # Roman numeral sub-sections should appear as headings.
+    assert "I" in heading_texts
+    assert "II" in heading_texts
+    assert "III" in heading_texts
