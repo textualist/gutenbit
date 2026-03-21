@@ -170,11 +170,27 @@ def _parse_toc_sections(
         used_fallback_heading = False
         if not heading_el:
             used_fallback_heading = True
-            heading_el = _find_next_heading(
-                body_anchor,
-                used_headings,
-                doc_index=doc_index,
-            )
+            # The anchor may precede an intervening heading (e.g. a repeated
+            # book title) that doesn't correspond to this TOC entry.  Search
+            # forward through a few candidates to find one that matches.
+            skip = set(used_headings)
+            heading_el = None
+            for _ in range(3):
+                candidate = _find_next_heading(
+                    body_anchor,
+                    skip,
+                    doc_index=doc_index,
+                )
+                if candidate is None:
+                    break
+                candidate_text = _clean_heading_text(
+                    _extract_heading_text(candidate)
+                )
+                if candidate_text and _toc_entry_matches_heading(link_text, candidate_text):
+                    heading_el = candidate
+                    break
+                skip.add(id(candidate))
+
         if not heading_el or id(heading_el) in used_headings:
             continue
         used_headings.add(id(heading_el))
@@ -183,8 +199,6 @@ def _parse_toc_sections(
         if not heading_text:
             continue
         if _is_non_structural_heading_text(heading_text):
-            continue
-        if used_fallback_heading and not _toc_entry_matches_heading(link_text, heading_text):
             continue
 
         is_emphasized = _is_emphasized_toc_link(link)

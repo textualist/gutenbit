@@ -2781,3 +2781,57 @@ def test_standalone_roman_numerals_not_merged_into_part_heading():
     assert "I" in heading_texts
     assert "II" in heading_texts
     assert "III" in heading_texts
+
+
+# ------------------------------------------------------------------
+# TOC anchor preceding an intervening title heading
+# ------------------------------------------------------------------
+
+
+def test_toc_anchor_skips_intervening_title_heading():
+    """A TOC anchor placed before a repeated book title must still resolve
+    to the correct section heading.
+
+    Modelled on PG 6378 (Victory) where the anchor for PART ONE sits in a
+    ``<p>`` before ``<h1>VICTORY</h1>``, with ``<h2>PART ONE</h2>`` only
+    appearing after the title.  Without the fix the fallback heading search
+    returns the ``<h1>`` title (which doesn't match "PART ONE") and the
+    entire PART ONE section is dropped from the TOC parse.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#note" class="pginternal">AUTHOR'S NOTE</a></p>
+    <p><br></p>
+    <p class="toc"><a href="#part1" class="pginternal"><b>PART ONE</b></a></p>
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER ONE</a></p>
+    <p class="toc"><a href="#ch2" class="pginternal">CHAPTER TWO</a></p>
+    <p><br></p>
+    <p class="toc"><a href="#part2" class="pginternal"><b>PART TWO</b></a></p>
+    <p class="toc"><a href="#ch3" class="pginternal">CHAPTER ONE</a></p>
+
+    <h2><a id="note"></a>AUTHOR'S NOTE</h2>
+    <p>Some introductory note.</p>
+
+    <p><a id="part1"></a></p>
+    <h1>VICTORY</h1>
+    <h2>PART ONE</h2>
+
+    <h2><a id="ch1"></a>CHAPTER ONE</h2>
+    <p>First chapter of part one.</p>
+    <h2><a id="ch2"></a>CHAPTER TWO</h2>
+    <p>Second chapter of part one.</p>
+
+    <p><a id="part2"></a></p>
+    <h2>PART TWO</h2>
+    <h2><a id="ch3"></a>CHAPTER ONE</h2>
+    <p>First chapter of part two.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "PART ONE" in heading_texts
+    assert "PART TWO" in heading_texts
+
+    # Chapters under PART ONE must be nested (div1 = PART ONE).
+    part1_chapters = [h for h in headings if h.div1 == "PART ONE" and h.content.startswith("CHAPTER")]
+    assert len(part1_chapters) == 2
