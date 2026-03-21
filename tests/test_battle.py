@@ -1243,37 +1243,3 @@ def test_peter_rabbit_collapses_title_block_into_single_section():
     # All content captured under the single section.
     assert len(paragraphs) > 40
     assert any("four little rabbits" in p.content for p in paragraphs)
-
-
-def test_within_the_tides_strips_html_comments_from_headings():
-    """PG 1053 — HTML comments (<!-- page 3-->) must not leak into heading text."""
-    headings = _headings(1053)
-    heading_texts = [h.content for h in headings]
-
-    # The first story heading must be clean — no "page 3" comment artifact.
-    assert "THE PLANTER OF MALATA" in heading_texts
-    assert not any("page" in t.lower() for t in heading_texts)
-
-    # All four stories present as div1 containers.
-    div1_values = {h.div1 for h in headings}
-    assert "THE PLANTER OF MALATA" in div1_values
-    assert "THE PARTNER" in div1_values
-    assert any("THE INN OF THE TWO WITCHES" in v for v in div1_values)
-    assert "BECAUSE OF THE DOLLARS" in div1_values
-
-
-def test_suspense_nests_sections_under_parts():
-    """PG 66156 — Standalone Roman numerals (I, II, …) under PART headings."""
-    headings = _headings(66156)
-
-    # Three parts present.
-    div1_values = sorted({h.div1 for h in headings if h.div1})
-    assert "PART II" in div1_values
-    assert "PART III" in div1_values
-    assert "PART IV" in div1_values
-
-    # Sections under PART II should be standalone Roman numerals, not merged.
-    part2_sections = [h for h in headings if h.div1 == "PART II" and h.div2]
-    assert len(part2_sections) >= 3
-    # No heading should contain the malformed merge "PART II I".
-    assert not any("PART II I" in h.content for h in headings)

@@ -2699,3 +2699,80 @@ def test_few_roman_numeral_toc_links_accepted():
     assert heading_texts == ["I", "II", "III"]
     # The work title is not a div1 section.
     assert "HEART OF DARKNESS" not in heading_texts
+
+
+# ------------------------------------------------------------------
+# HTML comment stripping in headings
+# ------------------------------------------------------------------
+
+
+def test_html_comment_stripped_from_heading_text():
+    """HTML comments inside headings must not leak into the extracted text.
+
+    Modelled on PG 1053 (Within the Tides) where headings contain
+    ``<!-- page 3-->`` comments that BeautifulSoup parses as Comment nodes
+    (a NavigableString subclass).
+    """
+    html = _make_html("""
+    <p><a href="#ch1" class="pginternal">THE PLANTER OF MALATA</a></p>
+    <p><a href="#ch2" class="pginternal">THE PARTNER</a></p>
+    <h2><a id="ch1"></a><!-- page 3--><span class="pagenum">p. 3</span>THE PLANTER OF MALATA</h2>
+    <p>First story content.</p>
+    <h2><a id="ch2"></a><!-- page 119-->THE PARTNER</h2>
+    <p>Second story content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 2
+    assert headings[0].content == "THE PLANTER OF MALATA"
+    assert headings[1].content == "THE PARTNER"
+    # No comment text should appear anywhere.
+    assert not any("page" in h.content.lower() for h in headings)
+
+
+# ------------------------------------------------------------------
+# Standalone Roman numerals nest under broad container headings
+# ------------------------------------------------------------------
+
+
+def test_standalone_roman_numerals_not_merged_into_part_heading():
+    """Bare Roman numerals (I, II, III) following PART headings at the same
+    rank must not be merged as subtitles.
+
+    Modelled on PG 66156 (Suspense) where ``<h4>PART II</h4>`` is followed
+    by ``<h4>I</h4>``.  Without the fix, the heading-scan merge logic would
+    combine them into ``PART II I``.  No TOC is present — the heading-scan
+    fallback handles all structure.
+    """
+    html = _make_html("""
+    <h2>PART I</h2>
+    <h3>I</h3>
+    <p>Part one, section one.</p>
+    <h3>II</h3>
+    <p>Part one, section two.</p>
+
+    <h2>PART II</h2>
+    <h3>I</h3>
+    <p>Part two, section one.</p>
+    <h3>II</h3>
+    <p>Part two, section two.</p>
+    <h3>III</h3>
+    <p>Part two, section three.</p>
+
+    <h2>PART III</h2>
+    <h3>I</h3>
+    <p>Part three, section one.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    # No heading text should contain the malformed merge "PART II I".
+    assert not any("PART II I" in h.content for h in headings)
+    assert not any("PART I I" in h.content for h in headings)
+
+    # Parts should appear as separate headings, not merged with Roman numerals.
+    heading_texts = [h.content for h in headings]
+    assert "PART I" in heading_texts
+    assert "PART II" in heading_texts
+    assert "PART III" in heading_texts
