@@ -19,6 +19,7 @@ from gutenbit.html_chunker._common import (
     _NON_ALNUM_RE,
     _NUMERIC_LINK_TEXT_RE,
     _PLAY_HEADING_PARAGRAPH_RE,
+    _ROMAN_NUMERAL_RE,
     _STANDALONE_STRUCTURAL_RE,
     _clean_heading_text,
     _front_matter_heading_key,
@@ -331,9 +332,13 @@ def _broad_heading_with_enumerated_child(
     current_heading_text: str,
     next_heading_text: str,
 ) -> bool:
-    return _heading_keyword(
-        current_heading_text
-    ) in _BROAD_KEYWORDS and _starts_with_enumerated_heading_prefix(next_heading_text)
+    if _heading_keyword(current_heading_text) not in _BROAD_KEYWORDS:
+        return False
+    if _starts_with_enumerated_heading_prefix(next_heading_text):
+        return True
+    # A standalone Roman numeral (e.g. "I", "II", "III") is an enumerated
+    # child when it follows a broad container heading like PART or BOOK.
+    return _ROMAN_NUMERAL_RE.fullmatch(next_heading_text) is not None
 
 
 def _is_ignorable_fallback_heading(
