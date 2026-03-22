@@ -9,7 +9,6 @@ theme:
   name: material
   custom_dir: docs/overrides
   language: en
-  font: false
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default

@@ -1,5 +1,6 @@
 {#-
-  Custom header: replaces logo + site title with text*/gutenbit breadcrumb.
+  Custom header: gb* nav mark replacing logo + site title.
+  Hidden on mobile — the mark appears in the drawer instead.
 -#}
 {% set class = "md-header" %}
 {% if "navigation.tabs.sticky" in features %}
@@ -13,9 +14,7 @@
       {% set icon = config.theme.icon.menu or "material/menu" %}
       {% include ".icons/" ~ icon ~ ".svg" %}
     </label>
-    <a href="https://textualist.org" class="gb-brand">text<span class="gb-star">*</span></a>
-    <span class="gb-sep">/</span>
-    <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" class="gb-project">gutenbit</a>
+    <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" class="gb-mark gb-mark--desktop" aria-label="{{ config.site_name }}">gb<span class="gb-star">*</span></a>
     <div class="md-header__title" style="flex:1"></div>
     {% if config.theme.palette %}
       {% if not config.theme.palette is mapping %}
