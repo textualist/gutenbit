@@ -109,12 +109,12 @@ body::before {
   padding: 0;
 }
 
-.md-nav__title .gb-nav-logo__img {
+.md-nav__title .md-logo.gb-nav-logo img {
   height: 1.2rem;
   width: auto;
 }
 
-[data-md-color-scheme="slate"] .gb-nav-logo__img {
+[data-md-color-scheme="slate"] .gb-nav-logo img {
   filter: brightness(0) invert(0.85) sepia(0.15) saturate(0.5);
 }
 
