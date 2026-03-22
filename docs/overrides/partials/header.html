@@ -15,7 +15,9 @@
       {% include ".icons/" ~ icon ~ ".svg" %}
     </label>
     <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" class="gb-mark gb-mark--desktop" aria-label="{{ config.site_name }}">gb<span class="gb-star">*</span></a>
-    <div class="md-header__title" style="flex:1"></div>
+    <div class="md-header__title" style="flex:1">
+      <span class="gb-header-title">gutenbit</span>
+    </div>
     {% if config.theme.palette %}
       {% if not config.theme.palette is mapping %}
         {% include "partials/palette.html" %}

@@ -98,8 +98,18 @@ body::before {
   color: var(--red);
 }
 
+/* Header title: visible only on mobile */
+.gb-header-title {
+  display: none;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
 @media screen and (max-width: 76.234375em) {
   .gb-mark--desktop { display: none; }
+  .gb-header-title { display: inline; }
 }
 
 /* ─── Mobile drawer logo ─── */
