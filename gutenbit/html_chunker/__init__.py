@@ -21,12 +21,12 @@ from gutenbit.html_chunker._common import (
     _HEADING_TAGS,
 )
 from gutenbit.html_chunker._scanning import (
-    _container_residue_cache,
-    _is_toc_paragraph_cache,
+    _container_residue_cache,  # cleared per-parse (keyed by id())
+    _is_toc_paragraph_cache,  # cleared per-parse (keyed by id())
     _paragraphs_in_range,
     _scan_document,
 )
-from gutenbit.html_chunker._toc import _toc_context_cache
+from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (keyed by id())
 from gutenbit.html_chunker._sections import (
     _equalize_orphan_level_gap,
     _find_non_structural_boundary_after,

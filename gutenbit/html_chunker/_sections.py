@@ -249,12 +249,14 @@ def _parse_toc_sections(
     for trim_idx, section in enumerate(sections):
         if _REFINEMENT_STOP_HEADING_RE.match(section.heading_text):
             apparatus_rank = section.heading_rank
-            has_higher_rank_after = any(
-                s.heading_rank is not None
-                and apparatus_rank is not None
-                and s.heading_rank < apparatus_rank
-                for s in sections[trim_idx + 1 :]
-            )
+            if apparatus_rank is not None:
+                has_higher_rank_after = any(
+                    s.heading_rank is not None
+                    and s.heading_rank < apparatus_rank
+                    for s in sections[trim_idx + 1 :]
+                )
+            else:
+                has_higher_rank_after = False
             if not has_higher_rank_after:
                 sections = sections[: trim_idx + 1]
             break

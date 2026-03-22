@@ -49,6 +49,8 @@ def _is_toc_context_link(link: Tag) -> bool:
             return cached
 
     if link.find_parent("tr") is not None:
+        # Table-based TOC — always True.  We don't cache this on the
+        # paragraph because table rows are a separate structural signal.
         return True
 
     for name in ("p", "li", "div"):

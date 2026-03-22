@@ -1295,6 +1295,3 @@ def test_henry_esmond_collected_preserves_all_three_works():
     assert len(george_sections) >= 4
 
 
-## Removed: PG 2511, 7265, 7467, 6688, 507, 550, 7469, 17780, 4558, 2686
-## These regression points are now captured by non-network fixtures in
-## test_html_chunker.py (Thackeray & George Eliot regression fixtures section).
