@@ -102,6 +102,10 @@ body::before {
   .gb-mark--desktop { display: none; }
 }
 
+@media screen and (min-width: 76.25em) {
+  .md-header__title { visibility: hidden; flex: 1; }
+}
+
 /* ─── Mobile drawer logo ─── */
 .gb-nav-logo {
   display: inline-flex;
