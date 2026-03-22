@@ -11,7 +11,9 @@
 {% endif %}
 <nav class="{{ class }}" aria-label="{{ lang.t('nav') }}" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" class="md-nav__button gb-mark" aria-label="{{ config.site_name }}">gb<span class="gb-star">*</span></a>
+    <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" class="md-nav__button gb-nav-logo" aria-label="{{ config.site_name }}">
+      <img src="{{ 'assets/brand/abbr-gb.png' | url }}" alt="gb*" class="gb-nav-logo__img">
+    </a>
   </label>
   {% if config.repo_url %}
     <div class="md-nav__source">

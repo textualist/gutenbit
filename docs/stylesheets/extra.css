@@ -105,6 +105,22 @@ body::before {
   .gb-mark--desktop { display: none; }
 }
 
+/* ─── Mobile drawer logo ─── */
+.gb-nav-logo {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+}
+
+.gb-nav-logo__img {
+  height: 1.2rem;
+  width: auto;
+}
+
+[data-md-color-scheme="slate"] .gb-nav-logo__img {
+  filter: brightness(0) invert(0.85) sepia(0.15) saturate(0.5);
+}
+
 /* ─── Search ─── */
 .md-search__form {
   background-color: var(--card-bg);
