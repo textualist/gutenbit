@@ -2835,3 +2835,321 @@ def test_toc_anchor_skips_intervening_title_heading():
     # Chapters under PART ONE must be nested (div1 = PART ONE).
     part1_chapters = [h for h in headings if h.div1 == "PART ONE" and h.content.startswith("CHAPTER")]
     assert len(part1_chapters) == 2
+
+
+# ------------------------------------------------------------------
+# Thackeray & George Eliot regression fixtures
+# ------------------------------------------------------------------
+# Non-network tests modelling the structural patterns discovered during
+# battle-testing the Thackeray and George Eliot corpora.  Each fixture
+# captures a specific regression point with minimal HTML rather than
+# downloading from Project Gutenberg.
+
+
+def test_collected_edition_does_not_truncate_after_apparatus_heading():
+    """Regression (PG 29363): apparatus-heading truncation must be skipped
+    when a more prominent heading follows the apparatus heading.
+
+    Without the fix, the parser sees "Appendix" (which matches
+    _REFINEMENT_STOP_HEADING_RE) and truncates everything after it,
+    losing the second work entirely.  The fix checks whether any heading
+    with a lower (= more prominent) rank follows and skips truncation.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <p class="toc"><a href="#ch2" class="pginternal">CHAPTER II</a></p>
+    <p class="toc"><a href="#appendix" class="pginternal">Appendix</a></p>
+    <p class="toc"><a href="#humourists" class="pginternal">THE ENGLISH HUMOURISTS</a></p>
+    <p class="toc"><a href="#lec1" class="pginternal">Lecture The First</a></p>
+    <p class="toc"><a href="#lec2" class="pginternal">Lecture The Second</a></p>
+
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>First chapter.</p>
+    <h2><a id="ch2"></a>CHAPTER II</h2>
+    <p>Second chapter.</p>
+
+    <h2><a id="appendix"></a>Appendix</h2>
+    <p>Appendix content.</p>
+
+    <h1><a id="humourists"></a>THE ENGLISH HUMOURISTS</h1>
+    <h2><a id="lec1"></a>Lecture The First</h2>
+    <p>Swift lecture content.</p>
+    <h2><a id="lec2"></a>Lecture The Second</h2>
+    <p>Congreve lecture content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    # Appendix must be kept.
+    assert "Appendix" in heading_texts
+
+    # The second work must NOT be truncated.
+    assert "THE ENGLISH HUMOURISTS" in heading_texts
+    assert "Lecture The First" in heading_texts
+    assert "Lecture The Second" in heading_texts
+
+
+def test_apparatus_heading_truncates_when_no_prominent_heading_follows():
+    """Counter-case: when ONLY commentary follows an apparatus heading,
+    truncation SHOULD happen — everything after Appendix is dropped."""
+    html = _make_html("""
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <p class="toc"><a href="#appendix" class="pginternal">Appendix</a></p>
+
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Chapter content.</p>
+
+    <h2><a id="appendix"></a>Appendix</h2>
+    <p>Appendix content.</p>
+    <h3>Notes on sources</h3>
+    <p>Commentary that should be absorbed.</p>
+    <h3>Further reading</h3>
+    <p>More commentary.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "CHAPTER I" in heading_texts
+    assert "Appendix" in heading_texts
+    # Sub-headings after Appendix should NOT appear as separate sections.
+    assert "Notes on sources" not in heading_texts
+    assert "Further reading" not in heading_texts
+
+
+def test_books_with_chapters_nested_and_epilogue_as_sibling():
+    """Regression (PG 507, 2511): Books I-III with chapters nested under
+    each, and an Epilogue that remains a sibling of the books rather than
+    nesting under the last book."""
+    html = _make_html("""
+    <p class="toc"><a href="#b1" class="pginternal"><b>BOOK I</b></a></p>
+    <p class="toc"><a href="#b1c1" class="pginternal">CHAPTER I</a></p>
+    <p class="toc"><a href="#b1c2" class="pginternal">CHAPTER II</a></p>
+    <p class="toc"><a href="#b2" class="pginternal"><b>BOOK II</b></a></p>
+    <p class="toc"><a href="#b2c1" class="pginternal">CHAPTER III</a></p>
+    <p class="toc"><a href="#b2c2" class="pginternal">CHAPTER IV</a></p>
+    <p class="toc"><a href="#b3" class="pginternal"><b>BOOK III</b></a></p>
+    <p class="toc"><a href="#b3c1" class="pginternal">CHAPTER V</a></p>
+    <p class="toc"><a href="#epilogue" class="pginternal"><b>Epilogue</b></a></p>
+
+    <h1><a id="b1"></a>BOOK I</h1>
+    <h2><a id="b1c1"></a>CHAPTER I</h2>
+    <p>Book one, chapter one.</p>
+    <h2><a id="b1c2"></a>CHAPTER II</h2>
+    <p>Book one, chapter two.</p>
+
+    <h1><a id="b2"></a>BOOK II</h1>
+    <h2><a id="b2c1"></a>CHAPTER III</h2>
+    <p>Book two, chapter three.</p>
+    <h2><a id="b2c2"></a>CHAPTER IV</h2>
+    <p>Book two, chapter four.</p>
+
+    <h1><a id="b3"></a>BOOK III</h1>
+    <h2><a id="b3c1"></a>CHAPTER V</h2>
+    <p>Book three, chapter five.</p>
+
+    <h1><a id="epilogue"></a>Epilogue</h1>
+    <p>Epilogue content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    div1_values = sorted({h.div1 for h in headings if h.div1})
+
+    # Three books + epilogue at div1 level.
+    assert len(div1_values) == 4
+    assert "BOOK I" in div1_values
+    assert "BOOK II" in div1_values
+    assert "BOOK III" in div1_values
+    assert "Epilogue" in div1_values
+
+    # Chapters nest under their books (div2).
+    book1_chapters = [h for h in headings if h.div1 == "BOOK I" and h.div2.startswith("CHAPTER")]
+    assert len(book1_chapters) == 2
+    book2_chapters = [h for h in headings if h.div1 == "BOOK II" and h.div2.startswith("CHAPTER")]
+    assert len(book2_chapters) == 2
+
+    # Epilogue is at div1 with no div2 — not nested under BOOK III.
+    epilogue = [h for h in headings if h.content == "Epilogue"][0]
+    assert epilogue.div1 == "Epilogue"
+    assert epilogue.div2 == ""
+
+
+def test_two_parts_with_chapters_nested():
+    """Regression (PG 550): PART I and PART II each with chapters nested."""
+    html = _make_html("""
+    <p class="toc"><a href="#p1" class="pginternal"><b>PART I.</b></a></p>
+    <p class="toc"><a href="#p1c1" class="pginternal">CHAPTER I.</a></p>
+    <p class="toc"><a href="#p1c2" class="pginternal">CHAPTER II.</a></p>
+    <p class="toc"><a href="#p1c3" class="pginternal">CHAPTER III.</a></p>
+    <p class="toc"><a href="#p2" class="pginternal"><b>PART II.</b></a></p>
+    <p class="toc"><a href="#p2c1" class="pginternal">CHAPTER XVI.</a></p>
+    <p class="toc"><a href="#p2c2" class="pginternal">CHAPTER XVII.</a></p>
+
+    <h1><a id="p1"></a>PART I.</h1>
+    <h2><a id="p1c1"></a>CHAPTER I.</h2>
+    <p>First chapter under part one.</p>
+    <h2><a id="p1c2"></a>CHAPTER II.</h2>
+    <p>Second chapter under part one.</p>
+    <h2><a id="p1c3"></a>CHAPTER III.</h2>
+    <p>Third chapter under part one.</p>
+
+    <h1><a id="p2"></a>PART II.</h1>
+    <h2><a id="p2c1"></a>CHAPTER XVI.</h2>
+    <p>First chapter under part two.</p>
+    <h2><a id="p2c2"></a>CHAPTER XVII.</h2>
+    <p>Second chapter under part two.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    div1_values = sorted({h.div1 for h in headings if h.div1})
+
+    assert len(div1_values) == 2
+    assert "PART I." in div1_values
+    assert "PART II." in div1_values
+
+    # Chapters nest under their parts.
+    part1_chapters = [h for h in headings if h.div1 == "PART I." and h.div2.startswith("CHAPTER")]
+    assert len(part1_chapters) == 3
+    part2_chapters = [h for h in headings if h.div1 == "PART II." and h.div2.startswith("CHAPTER")]
+    assert len(part2_chapters) == 2
+
+
+def test_story_collection_with_numbered_sections():
+    """Regression (PG 17780): a collection of named stories where each
+    story has numbered sub-sections that nest under the story title.
+
+    The collection_titles_promote_to_top_level test covers the case with
+    play/poem titles.  This variant tests story titles with Roman numeral
+    sub-sections (modelling the pattern in Scenes of Clerical Life).
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#story1" class="pginternal"><b>THE SAD FORTUNES OF THE REV. AMOS BARTON</b></a></p>
+    <p class="toc"><a href="#s1s1" class="pginternal">I</a></p>
+    <p class="toc"><a href="#s1s2" class="pginternal">II</a></p>
+    <p class="toc"><a href="#story2" class="pginternal"><b>MR GILFIL'S LOVE-STORY</b></a></p>
+    <p class="toc"><a href="#s2s1" class="pginternal">III</a></p>
+    <p class="toc"><a href="#s2s2" class="pginternal">IV</a></p>
+    <p class="toc"><a href="#s2s3" class="pginternal">V</a></p>
+    <p class="toc"><a href="#story3" class="pginternal"><b>JANET'S REPENTANCE</b></a></p>
+    <p class="toc"><a href="#s3s1" class="pginternal">VI</a></p>
+
+    <h2><a id="story1"></a>THE SAD FORTUNES OF THE REV. AMOS BARTON</h2>
+    <h3><a id="s1s1"></a>I</h3>
+    <p>Shepperton church was a very different place then.</p>
+    <h3><a id="s1s2"></a>II</h3>
+    <p>Amos Barton was a man of some consequence.</p>
+
+    <h2><a id="story2"></a>MR GILFIL'S LOVE-STORY</h2>
+    <h3><a id="s2s1"></a>III</h3>
+    <p>When old Mr Gilfil died.</p>
+    <h3><a id="s2s2"></a>IV</h3>
+    <p>It is the evening of the 21st of June 1788.</p>
+    <h3><a id="s2s3"></a>V</h3>
+    <p>The next morning was as lovely as the evening.</p>
+
+    <h2><a id="story3"></a>JANET'S REPENTANCE</h2>
+    <h3><a id="s3s1"></a>VI</h3>
+    <p>"No!" said lawyer Dempster.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    div1_values = sorted({h.div1 for h in headings if h.div1})
+
+    # Three stories at the top level.
+    assert "THE SAD FORTUNES OF THE REV. AMOS BARTON" in div1_values
+    assert "MR GILFIL'S LOVE-STORY" in div1_values
+    assert "JANET'S REPENTANCE" in div1_values
+
+    # Sections nested under their stories.
+    amos_sections = [
+        h for h in headings
+        if "AMOS BARTON" in h.div1 and h.div2
+    ]
+    assert len(amos_sections) >= 2
+
+    gilfil_sections = [
+        h for h in headings
+        if "GILFIL" in h.div1 and h.div2
+    ]
+    assert len(gilfil_sections) >= 3
+
+
+def test_many_flat_chapters_preserve_prefatory_heading():
+    """Regression (PG 7265, 2686): PREFATORY REMARKS is preserved as a
+    sibling section at div1 level alongside regular chapters.  It must
+    not nest subsequent chapters as its children.
+
+    This is complementary to test_preface_does_not_nest_chapters_as_container
+    (which uses a heading-scan path with h3/h4); here we exercise the
+    TOC-driven path where the prefatory heading appears as a TOC link.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#preface" class="pginternal">PREFATORY REMARKS</a></p>
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <p class="toc"><a href="#ch2" class="pginternal">CHAPTER II</a></p>
+    <p class="toc"><a href="#ch3" class="pginternal">CHAPTER III</a></p>
+    <p class="toc"><a href="#ch4" class="pginternal">CHAPTER IV</a></p>
+
+    <h2><a id="preface"></a>PREFATORY REMARKS</h2>
+    <p>The acute mind of the reader will observe.</p>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>First chapter.</p>
+    <h2><a id="ch2"></a>CHAPTER II</h2>
+    <p>Second chapter.</p>
+    <h2><a id="ch3"></a>CHAPTER III</h2>
+    <p>Third chapter.</p>
+    <h2><a id="ch4"></a>CHAPTER IV</h2>
+    <p>Fourth chapter.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "PREFATORY REMARKS" in heading_texts
+    assert len([h for h in headings if h.content.startswith("CHAPTER")]) == 4
+
+    # All headings at div1 level — PREFATORY REMARKS is a sibling, not a container.
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_descriptive_book_names_with_chapter_nesting():
+    """Regression (PG 6688): books with descriptive names (not just
+    'BOOK I') should still serve as containers for chapters."""
+    html = _make_html("""
+    <p class="toc"><a href="#b1" class="pginternal"><b>BOOK FIRST. BOY AND GIRL</b></a></p>
+    <p class="toc"><a href="#b1c1" class="pginternal">CHAPTER I. Outside Dorlcote Mill</a></p>
+    <p class="toc"><a href="#b1c2" class="pginternal">CHAPTER II. Mr Tulliver</a></p>
+    <p class="toc"><a href="#b2" class="pginternal"><b>BOOK SECOND. SCHOOL-TIME</b></a></p>
+    <p class="toc"><a href="#b2c1" class="pginternal">CHAPTER I. Tom's "First Half"</a></p>
+    <p class="toc"><a href="#b7" class="pginternal"><b>BOOK SEVENTH. THE FINAL RESCUE</b></a></p>
+    <p class="toc"><a href="#b7c1" class="pginternal">CHAPTER I. The Return to the Mill</a></p>
+
+    <h1><a id="b1"></a>BOOK FIRST. BOY AND GIRL</h1>
+    <h2><a id="b1c1"></a>CHAPTER I. Outside Dorlcote Mill</h2>
+    <p>A wide plain, where the broadening Floss hurries on.</p>
+    <h2><a id="b1c2"></a>CHAPTER II. Mr Tulliver</h2>
+    <p>"What I want, you know," said Mr Tulliver.</p>
+
+    <h1><a id="b2"></a>BOOK SECOND. SCHOOL-TIME</h1>
+    <h2><a id="b2c1"></a>CHAPTER I. Tom's "First Half"</h2>
+    <p>Tom Tulliver's four quarters of the year.</p>
+
+    <h1><a id="b7"></a>BOOK SEVENTH. THE FINAL RESCUE</h1>
+    <h2><a id="b7c1"></a>CHAPTER I. The Return to the Mill</h2>
+    <p>The flood was spreading.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    div1_values = sorted({h.div1 for h in headings if h.div1})
+
+    assert len(div1_values) == 3
+    assert any("BOY AND GIRL" in v for v in div1_values)
+    assert any("SCHOOL-TIME" in v for v in div1_values)
+    assert any("FINAL RESCUE" in v for v in div1_values)
+
+    # Chapters nest under their books.
+    book1_chapters = [
+        h for h in headings if "BOY AND GIRL" in h.div1 and h.content.startswith("CHAPTER")
+    ]
+    assert len(book1_chapters) == 2
