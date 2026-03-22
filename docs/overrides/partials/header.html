@@ -1,6 +1,6 @@
 {#-
-  Custom header: gb* nav mark replacing logo + site title.
-  Hidden on mobile — the mark appears in the drawer instead.
+  Custom header: gb* nav mark replacing logo on desktop.
+  On mobile the standard mkdocs title structure shows site name + page title.
 -#}
 {% set class = "md-header" %}
 {% if "navigation.tabs.sticky" in features %}
@@ -10,13 +10,28 @@
 {% endif %}
 <header class="{{ class }}" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="{{ lang.t('header') }}">
+    <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" class="gb-mark gb-mark--desktop" aria-label="{{ config.site_name }}">gb<span class="gb-star">*</span></a>
     <label class="md-header__button md-icon" for="__drawer">
       {% set icon = config.theme.icon.menu or "material/menu" %}
       {% include ".icons/" ~ icon ~ ".svg" %}
     </label>
-    <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" class="gb-mark gb-mark--desktop" aria-label="{{ config.site_name }}">gb<span class="gb-star">*</span></a>
-    <div class="md-header__title" style="flex:1">
-      <span class="gb-header-title">gutenbit</span>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            {{ config.site_name }}
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            {% if page.meta and page.meta.title %}
+              {{ page.meta.title }}
+            {% else %}
+              {{ page.title }}
+            {% endif %}
+          </span>
+        </div>
+      </div>
     </div>
     {% if config.theme.palette %}
       {% if not config.theme.palette is mapping %}

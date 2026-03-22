@@ -1,5 +1,5 @@
 {#-
-  Custom nav: gb* mark in drawer header, no site-name title text.
+  Custom nav: gb* logo image in drawer header, with standard site-name title.
 -#}
 {% import "partials/nav-item.html" as item with context %}
 {% set class = "md-nav md-nav--primary" %}
@@ -11,9 +11,10 @@
 {% endif %}
 <nav class="{{ class }}" aria-label="{{ lang.t('nav') }}" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" class="md-nav__button md-logo gb-nav-logo" aria-label="{{ config.site_name }}">
+    <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" title="{{ config.site_name | e }}" class="md-nav__button md-logo gb-nav-logo" aria-label="{{ config.site_name }}">
       <img src="{{ 'assets/brand/abbr-gb.png' | url }}" alt="gb*" class="gb-nav-logo__img">
     </a>
+    {{ config.site_name }}
   </label>
   {% if config.repo_url %}
     <div class="md-nav__source">
