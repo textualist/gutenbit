@@ -10,7 +10,7 @@
   --muted: #2e2a26;
   --rule: rgba(14,11,9,0.12);
   --rule-strong: rgba(14,11,9,0.25);
-  --card-bg: rgba(245,240,232,0.5);
+  --card-bg: rgba(var(--paper-rgb),0.5);
   --code-bg: rgba(14,11,9,0.05);
 }
 
@@ -53,7 +53,9 @@
   --md-typeset-a-color: var(--red);
   --md-code-bg-color: var(--code-bg);
   --md-code-fg-color: var(--ink);
-  --md-default-bg-color--light: rgba(26,21,16,0.7);
+  /* Material slate sets its own --md-default-bg-color--light; override to
+     keep the warm dark paper instead of slate's cool grey. */
+  --md-default-bg-color--light: rgba(var(--paper-rgb),0.7);
 }
 
 /* ─── Header & Tabs ─── */
