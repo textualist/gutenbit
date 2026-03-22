@@ -109,7 +109,7 @@ body::before {
   padding: 0;
 }
 
-.gb-nav-logo__img {
+.md-nav__title .gb-nav-logo__img {
   height: 1.2rem;
   width: auto;
 }
