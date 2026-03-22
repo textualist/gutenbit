@@ -91,6 +91,7 @@ body::before {
   font-weight: 400;
   color: var(--muted);
   text-decoration: none;
+  margin-left: 0.8rem;
 }
 
 .gb-star {
