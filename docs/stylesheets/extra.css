@@ -97,6 +97,10 @@ body::before {
   color: var(--red);
 }
 
+@media screen and (min-width: 76.25em) {
+  .gb-mark--desktop { margin-left: 12.1rem; }
+}
+
 @media screen and (max-width: 76.234375em) {
   .gb-mark--desktop { display: none; }
 }
