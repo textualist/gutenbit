@@ -1,8 +1,5 @@
+<h1 align="center">gutenbit</h1>
 <p align="center">
-  <br>
-  <img src="assets/brand/gutenbit-brand-readme.png" alt="gutenbit brand mark" width="230">
-  <br>
-  <br>
   <em>A command line tool for fast local search across public-domain literary works.<br>Find, browse and search books from your terminal.</em>
 </p>
 

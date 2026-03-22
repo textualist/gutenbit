@@ -1,12 +1,5 @@
 <div class="homepage-identity">
-  <h1 class="identity-wordmark">
-    <span class="identity-wordmark__sr-only">gutenbit</span>
-    <span class="tri" aria-hidden="true">
-      <span class="layer red">gutenbit</span>
-      <span class="layer blue">gutenbit</span>
-      <span class="layer black">gutenbit</span>
-    </span>
-  </h1>
+  <h1>gutenbit</h1>
   <p class="identity-tagline">A command line tool for fast local search across public-domain literary works. Find, browse, and search books from your terminal or Python script.</p>
 </div>
 
