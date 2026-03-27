@@ -48,7 +48,7 @@
   --md-accent-fg-color: var(--red);
   --md-accent-fg-color--transparent: var(--red-dim);
   --md-typeset-a-color: var(--red);
-  --md-code-bg-color: rgba(237,228,212,0.06);
+  --md-code-bg-color: rgba(237,228,212,0.12);
   --md-code-fg-color: var(--ink);
   --md-default-bg-color--light: rgba(var(--paper-rgb),0.7);
 }
@@ -104,7 +104,7 @@ body::before {
 }
 
 .md-search__button {
-  background-color: var(--md-default-bg-color--light, rgba(var(--paper-rgb),0.7)) !important;
+  background-color: var(--md-code-bg-color) !important;
 }
 
 .md-search__button::after {
