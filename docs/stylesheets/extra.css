@@ -111,7 +111,25 @@ body::before {
   background-color: var(--paper) !important;
 }
 
-/* ─── Header: gb* text mark ─── */
+/* ─── gb* text mark (shared by header and mobile drawer) ─── */
+.md-header .md-logo::before,
+.md-nav--primary .md-nav__title .md-logo::before {
+  content: 'gb';
+  font-family: 'DM Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.md-header .md-logo::after,
+.md-nav--primary .md-nav__title .md-logo::after {
+  content: '*';
+  font-family: 'DM Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--red);
+}
+
 .md-header__title { visibility: hidden; flex: 1; }
 
 .md-header .md-header__button.md-logo {
@@ -120,26 +138,10 @@ body::before {
   align-items: center;
   height: auto;
   padding: 0.4rem 0;
-  margin-left: 12px;
+  margin-left: 0.75rem;
 }
 
 .md-header .md-logo img { display: none; }
-
-.md-header .md-logo::before {
-  content: 'gb';
-  font-family: 'DM Mono', monospace;
-  font-size: 0.85rem;
-  font-weight: 400;
-  color: var(--muted);
-}
-
-.md-header .md-logo::after {
-  content: '*';
-  font-family: 'DM Mono', monospace;
-  font-size: 0.85rem;
-  font-weight: 400;
-  color: var(--red);
-}
 
 /* ─── Mobile: show title, hide header logo, keep drawer logo ─── */
 @media screen and (max-width: 76.234375em) {
@@ -159,22 +161,6 @@ body::before {
 }
 
 .md-nav--primary .md-nav__title .md-logo img { display: none !important; }
-
-.md-nav--primary .md-nav__title .md-logo::before {
-  content: 'gb';
-  font-family: 'DM Mono', monospace;
-  font-size: 0.85rem;
-  font-weight: 400;
-  color: var(--muted);
-}
-
-.md-nav--primary .md-nav__title .md-logo::after {
-  content: '*';
-  font-family: 'DM Mono', monospace;
-  font-size: 0.85rem;
-  font-weight: 400;
-  color: var(--red);
-}
 
 /* ─── Repo: hide stars and forks ─── */
 .md-source__fact--stars,
