@@ -74,7 +74,6 @@ if book is not None:
 - [CLI](cli.md) documents every subcommand and flag.
 - [Python API](python-api.md) covers the library in full.
 - [Concepts](concepts.md) explains how chunking, divisions, and search work.
-- [API Reference](reference/index.md) has auto-generated module documentation.
 
 ## Project Gutenberg Access
 

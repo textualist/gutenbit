@@ -1,24 +1,17 @@
-/* ─── Design Tokens: Light ─── */
-[data-md-color-scheme="default"],
-:root {
+/* ─── Color Tokens: Light ─── */
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400&family=Source+Serif+4:ital,opsz,wght@1,8..60,400&display=swap');
+
+[data-md-color-scheme="default"] {
   --ink: #0e0b09;
   --paper: #f5f0e8;
   --paper-rgb: 245,240,232;
   --red: #c41a1a;
   --red-dim: rgba(196,26,26,0.07);
-  --red-fill: rgba(196,26,26,0.12);
   --muted: #2e2a26;
   --rule: rgba(14,11,9,0.12);
-  --rule-strong: rgba(14,11,9,0.25);
-  --card-bg: rgba(var(--paper-rgb),0.5);
-  --code-bg: rgba(14,11,9,0.05);
   --grain-blend: multiply;
   --grain-opacity: 0.3;
-  --serif: 'Source Serif 4', Georgia, serif;
-  --mono: 'DM Mono', 'SF Mono', monospace;
-}
 
-[data-md-color-scheme="default"] {
   --md-default-bg-color: var(--paper);
   --md-default-fg-color: var(--ink);
   --md-default-fg-color--light: var(--muted);
@@ -27,24 +20,21 @@
   --md-primary-fg-color--dark: var(--paper);
   --md-primary-bg-color: var(--ink);
   --md-accent-fg-color: var(--red);
+  --md-accent-fg-color--transparent: var(--red-dim);
   --md-typeset-a-color: var(--red);
   --md-code-bg-color: #fffdf9;
   --md-code-fg-color: var(--ink);
 }
 
-/* ─── Design Tokens: Dark ─── */
+/* ─── Color Tokens: Dark ─── */
 [data-md-color-scheme="slate"] {
   --ink: #ede4d4;
   --paper: #1a1510;
   --paper-rgb: 26,21,16;
   --red: #d44030;
   --red-dim: rgba(212,64,48,0.12);
-  --red-fill: rgba(212,64,48,0.12);
   --muted: #b5a898;
   --rule: rgba(237,228,212,0.1);
-  --rule-strong: rgba(237,228,212,0.18);
-  --card-bg: rgba(34,28,20,0.6);
-  --code-bg: rgba(237,228,212,0.06);
   --grain-blend: soft-light;
   --grain-opacity: 0.15;
 
@@ -56,11 +46,10 @@
   --md-primary-fg-color--dark: var(--paper);
   --md-primary-bg-color: var(--ink);
   --md-accent-fg-color: var(--red);
+  --md-accent-fg-color--transparent: var(--red-dim);
   --md-typeset-a-color: var(--red);
-  --md-code-bg-color: var(--code-bg);
+  --md-code-bg-color: rgba(237,228,212,0.06);
   --md-code-fg-color: var(--ink);
-  /* Material slate sets its own --md-default-bg-color--light; override to
-     keep the warm dark paper instead of slate's cool grey. */
   --md-default-bg-color--light: rgba(var(--paper-rgb),0.7);
 }
 
@@ -77,78 +66,6 @@ body::before {
   mix-blend-mode: var(--grain-blend);
 }
 
-/* ─── Header & Tabs ─── */
-.md-header,
-.md-tabs {
-  background-color: var(--paper);
-  border-bottom: 1px solid var(--rule);
-}
-
-/* ─── gb* nav mark ─── */
-.gb-mark {
-  font-family: var(--mono);
-  font-size: 0.85rem;
-  font-weight: 400;
-  color: var(--muted);
-  text-decoration: none;
-  margin-left: 0.8rem;
-}
-
-.gb-star {
-  color: var(--red);
-}
-
-@media screen and (max-width: 76.234375em) {
-  .gb-mark--desktop { display: none; }
-}
-
-@media screen and (min-width: 76.25em) {
-  .md-header__title { visibility: hidden; flex: 1; }
-}
-
-/* ─── Mobile drawer logo ─── */
-.gb-nav-logo {
-  display: inline-flex;
-  align-items: center;
-  padding: 0;
-}
-
-.md-nav__title .md-logo.gb-nav-logo img {
-  height: 1.2rem;
-  width: auto;
-}
-
-[data-md-color-scheme="slate"] .gb-nav-logo img {
-  filter: brightness(0) invert(0.85) sepia(0.15) saturate(0.5);
-}
-
-/* ─── Search ─── */
-.md-search__form {
-  background-color: var(--card-bg);
-  border: 1px solid var(--rule);
-  box-shadow: none;
-}
-
-.md-search__input {
-  color: var(--ink);
-}
-
-.md-search__input::placeholder {
-  color: var(--muted);
-}
-
-/* ─── Typography ─── */
-.md-typeset h1,
-.md-typeset h2,
-.md-typeset h3 {
-  color: var(--ink);
-}
-
-.md-typeset code {
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-}
-
 /* ─── Homepage hero ─── */
 .homepage-identity {
   margin: 0 0 2rem;
@@ -156,7 +73,7 @@ body::before {
 }
 
 .homepage-identity h1 {
-  font-family: var(--serif);
+  font-family: 'Source Serif 4', Georgia, serif;
   font-style: italic;
   font-weight: 400;
   color: var(--red);
@@ -173,31 +90,80 @@ body::before {
   line-height: 1.6;
 }
 
-/* ─── Sidebar ─── */
-/* Keep the navigation and TOC panels scrollable without persistent scrollbar chrome. */
-.md-sidebar__scrollwrap {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-.md-sidebar__scrollwrap::-webkit-scrollbar {
-  display: none;
-}
-
-/* ─── Navigation hover ─── */
-.md-nav__link:hover {
-  color: var(--red);
-}
-
-/* ─── Repo metadata: show only the release tag ─── */
-.md-source__fact--stars,
-.md-source__fact--forks {
-  display: none;
-}
-
-/* ─── Responsive ─── */
 @media screen and (max-width: 44.984375em) {
   .homepage-identity h1 {
     font-size: clamp(1.6rem, 8vw, 2.2rem);
   }
+}
+
+/* ─── Header ─── */
+.md-header {
+  background-color: var(--paper);
+  border-bottom: 1px solid var(--rule);
+  box-shadow: none;
+}
+
+.md-search__button {
+  background-color: var(--md-default-bg-color--light, rgba(var(--paper-rgb),0.7)) !important;
+}
+
+.md-search__button::after {
+  background-color: var(--paper) !important;
+}
+
+/* ─── gb* text mark (shared by header and mobile drawer) ─── */
+.md-header .md-logo::before,
+.md-nav--primary .md-nav__title .md-logo::before {
+  content: 'gb';
+  font-family: 'DM Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.md-header .md-logo::after,
+.md-nav--primary .md-nav__title .md-logo::after {
+  content: '*';
+  font-family: 'DM Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--red);
+}
+
+.md-header__title { visibility: hidden; flex: 1; }
+
+.md-header .md-header__button.md-logo {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  height: auto;
+  padding: 0.4rem 0;
+  margin-left: 0.75rem;
+}
+
+.md-header .md-logo img { display: none; }
+
+/* ─── Mobile: show title, hide header logo, keep drawer logo ─── */
+@media screen and (max-width: 76.234375em) {
+  .md-header__title { visibility: visible; }
+  .md-header .md-header__button.md-logo { display: none; }
+}
+
+.md-nav--primary > .md-nav__title {
+  font-size: 0 !important;
+  line-height: 1;
+}
+
+.md-nav--primary .md-nav__title .md-logo {
+  display: inline-flex !important;
+  flex-direction: row;
+  align-items: center;
+}
+
+.md-nav--primary .md-nav__title .md-logo img { display: none !important; }
+
+/* ─── Repo: hide stars and forks ─── */
+.md-source__fact--stars,
+.md-source__fact--forks {
+  display: none;
 }

@@ -45,12 +45,7 @@ gutenbit = "gutenbit.cli:_entry_point"
 
 [project.optional-dependencies]
 docs = [
-    "mkdocs>=1.6,<2",
-    "mkdocs-gen-files>=0.5",
-    "mkdocs-literate-nav>=0.6",
-    "mkdocs-material>=9.6",
-    "mkdocs-section-index>=0.3",
-    "mkdocstrings[python]>=0.30",
+    "zensical>=0.0.29",
 ]
 
 [build-system]
@@ -83,9 +78,9 @@ markers = ["network: tests that require network access (download from Project Gu
 features = ["docs"]
 
 [tool.hatch.envs.docs.scripts]
-build = "mkdocs build --strict --clean"
-serve = "mkdocs serve"
-check = "mkdocs build --strict --clean --verbose"
+build = "zensical build --clean"
+serve = "zensical serve"
+check = "zensical build --clean"
 
 [dependency-groups]
 dev = [

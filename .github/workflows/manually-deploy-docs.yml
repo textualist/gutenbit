@@ -9,11 +9,16 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     concurrency:
       group: github-pages
       cancel-in-progress: true
@@ -30,6 +35,8 @@ jobs:
               ;;
           esac
 
+      - uses: actions/configure-pages@v5
+
       - name: Check out repository
         uses: actions/checkout@v5
         with:
@@ -42,10 +49,12 @@ jobs:
           python-version: "3.11"
           enable-cache: true
 
-      - name: Configure Git credentials
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+      - name: Build documentation
+        run: uv run --extra docs zensical build --clean
 
-      - name: Deploy documentation
-        run: uv run --extra docs mkdocs gh-deploy --force
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+      - uses: actions/deploy-pages@v4
+        id: deployment

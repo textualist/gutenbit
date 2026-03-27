@@ -1,0 +1,48 @@
+[project]
+site_name = "gutenbit"
+site_description = "Fast local search across Project Gutenberg's literary works."
+site_url = "https://gutenbit.textualist.org"
+repo_name = "gutenbit"
+repo_url = "https://github.com/textualist/gutenbit"
+extra_css = ["stylesheets/extra.css"]
+nav = [
+  {"Home" = "index.md"},
+  {"Getting Started" = "getting-started.md"},
+  {"CLI" = "cli.md"},
+  {"Python API" = "python-api.md"},
+  {"Concepts" = "concepts.md"},
+]
+
+[project.theme]
+variant = "modern"
+language = "en"
+# Image hidden via CSS; keeps the <a class="md-logo"> element for gb* text pseudo-elements.
+logo = "assets/brand/abbr-gb.png"
+favicon = "assets/brand/favicon.svg"
+features = [
+  "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.sections",
+  "navigation.top",
+  "content.code.copy",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "custom"
+accent = "custom"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+
+[project.theme.icon]
+repo = "fontawesome/brands/github"
+
+[project.markdown_extensions.admonition]
+[project.markdown_extensions."pymdownx.details"]
+[project.markdown_extensions."pymdownx.highlight"]
+[project.markdown_extensions."pymdownx.superfences"]
