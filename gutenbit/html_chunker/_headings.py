@@ -282,6 +282,11 @@ def _is_toc_section_heading(
         return True
     if _BRACKETED_NUMERIC_HEADING_RE.fullmatch(link_text):
         return True
+    # Headings starting with an enumerated prefix (e.g. "I. OLD MOODIE",
+    # "XIV. ELIOT'S PULPIT") are structural chapter/section headings even
+    # at h3+ rank.
+    if _starts_with_enumerated_heading_prefix(heading_text.strip()):
+        return True
     if _is_refinement_heading(heading_text):
         return True
     return _is_refinement_heading(link_text)
