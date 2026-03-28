@@ -24,6 +24,10 @@ from gutenbit.html_chunker._common import (
     _Section,
 )
 from gutenbit.html_chunker._headings import (
+    _DRAMATIC_CONTEXT_HEADING_RE,
+    _PLAIN_NUMBER_HEADING_RE,
+    _STANDALONE_BYLINE_RE,
+    _TERMINAL_MARKER_RE,
     _broad_heading_with_enumerated_child,
     _broad_nesting_depth,
     _classify_level,
@@ -329,6 +333,11 @@ def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
     Detects the pattern ``<h3>CHAPTER I</h3><h5>WHO WILL BE THE NEW BISHOP?</h5>``
     (common in Project Gutenberg editions) and combines them into a single section
     with heading text ``"CHAPTER I WHO WILL BE THE NEW BISHOP?"``.
+
+    Only merges when the subtitle is at a deeper level than the bare heading
+    number — i.e., the subtitle is a child, not a sibling section.
+    Separate TOC entries that happen to be adjacent at the same level (e.g.
+    "CHAPTER 25" followed by a different work "LIGEIA") are never merged.
     """
     if len(sections) < 2:
         return sections
@@ -345,6 +354,7 @@ def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
                 sections[i + 1].heading_text,
             )
             and _next_heading_is_subtitle(sections[i + 1].heading_text)
+            and sections[i + 1].level > sec.level
         ):
             # Merge: keep anchor and level from the chapter-number heading,
             # combine heading text.
@@ -368,17 +378,44 @@ def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
 
 
 def _merge_adjacent_duplicate_sections(sections: list[_Section]) -> list[_Section]:
-    """Drop immediately repeated section headings such as duplicate running headers."""
+    """Drop immediately repeated section headings such as duplicate running headers.
+
+    When three or more consecutive sections share the same text, level, and
+    rank they are treated as deliberate structural repetition (e.g. four
+    "LEGENDS OF THE PROVINCE HOUSE" headings each introducing a different
+    story) and are all kept.  Runs of exactly two are collapsed to one —
+    those are typically redundant heading tags in the source HTML.
+    """
     if len(sections) < 2:
         return sections
 
+    # Pre-compute same-text run lengths so we can distinguish genuine
+    # structural runs (≥3) from HTML-duplicate pairs (exactly 2).
+    n = len(sections)
+    run_length = [1] * n
+    i = 0
+    while i < n:
+        j = i + 1
+        while (
+            j < n
+            and sections[j].level == sections[i].level
+            and sections[j].heading_rank == sections[i].heading_rank
+            and _same_heading_text(sections[j].heading_text, sections[i].heading_text)
+        ):
+            j += 1
+        length = j - i
+        for k in range(i, j):
+            run_length[k] = length
+        i = j
+
     merged = [sections[0]]
-    for section in sections[1:]:
+    for idx, section in enumerate(sections[1:], start=1):
         previous = merged[-1]
         if (
             previous.level == section.level
             and previous.heading_rank == section.heading_rank
             and _same_heading_text(previous.heading_text, section.heading_text)
+            and run_length[idx] <= 2
         ):
             continue
         merged.append(section)
@@ -395,6 +432,10 @@ def _merge_chapter_subtitle_sections(
     Handles the pattern where ``<h2>CHAPTER ONE</h2>`` is followed by
     ``<h3>INTRODUCTORY, CONCERNING THE PEDIGREE…</h3>`` — the subtitle should
     be part of the chapter title, not a separate sub-section.
+
+    Also handles title-like headings (no keyword) followed by a deeper-rank
+    title-like subtitle — e.g. ``<h2>KING PEST</h2>`` followed by
+    ``<h3>A Tale Containing an Allegory.</h3>``.
 
     Merging is skipped when the subtitle has a structural keyword, or when the
     subtitle's anchor appears in *toc_anchor_ids* (it was a deliberate TOC
@@ -413,15 +454,38 @@ def _merge_chapter_subtitle_sections(
         if i + 1 < len(sections):
             nxt = sections[i + 1]
             keyword = _heading_keyword(sec.heading_text)
-            if (
-                keyword
-                and keyword not in _BROAD_KEYWORDS
-                and not _heading_keyword(nxt.heading_text)
+            shared_merge_conditions = (
+                not _heading_keyword(nxt.heading_text)
                 and nxt.heading_rank is not None
                 and sec.heading_rank is not None
                 and nxt.heading_rank == sec.heading_rank + 1
-                and nxt.level > sec.level
                 and nxt.anchor_id not in toc_anchor_ids
+            )
+            # Merge keyword headings (CHAPTER, SCENE, etc.) — not BROAD.
+            # Also merge title-like headings with their rank+1 subtitle.
+            # For keyword headings, require nxt.level > sec.level to avoid
+            # merging peers.  For title-like headings, level may have been
+            # equalised by earlier passes, so rank alone is sufficient.
+            # For title-like pairs, only merge when the subtitle has no
+            # same-rank peers — if the next-next section is at the same rank,
+            # we have sibling stories, not a title + subtitle.  Bare numbers
+            # (Roman numerals, digits) on either side are never title + subtitle.
+            sec_stripped = sec.heading_text.strip()
+            nxt_stripped = nxt.heading_text.strip()
+            nxt_is_lone_subtitle = (
+                not keyword
+                and _is_title_like_heading(sec_stripped)
+                and not _PLAIN_NUMBER_HEADING_RE.fullmatch(sec_stripped)
+                and not _PLAIN_NUMBER_HEADING_RE.fullmatch(nxt_stripped)
+                and _next_heading_is_subtitle(nxt_stripped)
+                and not _DRAMATIC_CONTEXT_HEADING_RE.match(nxt_stripped)
+                and not _TERMINAL_MARKER_RE.fullmatch(nxt_stripped)
+                and i + 2 < len(sections)
+                and sections[i + 2].heading_rank != nxt.heading_rank
+            )
+            if shared_merge_conditions and (
+                (keyword and keyword not in _BROAD_KEYWORDS and nxt.level > sec.level)
+                or nxt_is_lone_subtitle
             ):
                 combined = f"{sec.heading_text} {nxt.heading_text}"
                 merged.append(
@@ -1455,8 +1519,21 @@ def _fallback_start_index(heading_rows: list[_HeadingRow]) -> int | None:
 
 def _filter_fallback_heading_rows(heading_rows: list[_HeadingRow]) -> list[_HeadingRow]:
     """Drop heading-scan rows that are clearly non-navigational subheads."""
+    # Pre-pass: detect standalone "by" headings and the author-name heading
+    # that immediately follows them (e.g. h3 "BY" + h2 "EDGAR ALLAN POE").
+    byline_indices: set[int] = set()
+    for idx, row in enumerate(heading_rows):
+        if _STANDALONE_BYLINE_RE.fullmatch(row.heading_text.strip()):
+            byline_indices.add(idx)
+            if idx + 1 < len(heading_rows) and _is_title_like_heading(
+                heading_rows[idx + 1].heading_text
+            ):
+                byline_indices.add(idx + 1)
+
     filtered: list[_HeadingRow] = []
     for idx, row in enumerate(heading_rows):
+        if idx in byline_indices:
+            continue
         previous_row = heading_rows[idx - 1] if idx > 0 else None
         next_row = heading_rows[idx + 1] if idx + 1 < len(heading_rows) else None
         if _is_dialogue_speaker_heading(row.heading_text):

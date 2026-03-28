@@ -1295,3 +1295,73 @@ def test_henry_esmond_collected_preserves_all_three_works():
     assert len(george_sections) >= 4
 
 
+# ---------------------------------------------------------------------------
+# Hawthorne / Poe battle-test issue families
+# ---------------------------------------------------------------------------
+
+
+def test_byline_headings_excluded_from_heading_scan():
+    """Standalone "BY" headings and the author name that follows them must not
+    appear as structural headings (Family 1: title-block author-name leakage).
+
+    PG 932 (Fall of the House of Usher) and PG 1063 (Cask of Amontillado) both
+    have h3 "BY" + h2 author-name heading blocks that the fallback heading scan
+    should suppress.
+    """
+    for pg_id in (932, 1063):
+        headings = _headings(pg_id)
+        heading_texts_upper = [h.content.strip().upper() for h in headings]
+        assert "BY" not in heading_texts_upper, f"PG {pg_id}: standalone BY leaked"
+        assert "BY." not in heading_texts_upper, f"PG {pg_id}: standalone BY. leaked"
+        # No author-only headings (all-caps name without keyword).
+        assert "EDGAR ALLAN POE" not in heading_texts_upper, (
+            f"PG {pg_id}: author name leaked as heading"
+        )
+
+
+def test_bare_heading_pairs_not_merged_across_toc_entries():
+    """Bare chapter numbers must not merge with the next story title when they
+    are separate TOC entries at the same level (Family 2: h2/h3 split-title
+    cross-merge).
+
+    PG 2149 has "CHAPTER 25" followed by "LIGEIA" — separate works, not a
+    chapter + subtitle pair.
+    """
+    headings = _headings(2149)
+    heading_texts = [h.content for h in headings]
+    assert "CHAPTER 25" in heading_texts
+    assert "LIGEIA" in heading_texts
+    # They must NOT be merged into a single heading.
+    merged = [h for h in heading_texts if "CHAPTER 25" in h and "LIGEIA" in h]
+    assert merged == []
+
+
+def test_volume_heading_not_merged_with_child_sections():
+    """VOLUME headings must not merge with peer-rank child sections
+    (Family 3: volume title merging).
+
+    PG 7877 has "VOLUME II" followed by multiple same-rank sections
+    (LONDON…, REFORM-CLUB…). The volume heading must remain standalone.
+    """
+    headings = _headings(7877)
+    vol2 = [h for h in headings if h.content.startswith("VOLUME II")]
+    assert len(vol2) == 1
+    assert vol2[0].content == "VOLUME II"
+    # Child sections must exist as separate headings.
+    london = [h for h in headings if "LONDON" in h.content]
+    assert len(london) >= 1
+
+
+def test_repeated_series_headings_preserved_as_separate_sections():
+    """Three or more consecutive same-text headings that each introduce
+    different content must all be kept (Family 4: identical heading text
+    merging).
+
+    PG 508 (Twice-Told Tales) has four "LEGENDS OF THE PROVINCE HOUSE"
+    headings, each introducing a different story in the series.
+    """
+    headings = _headings(508)
+    legends = [h for h in headings if "LEGENDS OF THE PROVINCE HOUSE" in h.content]
+    assert len(legends) == 4
+
+

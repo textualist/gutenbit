@@ -85,10 +85,15 @@ _NON_STRUCTURAL_HEADING_RE = re.compile(
     r"editor's note|editors note|finis)\b",
     re.IGNORECASE,
 )
+_TERMINAL_MARKER_RE = re.compile(
+    r"^(?:the\s+end|finis)\.?$",
+    re.IGNORECASE,
+)
 _FRONT_MATTER_ATTRIBUTION_RE = re.compile(
     r"^(?:by|translated\s+by|edited\s+by|illustrated\s+by)\s",
     re.IGNORECASE,
 )
+_STANDALONE_BYLINE_RE = re.compile(r"^by\.?$", re.IGNORECASE)
 _PUBLICATION_METADATA_RE = re.compile(
     r"^(?:printed|published|reprinted|first\s+published|originally\s+published)\b",
     re.IGNORECASE,
@@ -823,6 +828,15 @@ def _normalized_heading_continuation(
             doc_index=doc_index,
             predicate=_is_short_uppercase_heading_candidate,
         )
+    ):
+        return None
+    # Bare broad headings (VOLUME II, PART I, BOOK III) should not merge
+    # with a subtitle that has same-rank peers following it — those are
+    # content sections, not subtitles (e.g. VOLUME II + LONDON... + REFORM...).
+    if (
+        _heading_keyword(current.heading_text) in _BROAD_KEYWORDS
+        and following_row is not None
+        and following_row.rank == next_row.rank
     ):
         return None
     subtitle = _normalize_heading_subtitle(next_row.heading_text)
