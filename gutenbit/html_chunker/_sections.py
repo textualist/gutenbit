@@ -411,6 +411,9 @@ def _merge_adjacent_duplicate_sections(sections: list[_Section]) -> list[_Sectio
     merged = [sections[0]]
     for idx, section in enumerate(sections[1:], start=1):
         previous = merged[-1]
+        # run_length[idx] describes the run that *section* belongs to in the
+        # original list — that's the right index because we're deciding
+        # whether to keep or drop the current item.
         if (
             previous.level == section.level
             and previous.heading_rank == section.heading_rank

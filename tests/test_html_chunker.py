@@ -3254,7 +3254,7 @@ def test_bare_heading_not_merged_with_same_level_sibling():
     <h2><a id="ch25"></a>CHAPTER 25</h2>
     <p>The darkness had increased.</p>
 
-    <h2><a id="ligeia"></a>LIGEIA</a></h2>
+    <h2><a id="ligeia"></a>LIGEIA</h2>
     <p>I cannot, for my soul, remember how, when, or even precisely where.</p>
 
     <h2><a id="morella"></a>MORELLA</h2>
