@@ -1365,3 +1365,33 @@ def test_repeated_series_headings_preserved_as_separate_sections():
     assert len(legends) == 4
 
 
+def test_anchorless_act_headings_refined_into_play_structure():
+    """ACT headings without anchor IDs must be recovered via TOC refinement
+    and nest scenes correctly under each act.
+
+    PG 100 (Complete Works of Shakespeare): Henry IV Part 1 and Richard II
+    have anchorless h2 ACT headings while every other play has anchored ones.
+    The TOC links scenes directly, skipping acts.
+    """
+    headings = _headings(100)
+
+    # Henry IV Part 1: all 5 acts present and nesting scenes
+    h4p1 = [h for h in headings if h.div1 == "THE FIRST PART OF KING HENRY THE FOURTH"]
+    h4p1_acts = [h for h in h4p1 if h.content.startswith("ACT")]
+    assert sorted(h.content for h in h4p1_acts) == [
+        "ACT I", "ACT II", "ACT III", "ACT IV", "ACT V",
+    ]
+    # Scenes nest under their respective acts, not all under ACT I
+    act2_scenes = [h for h in h4p1 if h.div2 == "ACT II" and h.content.startswith("SCENE")]
+    assert len(act2_scenes) == 4
+
+    # Richard II: same pattern
+    r2 = [h for h in headings if h.div1 == "THE LIFE AND DEATH OF KING RICHARD THE SECOND"]
+    r2_acts = [h for h in r2 if h.content.startswith("ACT")]
+    assert sorted(h.content for h in r2_acts) == [
+        "ACT I", "ACT II", "ACT III", "ACT IV", "ACT V",
+    ]
+    act5_scenes = [h for h in r2 if h.div2 == "ACT V" and h.content.startswith("SCENE")]
+    assert len(act5_scenes) == 6
+
+

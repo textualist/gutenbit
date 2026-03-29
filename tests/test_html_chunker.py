@@ -3374,3 +3374,39 @@ def test_terminal_marker_not_merged_as_subtitle():
     assert merged == []
 
 
+def test_anchorless_act_headings_refined_between_scene_toc_entries():
+    """When the TOC links scenes directly (skipping acts) and the ACT h2
+    headings have no anchor IDs, refinement should still insert them as
+    structural parents between sibling scene entries.
+    """
+    html = _make_html("""
+    <p><a href="#play" class="pginternal">PLAY TITLE</a></p>
+    <p><a href="#sc1_1" class="pginternal">Scene I. Hall.</a></p>
+    <p><a href="#sc1_2" class="pginternal">Scene II. Garden.</a></p>
+    <p><a href="#sc2_1" class="pginternal">Scene I. Tower.</a></p>
+    <p><a href="#sc2_2" class="pginternal">Scene II. Street.</a></p>
+
+    <h2><a id="play"></a>PLAY TITLE</h2>
+    <h2>ACT I</h2>
+    <h3><a id="sc1_1"></a>SCENE I. Hall.</h3>
+    <p>Act one scene one.</p>
+    <h3><a id="sc1_2"></a>SCENE II. Garden.</h3>
+    <p>Act one scene two.</p>
+    <h2>ACT II</h2>
+    <h3><a id="sc2_1"></a>SCENE I. Tower.</h3>
+    <p>Act two scene one.</p>
+    <h3><a id="sc2_2"></a>SCENE II. Street.</h3>
+    <p>Act two scene two.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "ACT I" in heading_texts
+    assert "ACT II" in heading_texts
+    # Scenes nest under their respective acts
+    act2_scenes = [h for h in headings if h.div1 == "ACT II"]
+    scene_texts = [h.content for h in act2_scenes if h.content.startswith("SCENE")]
+    assert scene_texts == ["SCENE I. Tower.", "SCENE II. Street."]
+
+

@@ -921,6 +921,15 @@ def _refine_toc_sections(
 
     first_toc = toc_sections[0]
     tag_positions = doc_index.tag_positions
+
+    # Positions already covered by TOC sections — skip heading-scan
+    # candidates at these positions to avoid duplicates when a TOC link
+    # resolves to the same body element under a different heading text.
+    toc_positions: set[int] = set()
+    for ts in toc_sections:
+        tp = _tag_position(ts.body_anchor, tag_positions)
+        if tp is not None:
+            toc_positions.add(tp)
     first_pos = _tag_position(first_toc.body_anchor, tag_positions)
     if first_pos is not None:
         while heading_idx < len(heading_sections):
@@ -967,6 +976,9 @@ def _refine_toc_sections(
             if next_pos is not None and candidate_pos >= next_pos:
                 break
             if _same_heading_text(candidate.heading_text, toc_section.heading_text):
+                scan_idx += 1
+                continue
+            if candidate_pos in toc_positions:
                 scan_idx += 1
                 continue
             refined_candidate = _refined_candidate_section(
@@ -1071,6 +1083,15 @@ def _refined_candidate_section(
     if not _is_refinement_heading(candidate.heading_text):
         return None
     if _is_title_like_heading(toc_section.heading_text):
+        return candidate
+    # Allow dramatic parent headings (e.g. ACT) to refine between child
+    # headings (e.g. SCENE) even when the candidate level is structurally
+    # above the TOC section — the candidate is a parent, not a child.
+    if (
+        candidate.level < toc_section.level
+        and _heading_keyword(candidate.heading_text)
+        and _heading_keyword(toc_section.heading_text)
+    ):
         return candidate
     return candidate if candidate.level > toc_section.level else None
 
