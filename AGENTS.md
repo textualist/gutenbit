@@ -36,8 +36,8 @@ HTML-first Project Gutenberg ETL and search. The core loop is: resolve a catalog
 
 ## Battle tests
 
-- Use `$gutenbit-live-battle-test` from `.codex/skills/gutenbit-live-battle-test/SKILL.md` for live parsing and CLI battle tests.
-- Use `.codex/skills/gutenbit-live-battle-test/references/kei-17-corpus.md` to classify known parser failure families and mirror the existing network-test style.
+- Use `$gutenbit-live-battle-test` from `.claude/skills/gutenbit-live-battle-test/SKILL.md` for live parsing and CLI battle tests.
+- Use `.claude/skills/gutenbit-live-battle-test/references/kei-17-corpus.md` to classify known parser failure families and mirror the existing network-test style.
 - For parser fixes, finish by running `uv run pytest` and `uv run pytest -m network`.
 
 ## Style

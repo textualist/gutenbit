@@ -4,7 +4,7 @@ description: >
   Review Gutenbit CLI commands for consistency, ergonomics, and alignment with the project's
   established design patterns. Use this skill whenever the user asks to "review the CLI API",
   "check cli consistency", "audit the command design", "review cli ergonomics", or when filing
-  or working on a Linear issue prefixed with "cli api:" or "cli ergonomics:". Also trigger for
+  or working on a GitHub Issue prefixed with "cli api:" or "cli ergonomics:". Also trigger for
   requests like "is the cli consistent?", "what cli issues should we fix?", "review the help
   text", or "check our verb choices across commands".
 ---
@@ -103,10 +103,10 @@ For each issue:
 ### Proposed Convention Changes
 <List any places where the existing convention itself seems worth revisiting, with rationale>
 
-### Recommended Linear Issues
+### Recommended GitHub Issues
 <For each finding that warrants a ticket, suggest a title following the "cli api: ..." or
 "cli ergonomics: ..." naming pattern the project uses>
 ```
 
-If this review was triggered in the context of an existing Linear issue, post the report as
-a comment and link any newly created follow-up issues.
+If this review was triggered in the context of an existing GitHub Issue, post the report as
+a comment using `mcp__github__add_issue_comment` and link any newly created follow-up issues.

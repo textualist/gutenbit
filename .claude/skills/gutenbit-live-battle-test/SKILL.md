@@ -5,7 +5,7 @@ description: >
   Use when asked to battle test a new Gutenberg title, inspect gutenbit add/toc/view/search
   output against raw Gutenberg HTML, diagnose parser failures, design a generalizable parser
   fix, or add and update targeted regression tests without causing regressions on the existing
-  corpus. Also trigger for Linear issues titled "Gutenbit cli and parsing battle test: [title]",
+  corpus. Also trigger for GitHub Issues titled "Gutenbit cli and parsing battle test: [title]",
   requests to "run the battle test for [work]", "check how gutenbit parses [book]", or
   "fix a parsing issue" for any Project Gutenberg work.
 ---
@@ -33,7 +33,7 @@ Before editing code:
 
 - Read `AGENTS.md` for the project's live-verification expectations and canonical corpus.
 - Read `tests/test_battle.py` to see how the current network regression suite expresses parser guarantees.
-- Read [references/kei-17-corpus.md](references/kei-17-corpus.md) to classify the issue against the 20 prior battle-test failures.
+- Read [references/kei-17-corpus.md](references/kei-17-corpus.md) to classify the issue against the prior battle-test failure families.
 
 ### 2. Run the live CLI smoke test first
 
@@ -142,6 +142,12 @@ Most new regressions fit one of these families:
 - unmerged subtitle or description (subtitle/description line appears as a separate TOC entry instead of merging into its chapter heading)
 - front-matter nesting contamination (a front-matter heading becomes a container that nests all subsequent chapters under it)
 - non-keyword heading nesting failure (chapters don't nest under structurally valid parent headings because the parent lacks a keyword like PART/BOOK)
+- title-block author-name leakage (standalone "BY" heading + author name in title blocks promoted as structural headings by the fallback heading scan)
+- bare heading cross-merge (bare chapter number like "CHAPTER 25" merges with unrelated next entry at the same level, e.g. a different story title)
+- volume/part title child-merge (a VOLUME/PART/BOOK heading absorbs the first child section as a subtitle when children have same-rank peers)
+- identical heading text over-deduplication (multiple same-text headings collapsed when they are deliberate structural repetition, e.g. anthology series titles)
+- terminal marker subtitle merge ("THE END" / "FINIS" merged as subtitle of preceding heading instead of kept as a standalone section)
+- split-title empty parent (h2 main title + h3 subtitle creates an empty parent section with all content under the subtitle child)
 
 If the case does not fit an existing family, define the new family in structural terms, not
 title-specific terms.
@@ -190,6 +196,14 @@ Examples of good test shapes:
 
 Do not add broad snapshots that are hard to maintain and do not isolate the structural invariant.
 
+**Network vs. synthetic tests.** Network tests (`tests/test_battle.py`, `@pytest.mark.network`)
+download live Gutenberg HTML and are expensive. Reserve them for high-value structural
+regressions that cannot be captured with synthetic HTML fixtures. For most issue families,
+write a synthetic non-network test in `tests/test_html_chunker.py` using `_make_html()` to
+construct a minimal HTML fragment that reproduces the parser behavior. Use network tests only
+when the real Gutenberg HTML has structural complexity that a synthetic fixture cannot
+faithfully represent.
+
 ### 8. Verify in widening rings
 
 After the code change:
@@ -225,6 +239,12 @@ Treat `uv run pytest -m network` as mandatory before closing the work unless net
 is unavailable. The goal is not only to fix the new book, but to prove the parser still holds
 across the existing live corpus.
 
+**Batch testing.** When battle testing multiple works by the same author (or a themed corpus),
+test all works first and record results in a structured table before beginning fixes. Group
+failures into issue families, then fix one family at a time. After each family fix, re-run
+the full test suite to catch regressions before moving to the next family. This prevents
+cascading regressions and avoids redundant work on issues that share a root cause.
+
 ### 9. Report the result in parser terms
 
 When documenting the outcome, summarize:
@@ -238,8 +258,19 @@ When documenting the outcome, summarize:
 If no bug is present, record that explicitly and explain why the observed output matches the
 source HTML.
 
+When reporting results for a batch of works, use structured tables:
+
+- **Clean passes table**: Work | PG | Sections | Notes
+- **Source HTML limitations** (not parser bugs): Work | PG | Issue
+- **Issues found** (grouped by failure family): Work | PG | Issue
+- **Regressions investigated**: Regression | Root cause | Resolution
+
+Post results as a comment on the parent GitHub Issue using `mcp__github__add_issue_comment`.
+If a PR is created to fix the issue families, include `Closes #NNN` in the PR description to
+auto-close the parent issue on merge.
+
 ## References
 
-- Read [references/kei-17-corpus.md](references/kei-17-corpus.md) for the 20 battle-test lessons and regression-writing heuristics.
+- Read [references/kei-17-corpus.md](references/kei-17-corpus.md) for the battle-test failure families and regression-writing heuristics.
 - Read `tests/test_battle.py` for the live corpus currently enforced in code.
 - Read `AGENTS.md` for the project's canonical working rules.
