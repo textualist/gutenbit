@@ -3196,3 +3196,219 @@ def test_descriptive_book_names_with_chapter_nesting():
         h for h in headings if "BOY AND GIRL" in h.div1 and h.content.startswith("CHAPTER")
     ]
     assert len(book1_chapters) == 2
+
+
+# ------------------------------------------------------------------
+# Hawthorne / Poe issue families (non-network structural tests)
+# ------------------------------------------------------------------
+
+
+def test_standalone_byline_excluded_from_heading_scan():
+    """A standalone "BY" heading and the author name that follows it should
+    not appear as structural headings in the fallback heading scan.
+
+    Pattern: <h3>BY</h3> <h2>AUTHOR NAME</h2> between a title and content.
+    """
+    html = _make_html("""
+    <h2><a id="title"></a>THE FALL OF THE HOUSE OF USHER</h2>
+    <h3>BY</h3>
+    <h2>EDGAR ALLAN POE</h2>
+    <p>Son coeur est un luth suspendu.</p>
+    <p>During the whole of a dull, dark, and soundless day.</p>
+    <p>I had been passing alone, on horseback.</p>
+    <p>Although, as boys, we had been even intimate associates.</p>
+    <p>Its principal feature seemed to be that of an excessive antiquity.</p>
+    <p>I had so worked upon my imagination.</p>
+    <p>I hesitated not to acknowledge how familiar was all this.</p>
+    <p>I learned that the sole surviving issue of his race.</p>
+    <p>Nevertheless, in this mansion of gloom I now proposed to myself.</p>
+    <p>A valet, of stealthy step, thence conducted me.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "THE FALL OF THE HOUSE OF USHER" in heading_texts
+    assert "BY" not in heading_texts
+    assert "EDGAR ALLAN POE" not in heading_texts
+    assert len(headings) == 1
+
+
+def test_bare_heading_not_merged_with_same_level_sibling():
+    """A bare chapter number must not merge with the next section when both
+    are at the same TOC level — they are siblings, not heading + subtitle.
+
+    Pattern: TOC has "CHAPTER 25" + "LIGEIA" as separate level-2 entries.
+    """
+    html = _make_html("""
+    <div class="toc">
+      <p><a href="#ch24" class="pginternal">CHAPTER 24</a></p>
+      <p><a href="#ch25" class="pginternal">CHAPTER 25</a></p>
+      <p><a href="#ligeia" class="pginternal">LIGEIA</a></p>
+      <p><a href="#morella" class="pginternal">MORELLA</a></p>
+    </div>
+
+    <h2><a id="ch24"></a>CHAPTER 24</h2>
+    <p>The coast was nearly south.</p>
+
+    <h2><a id="ch25"></a>CHAPTER 25</h2>
+    <p>The darkness had increased.</p>
+
+    <h2><a id="ligeia"></a>LIGEIA</h2>
+    <p>I cannot, for my soul, remember how, when, or even precisely where.</p>
+
+    <h2><a id="morella"></a>MORELLA</h2>
+    <p>With a feeling of deep yet most singular affection I regarded.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "CHAPTER 25" in heading_texts
+    assert "LIGEIA" in heading_texts
+    # Must NOT be merged into "CHAPTER 25 LIGEIA".
+    merged = [h for h in heading_texts if "CHAPTER 25" in h and "LIGEIA" in h]
+    assert merged == []
+
+
+def test_broad_keyword_not_merged_with_peer_rank_children():
+    """A VOLUME/PART/BOOK heading must not merge with the next heading when
+    that heading has same-rank peers — those are content sections, not
+    subtitles.
+
+    Pattern: heading scan finds VOLUME II + multiple same-rank h3 sections.
+    """
+    html = _make_html("""
+    <h2><a id="v2"></a>VOLUME II</h2>
+    <h3><a id="s1"></a>LONDON.—MILTON-CLUB DINNER.</h3>
+    <p>Went to the Milton-Club dinner yesterday.</p>
+    <h3><a id="s2"></a>REFORM-CLUB DINNER.</h3>
+    <p>Went to the Reform-Club dinner today.</p>
+    <h3><a id="s3"></a>THE HOUSE OF COMMONS.</h3>
+    <p>Visited the House of Commons.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "VOLUME II" in heading_texts
+    assert "LONDON.—MILTON-CLUB DINNER." in heading_texts
+    # VOLUME II must NOT have absorbed "LONDON..." as a subtitle.
+    merged = [h for h in heading_texts if "VOLUME II" in h and "LONDON" in h]
+    assert merged == []
+
+
+def test_three_or_more_same_text_headings_preserved():
+    """Three or more consecutive headings with the same text are structural
+    (anthology series titles) and must all be kept.
+
+    Pattern: four h3 "LEGENDS OF THE PROVINCE HOUSE" headings.
+    """
+    html = _make_html("""
+    <h3><a id="l1"></a>LEGENDS OF THE PROVINCE HOUSE</h3>
+    <p>The waiter showed me into a small back parlour.</p>
+    <h3><a id="l2"></a>LEGENDS OF THE PROVINCE HOUSE</h3>
+    <p>Not long after the siege and capture of Louisbourg.</p>
+    <h3><a id="l3"></a>LEGENDS OF THE PROVINCE HOUSE</h3>
+    <p>On a pleasant afternoon of June.</p>
+    <h3><a id="l4"></a>LEGENDS OF THE PROVINCE HOUSE</h3>
+    <p>The old legendary guest of the Province House.</p>
+    <h3><a id="end"></a>THE AMBITIOUS GUEST</h3>
+    <p>One September night a family had gathered round their hearth.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    legends = [h for h in headings if "LEGENDS OF THE PROVINCE HOUSE" in h.content]
+    assert len(legends) == 4
+
+
+def test_two_same_text_headings_deduplicated():
+    """Exactly two consecutive headings with the same text are HTML
+    duplicates and should be collapsed to one.
+
+    Pattern: two h3 "ETYMOLOGY." headings (Moby Dick style).
+    """
+    html = _make_html("""
+    <h3><a id="etym1"></a>ETYMOLOGY.</h3>
+    <h3><a id="etym2"></a>ETYMOLOGY</h3>
+    <p>The pale usher—threadbare in coat, heart, body, and brain.</p>
+    <h3><a id="ch1"></a>CHAPTER I.</h3>
+    <p>Call me Ishmael.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    etym = [h for h in headings if "ETYMOLOGY" in h.content]
+    assert len(etym) == 1
+
+
+def test_terminal_marker_not_merged_as_subtitle():
+    """'THE END' and 'FINIS' must not be merged as a subtitle of the
+    preceding heading.
+
+    Pattern: h3 "FINALE." followed by h4 "THE END".
+    """
+    html = _make_html("""
+    <div class="toc">
+      <p><a href="#ch1" class="pginternal">CHAPTER I.</a></p>
+      <p><a href="#finale" class="pginternal">FINALE.</a></p>
+      <p><a href="#end" class="pginternal">THE END</a></p>
+    </div>
+
+    <h3><a id="ch1"></a>CHAPTER I.</h3>
+    <p>Miss Brooke had that kind of beauty.</p>
+
+    <h3><a id="finale"></a>FINALE.</h3>
+    <p>Every limit is a beginning as well as an ending.</p>
+
+    <h4><a id="end"></a>THE END</h4>
+    <p></p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "FINALE." in heading_texts
+    assert "THE END" in heading_texts
+    # Must NOT be merged into "FINALE. THE END".
+    merged = [h for h in heading_texts if "FINALE" in h and "END" in h]
+    assert merged == []
+
+
+def test_anchorless_act_headings_refined_between_scene_toc_entries():
+    """When the TOC links scenes directly (skipping acts) and the ACT h2
+    headings have no anchor IDs, refinement should still insert them as
+    structural parents between sibling scene entries.
+    """
+    html = _make_html("""
+    <p><a href="#play" class="pginternal">PLAY TITLE</a></p>
+    <p><a href="#sc1_1" class="pginternal">Scene I. Hall.</a></p>
+    <p><a href="#sc1_2" class="pginternal">Scene II. Garden.</a></p>
+    <p><a href="#sc2_1" class="pginternal">Scene I. Tower.</a></p>
+    <p><a href="#sc2_2" class="pginternal">Scene II. Street.</a></p>
+
+    <h2><a id="play"></a>PLAY TITLE</h2>
+    <h2>ACT I</h2>
+    <h3><a id="sc1_1"></a>SCENE I. Hall.</h3>
+    <p>Act one scene one.</p>
+    <h3><a id="sc1_2"></a>SCENE II. Garden.</h3>
+    <p>Act one scene two.</p>
+    <h2>ACT II</h2>
+    <h3><a id="sc2_1"></a>SCENE I. Tower.</h3>
+    <p>Act two scene one.</p>
+    <h3><a id="sc2_2"></a>SCENE II. Street.</h3>
+    <p>Act two scene two.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "ACT I" in heading_texts
+    assert "ACT II" in heading_texts
+    # Scenes nest under their respective acts
+    act1_scenes = [h for h in headings if h.content.startswith("SCENE") and h.div1 == "ACT I"]
+    assert len(act1_scenes) == 2, f"ACT I should have 2 scenes, got {len(act1_scenes)}"
+    act2_scenes = [h for h in headings if h.div1 == "ACT II"]
+    scene_texts = [h.content for h in act2_scenes if h.content.startswith("SCENE")]
+    assert scene_texts == ["SCENE I. Tower.", "SCENE II. Street."]
+
+

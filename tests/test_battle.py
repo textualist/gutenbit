@@ -1295,3 +1295,234 @@ def test_henry_esmond_collected_preserves_all_three_works():
     assert len(george_sections) >= 4
 
 
+# ---------------------------------------------------------------------------
+# Hawthorne / Poe battle-test issue families
+# ---------------------------------------------------------------------------
+
+
+def test_byline_headings_excluded_from_heading_scan():
+    """Standalone "BY" headings and the author name that follows them must not
+    appear as structural headings (Family 1: title-block author-name leakage).
+
+    PG 932 (Fall of the House of Usher) and PG 1063 (Cask of Amontillado) both
+    have h3 "BY" + h2 author-name heading blocks that the fallback heading scan
+    should suppress.
+    """
+    for pg_id in (932, 1063):
+        headings = _headings(pg_id)
+        heading_texts_upper = [h.content.strip().upper() for h in headings]
+        assert "BY" not in heading_texts_upper, f"PG {pg_id}: standalone BY leaked"
+        assert "BY." not in heading_texts_upper, f"PG {pg_id}: standalone BY. leaked"
+        # No author-only headings (all-caps name without keyword).
+        assert "EDGAR ALLAN POE" not in heading_texts_upper, (
+            f"PG {pg_id}: author name leaked as heading"
+        )
+
+
+def test_bare_heading_pairs_not_merged_across_toc_entries():
+    """Bare chapter numbers must not merge with the next story title when they
+    are separate TOC entries at the same level (Family 2: h2/h3 split-title
+    cross-merge).
+
+    PG 2149 has "CHAPTER 25" followed by "LIGEIA" — separate works, not a
+    chapter + subtitle pair.
+    """
+    headings = _headings(2149)
+    heading_texts = [h.content for h in headings]
+    assert "CHAPTER 25" in heading_texts
+    assert "LIGEIA" in heading_texts
+    # They must NOT be merged into a single heading.
+    merged = [h for h in heading_texts if "CHAPTER 25" in h and "LIGEIA" in h]
+    assert merged == []
+
+
+def test_volume_heading_not_merged_with_child_sections():
+    """VOLUME headings must not merge with peer-rank child sections
+    (Family 3: volume title merging).
+
+    PG 7877 has "VOLUME II" followed by multiple same-rank sections
+    (LONDON…, REFORM-CLUB…). The volume heading must remain standalone.
+    """
+    headings = _headings(7877)
+    vol2 = [h for h in headings if h.content.startswith("VOLUME II")]
+    assert len(vol2) == 1
+    assert vol2[0].content == "VOLUME II"
+    # Child sections must exist as separate headings.
+    london = [h for h in headings if "LONDON" in h.content]
+    assert len(london) >= 1
+
+
+def test_repeated_series_headings_preserved_as_separate_sections():
+    """Three or more consecutive same-text headings that each introduce
+    different content must all be kept (Family 4: identical heading text
+    merging).
+
+    PG 508 (Twice-Told Tales) has four "LEGENDS OF THE PROVINCE HOUSE"
+    headings, each introducing a different story in the series.
+    """
+    headings = _headings(508)
+    legends = [h for h in headings if "LEGENDS OF THE PROVINCE HOUSE" in h.content]
+    assert len(legends) == 4
+
+
+def test_anchorless_act_headings_refined_into_play_structure():
+    """ACT headings without anchor IDs must be recovered via TOC refinement
+    and nest scenes correctly under each act.
+
+    PG 100 (Complete Works of Shakespeare): Henry IV Part 1 and Richard II
+    have anchorless h2 ACT headings while every other play has anchored ones.
+    The TOC links scenes directly, skipping acts.
+    """
+    headings = _headings(100)
+
+    # Henry IV Part 1: all 5 acts present and nesting scenes
+    h4p1 = [h for h in headings if h.div1 == "THE FIRST PART OF KING HENRY THE FOURTH"]
+    h4p1_acts = [h for h in h4p1 if h.content.startswith("ACT")]
+    assert sorted(h.content for h in h4p1_acts) == [
+        "ACT I", "ACT II", "ACT III", "ACT IV", "ACT V",
+    ]
+    # Scenes nest under their respective acts, not all under ACT I
+    act2_scenes = [h for h in h4p1 if h.div2 == "ACT II" and h.content.startswith("SCENE")]
+    assert len(act2_scenes) == 4
+
+    # Richard II: same pattern
+    r2 = [h for h in headings if h.div1 == "THE LIFE AND DEATH OF KING RICHARD THE SECOND"]
+    r2_acts = [h for h in r2 if h.content.startswith("ACT")]
+    assert sorted(h.content for h in r2_acts) == [
+        "ACT I", "ACT II", "ACT III", "ACT IV", "ACT V",
+    ]
+    act5_scenes = [h for h in r2 if h.div2 == "ACT V" and h.content.startswith("SCENE")]
+    assert len(act5_scenes) == 6
+
+
+def test_shakespeare_complete_works_full_structure():
+    """PG 100 (The Complete Works of William Shakespeare) must parse as
+    44 top-level works: 37 plays (each with 5 acts and correctly nested
+    scenes), THE SONNETS, A LOVER'S COMPLAINT, THE PASSIONATE PILGRIM,
+    THE PHOENIX AND THE TURTLE, THE RAPE OF LUCRECE, and VENUS AND ADONIS.
+    Also verifies THE TWO NOBLE KINSMEN (sometimes disputed).
+
+    This is a cornerstone corpus work — regressions here indicate broad
+    structural damage to the parser.
+    """
+    headings = _headings(100)
+
+    # ---- 44 top-level works ----
+    works = []
+    seen = set()
+    for h in headings:
+        if h.div1 and h.div1 not in seen:
+            seen.add(h.div1)
+            works.append(h.div1)
+    assert len(works) == 44
+
+    # ---- Expected plays (37) — each must have exactly 5 acts ----
+    expected_plays = [
+        "ALL\u2019S WELL THAT ENDS WELL",
+        "THE TRAGEDY OF ANTONY AND CLEOPATRA",
+        "AS YOU LIKE IT",
+        "THE COMEDY OF ERRORS",
+        "THE TRAGEDY OF CORIOLANUS",
+        "CYMBELINE",
+        "THE TRAGEDY OF HAMLET, PRINCE OF DENMARK",
+        "THE FIRST PART OF KING HENRY THE FOURTH",
+        "THE SECOND PART OF KING HENRY THE FOURTH",
+        "THE LIFE OF KING HENRY THE FIFTH",
+        "THE FIRST PART OF HENRY THE SIXTH",
+        "THE SECOND PART OF KING HENRY THE SIXTH",
+        "THE THIRD PART OF KING HENRY THE SIXTH",
+        "KING HENRY THE EIGHTH",
+        "THE LIFE AND DEATH OF KING JOHN",
+        "THE TRAGEDY OF JULIUS CAESAR",
+        "THE TRAGEDY OF KING LEAR",
+        "LOVE\u2019S LABOUR\u2019S LOST",
+        "THE TRAGEDY OF MACBETH",
+        "MEASURE FOR MEASURE",
+        "THE MERCHANT OF VENICE",
+        "THE MERRY WIVES OF WINDSOR",
+        "A MIDSUMMER NIGHT\u2019S DREAM",
+        "THE TRAGEDY OF OTHELLO, THE MOOR OF VENICE",
+        "PERICLES, PRINCE OF TYRE",
+        "THE LIFE AND DEATH OF KING RICHARD THE SECOND",
+        "KING RICHARD THE THIRD",
+        "THE TRAGEDY OF ROMEO AND JULIET",
+        "THE TAMING OF THE SHREW",
+        "THE TEMPEST",
+        "THE LIFE OF TIMON OF ATHENS",
+        "THE TRAGEDY OF TITUS ANDRONICUS",
+        "TROILUS AND CRESSIDA",
+        "TWELFTH NIGHT; OR, WHAT YOU WILL",
+        "THE TWO GENTLEMEN OF VERONA",
+        "THE TWO NOBLE KINSMEN",
+        "THE WINTER\u2019S TALE",
+    ]
+    # Much Ado has a known title contamination (Dramatis Personæ merged
+    # into h2 title due to anchorless intervening h2 Contents heading in
+    # source HTML) — match it with a prefix.
+    much_ado_title = [w for w in works if w.startswith("MUCH ADO ABOUT NOTHING")]
+    assert len(much_ado_title) == 1
+
+    for play in expected_plays:
+        play_headings = [h for h in headings if h.div1 == play]
+        assert play_headings, f"Play missing from top-level works: {play}"
+
+        acts = [h for h in play_headings if h.content.startswith("ACT")]
+        act_names = sorted(h.content.rstrip(".") for h in acts)
+        assert act_names == ["ACT I", "ACT II", "ACT III", "ACT IV", "ACT V"], (
+            f"{play}: expected 5 acts, got {act_names}"
+        )
+
+    # ---- Non-play works (7 including Much Ado) ----
+    expected_non_plays = [
+        "THE SONNETS",
+        "A LOVER\u2019S COMPLAINT",
+        "THE PASSIONATE PILGRIM",
+        "THE PHOENIX AND THE TURTLE",
+        "THE RAPE OF LUCRECE",
+        "VENUS AND ADONIS",
+    ]
+    for title in expected_non_plays:
+        assert title in works, f"Non-play work missing: {title}"
+
+    # ---- Scene nesting: spot-check plays with known parsing history ----
+
+    # Hamlet: 5 acts, ACT III has 4 scenes
+    hamlet = [h for h in headings if h.div1 == "THE TRAGEDY OF HAMLET, PRINCE OF DENMARK"]
+    hamlet_act3_scenes = [
+        h for h in hamlet
+        if h.div2 == "ACT III" and h.content.upper().startswith("SCENE")
+    ]
+    assert len(hamlet_act3_scenes) == 4
+
+    # Macbeth: ACT V has 8 scenes (the most of any act in Shakespeare)
+    macbeth = [h for h in headings if h.div1 == "THE TRAGEDY OF MACBETH"]
+    macbeth_act5_scenes = [
+        h for h in macbeth
+        if h.div2 == "ACT V" and h.content.upper().startswith("SCENE")
+    ]
+    assert len(macbeth_act5_scenes) == 8
+
+    # Romeo and Juliet: ACT II has 6 scenes
+    romeo = [h for h in headings if h.div1 == "THE TRAGEDY OF ROMEO AND JULIET"]
+    romeo_act2_scenes = [
+        h for h in romeo
+        if h.div2 == "ACT II" and h.content.upper().startswith("SCENE")
+    ]
+    assert len(romeo_act2_scenes) == 6
+
+    # Henry V: has PROLOGUE and EPILOGUE at act level alongside ACTs
+    henry5 = [h for h in headings if h.div1 == "THE LIFE OF KING HENRY THE FIFTH"]
+    henry5_act_level = [
+        h for h in henry5
+        if h.content in ("PROLOGUE.", "EPILOGUE.")
+        or h.content.startswith("ACT")
+    ]
+    henry5_labels = [h.content for h in henry5_act_level]
+    assert "PROLOGUE." in henry5_labels
+    assert "EPILOGUE." in henry5_labels
+
+    # ---- Total heading count sanity ----
+    # With 37 plays × ~25 headings + poetry works, expect 1000+ headings
+    assert len(headings) > 1000
+
+

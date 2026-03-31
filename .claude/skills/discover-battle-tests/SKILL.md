@@ -1,9 +1,9 @@
 ---
 name: discover-battle-tests
 description: >
-  Discover new Project Gutenberg works and create templated Linear battle-test sub-issues.
+  Discover new Project Gutenberg works and create a templated GitHub Issue for battle testing.
   Use when the user asks to "discover N new battle tests", "find new battle test candidates",
-  "create battle test issues", "add more battle tests to Linear", or any variation of
+  "create battle test issues", "add more battle tests", or any variation of
   "discover/find/create N battle test issues". The user specifies how many to discover
   (default 10). This skill handles discovery and issue creation only — it does not run the
   battle tests themselves.
@@ -12,25 +12,25 @@ argument-hint: "[count]"
 
 # Discover Battle Tests
 
-Create exactly `$ARGUMENTS` (default: 10) new child issues for live CLI/parsing battle tests
-under a single parent issue in Linear. This skill is discovery and issue-creation only — do
-not run the battle tests.
+Create a single GitHub Issue on `textualist/gutenbit` containing exactly `$ARGUMENTS`
+(default: 10) new works for live CLI/parsing battle tests. This skill is discovery and
+issue-creation only — do not run the battle tests.
 
 ## Goal
 
 Identify `$ARGUMENTS` **new**, previously unseen Project Gutenberg works in English,
-prioritizing canonical and widely known literature, and file them as templated child issues
-in Linear.
+prioritizing canonical and widely known literature, and file them as a checklist in a GitHub
+Issue.
 
 ## Step 1 — Build the exclusion set
 
 Before selecting candidates, gather every PG ID and work already covered. A work is "seen"
 if it appears in **any** of these sources:
 
-1. **Linear**: Search for issues whose title starts with
-   `Gutenbit cli and parsing battle test:`. Collect every PG ID and work title from the
-   results. Use `list_issues` with query `Gutenbit cli and parsing battle test` in the
-   `Gutenbit` project.
+1. **GitHub Issues**: Search for issues on `textualist/gutenbit` with the `test` label whose
+   title contains `battle test`. Use `mcp__github__search_issues` or
+   `mcp__github__list_issues`. Parse the issue body for PG IDs — parent battle-test issues
+   use a checklist format with `- [x] Work Title — PG XXXX` lines.
 
 2. **Test files**: Read `tests/test_battle.py` and any other test files under `tests/` that
    reference PG IDs. Extract every PG ID.
@@ -60,6 +60,8 @@ requested issues). Candidates must be:
   - essays and treatises
   - translations with translator/editor matter
   - unusual or complex tables of contents
+  - anthology or multi-work collections (tests deduplication and series heading handling)
+  - standalone short stories with title-block author attribution (tests byline filtering)
 
 For each candidate, note the work title, expected PG ID, and a brief note on why it has
 parser-coverage value.
@@ -76,120 +78,103 @@ For each serious candidate:
 After deduplication, select the top `$ARGUMENTS` works from the remaining candidates, ranked
 by literary importance and expected parser-coverage value.
 
-## Step 4 — Create the parent issue
+## Step 4 — Create the parent GitHub Issue
 
-Create a single parent issue in Linear:
+Create a single issue on `textualist/gutenbit` using `mcp__github__issue_write`:
 
-- **Team**: `Keinan`
-- **Project**: `Gutenbit`
-- **Labels**: `["Test"]`
-- **Priority**: `2` (High)
-- **Title**: `Discover <N> new English live battle cases and add them as templated subissues`
-- **Description**: Use this exact template, replacing `<N>` with the count:
+- **Labels**: `["test"]`
+- **Title**: `Battle test <N> new English works` (or `Battle test all works of <Author>` when
+  the batch focuses on a single author)
+- **Body**: Use this template, replacing `<N>` with the count and filling in the checklist:
 
 ```markdown
-Create exactly <N> new child issues for live CLI/parsing battle tests. This issue is
-discovery and issue-creation only; do not run the battle tests here.
+Run a full live battle test of the CLI and parsing functionality for each work below.
 
 ## Selection criteria
 
 * English-language Project Gutenberg works only.
 * Prioritize major, well-known works of literature.
-* Each work is confirmed absent from existing Linear battle-test issues,
+* Each work is confirmed absent from existing GitHub battle-test issues,
   `tests/test_battle.py`, and the kei-17-corpus reference.
 * Breadth across authors, periods, and structural styles.
 
-## Child issues created
+## Works (<N> total)
 
-(See sub-issues below.)
+- [ ] Work Title 1 — PG XXXX
+- [ ] Work Title 2 — PG XXXX
+...
+
+## Guide
+
+Use the `gutenbit-live-battle-test` skill for each work. Start with:
+
+```
+uv run gutenbit add <pg_id>
+uv run gutenbit toc <pg_id> --expand all
+uv run gutenbit toc <pg_id> --expand all --json
+uv run gutenbit search "" --book <pg_id>
+uv run gutenbit view <pg_id>
 ```
 
-Record the parent issue identifier (e.g., `KEI-NNN`) for use in Step 5.
+Focus on `toc --expand all` for missing, extra, or mis-nested sections. Compare suspicious
+output against the raw Gutenberg HTML (ground truth). If a parser bug is found, implement
+the smallest generalizable fix — no book-specific rules. Add a focused regression test if
+needed (prefer synthetic non-network tests; reserve network tests for high-value cases).
+Before closing each work, run `uv run pytest` and `uv run pytest -m network`.
 
-## Step 5 — Create child issues
+## References
 
-For each of the selected works, create a child issue under the parent from Step 4.
+- `.claude/skills/gutenbit-live-battle-test/references/kei-17-corpus.md`
+- `tests/test_battle.py`
+- `AGENTS.md`
 
-Every child issue must use this **exact description** — do not modify it per-work:
+## Close-out
 
-```markdown
-Run a full live battle test of the CLI and parsing functionality for the work named in this issue title.
+For each work, check the box and annotate with either:
+- ✅ if no parser issue found, with a brief note
+- ⚠️ if a known limitation exists (source HTML defect, pre-existing issue family), with a note
+- 🔧 if a parser fix was applied, referencing the commit or PR
 
-Template rule:
-
-* Only customize the issue title, using `Gutenbit cli and parsing battle test: <work title>`.
-* Infer the target work from the title. Resolve the Project Gutenberg ID from the catalog if needed.
-
-Primary guide:
-
-* Use the `gutenbit-live-battle-test` skill.
-
-Start with:
-
-* Resolve the PG ID for the work named in the issue title.
-* `uv run gutenbit add <pg_id>`
-* `uv run gutenbit toc <pg_id>`
-* `uv run gutenbit search "<short distinctive query>" --book <pg_id>`
-* `uv run gutenbit view <pg_id>`
-
-Focus:
-
-* Inspect `toc` first for missing, extra, or mis-nested sections.
-* Compare any suspicious parser output against the raw Gutenberg HTML for the same PG work; treat that HTML as the truth.
-* If a parser bug is found, implement the smallest generalizable fix possible. No book-specific or PG-ID-specific rules.
-* Add a focused live regression in `tests/test_battle.py` if behavior needs to be locked in.
-* Before closing, run `uv run pytest` and `uv run pytest -m network`.
-
-Useful references:
-
-* `.claude/skills/gutenbit-live-battle-test/references/kei-17-corpus.md`
-* `tests/test_battle.py`
-* `AGENTS.md`
-
-Close-out should record either:
-
-* no parser issue found, with a brief note on why output matches the source HTML, or
-* the observed failure, the raw-HTML truth, the structural fix, the added regression test, and the verification run.
+Post a summary comment with structured results tables (clean passes, issues found, fixes
+applied) before closing the issue.
 ```
 
-Each child issue must have:
+Record the issue number (e.g., `#NNN`) for the close-out step.
 
-- **Title**: `Gutenbit cli and parsing battle test: <work title> - id <pg_id>`
-- **Team**: `Keinan`
-- **Project**: `Gutenbit`
-- **Labels**: `["Test"]`
-- **Priority**: `2` (High)
-- **Parent**: the parent issue identifier from Step 4
+## Step 5 — Verify the issue
 
-Do **not** add work-specific notes to the child issue body. Keep it identical across all
-child issues — only the title changes.
+After creating the issue:
 
-## Step 6 — Close out the parent
+1. Confirm the issue was created with the correct title, body, and `test` label.
+2. Verify the checklist contains exactly `$ARGUMENTS` works.
+3. Verify all PG IDs in the checklist are valid and not in the exclusion set.
 
-After all child issues are created, leave a closing comment on the parent issue listing the
-created child issues. Use this format:
+## Step 6 — Close out
+
+Leave a summary comment on the issue listing the selected works. Use this format with
+`mcp__github__add_issue_comment`:
 
 ```markdown
-## Created child issues
+## Selected works
 
-| # | Work | PG ID | Issue |
-|---|------|-------|-------|
-| 1 | <title> | <pg_id> | <KEI-NNN> |
+| # | Work | PG ID | Parser-coverage value |
+|---|------|-------|---------------------|
+| 1 | <title> | <pg_id> | <note> |
 | 2 | ... | ... | ... |
 ...
 
 ## Deduplication
 
 All <N> works confirmed absent from:
-- Linear issues matching `Gutenbit cli and parsing battle test:`
+- GitHub Issues with `test` label on `textualist/gutenbit`
 - `tests/test_battle.py`
 - `.claude/skills/gutenbit-live-battle-test/references/kei-17-corpus.md`
 ```
 
 ## Acceptance criteria
 
-- Exactly `$ARGUMENTS` child issues are created under the parent.
+- A single GitHub Issue is created on `textualist/gutenbit` with the `test` label.
+- The issue body contains a checklist with exactly `$ARGUMENTS` works.
 - All works are English-language and previously unseen.
 - All works are well-known literary works, not filler catalog entries.
-- Every child issue has an identical description (only the title differs).
-- The parent issue has a close-out comment listing all child issues and PG IDs.
+- The issue has a close-out comment listing all works with PG IDs and parser-coverage notes.

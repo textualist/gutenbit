@@ -282,6 +282,11 @@ def _is_toc_section_heading(
         return True
     if _BRACKETED_NUMERIC_HEADING_RE.fullmatch(link_text):
         return True
+    # Headings starting with an enumerated prefix (e.g. "I. OLD MOODIE",
+    # "XIV. ELIOT'S PULPIT") are structural chapter/section headings even
+    # at h3+ rank.
+    if _starts_with_enumerated_heading_prefix(heading_text.strip()):
+        return True
     if _is_refinement_heading(heading_text):
         return True
     return _is_refinement_heading(link_text)
@@ -818,6 +823,15 @@ def _normalized_heading_continuation(
             doc_index=doc_index,
             predicate=_is_short_uppercase_heading_candidate,
         )
+    ):
+        return None
+    # Bare broad headings (VOLUME II, PART I, BOOK III) should not merge
+    # with a subtitle that has same-rank peers following it — those are
+    # content sections, not subtitles (e.g. VOLUME II + LONDON... + REFORM...).
+    if (
+        _heading_keyword(current.heading_text) in _BROAD_KEYWORDS
+        and following_row is not None
+        and following_row.rank == next_row.rank
     ):
         return None
     subtitle = _normalize_heading_subtitle(next_row.heading_text)
