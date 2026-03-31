@@ -399,6 +399,10 @@ def _merge_adjacent_duplicate_sections(sections: list[_Section]) -> list[_Sectio
 
     # Pre-compute same-text run lengths so we can distinguish genuine
     # structural runs (≥3) from HTML-duplicate pairs (exactly 2).
+    # NOTE: The threshold of 2 can false-positive on genuine 2-item
+    # anthologies where both entries share the same series title.  This is
+    # acceptable because true HTML duplicates (same heading emitted twice
+    # by the source) are far more common than 2-item anthology runs.
     n = len(sections)
     run_length = [1] * n
     i = 0
@@ -492,6 +496,9 @@ def _merge_chapter_subtitle_sections(
                     and _next_heading_is_subtitle(nxt_stripped)
                     and not _DRAMATIC_CONTEXT_HEADING_RE.match(nxt_stripped)
                     and not _TERMINAL_MARKER_RE.fullmatch(nxt_stripped)
+                    # Skip merge when nxt is the last section — a document-end
+                    # heading is more likely a standalone closing entry (e.g.
+                    # "THE END") than a subtitle of the previous section.
                     and i + 2 < len(sections)
                     and sections[i + 2].heading_rank != nxt.heading_rank
                 )
@@ -1087,12 +1094,19 @@ def _refined_candidate_section(
     # Allow dramatic parent headings (e.g. ACT) to refine between child
     # headings (e.g. SCENE) even when the candidate level is structurally
     # above the TOC section — the candidate is a parent, not a child.
+    # Restrict to known parent→child keyword pairs to avoid promoting
+    # unrelated keyword headings (e.g. CHAPTER should not refine between
+    # SCENE entries).
+    candidate_kw = _heading_keyword(candidate.heading_text)
+    toc_kw = _heading_keyword(toc_section.heading_text)
     if (
         candidate.level < toc_section.level
-        and _heading_keyword(candidate.heading_text)
-        and _heading_keyword(toc_section.heading_text)
+        and candidate_kw
+        and toc_kw
+        and candidate_kw in _BROAD_KEYWORDS
+        and candidate_kw != toc_kw
     ):
-        return candidate
+        return candidate._with_level(_rank_relative_level(candidate, toc_section))
     return candidate if candidate.level > toc_section.level else None
 
 
@@ -1554,6 +1568,11 @@ def _filter_fallback_heading_rows(heading_rows: list[_HeadingRow]) -> list[_Head
     """Drop heading-scan rows that are clearly non-navigational subheads."""
     # Pre-pass: detect standalone "by" headings and the author-name heading
     # that immediately follows them (e.g. h3 "BY" + h2 "EDGAR ALLAN POE").
+    # This is deliberately loose: the next heading is dropped solely because
+    # it follows a "BY" heading and looks title-like.  A false positive would
+    # remove a real structural heading.  In practice this is safe because
+    # "BY" headings only appear in title blocks, and the next heading there
+    # is always the author name, not a chapter/section heading.
     byline_indices: set[int] = set()
     for idx, row in enumerate(heading_rows):
         if _STANDALONE_BYLINE_RE.fullmatch(row.heading_text.strip()):

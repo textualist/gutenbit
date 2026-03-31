@@ -3405,6 +3405,8 @@ def test_anchorless_act_headings_refined_between_scene_toc_entries():
     assert "ACT I" in heading_texts
     assert "ACT II" in heading_texts
     # Scenes nest under their respective acts
+    act1_scenes = [h for h in headings if h.content.startswith("SCENE") and h.div1 == "ACT I"]
+    assert len(act1_scenes) == 2, f"ACT I should have 2 scenes, got {len(act1_scenes)}"
     act2_scenes = [h for h in headings if h.div1 == "ACT II"]
     scene_texts = [h.content for h in act2_scenes if h.content.startswith("SCENE")]
     assert scene_texts == ["SCENE I. Tower.", "SCENE II. Street."]
