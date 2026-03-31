@@ -33,6 +33,7 @@ Use this file to classify new failures quickly and to mirror the test-writing st
 | Twice-Told Tales | 508 | Identical heading over-deduplication | Four same-text anthology series headings collapsed to one; run-length heuristic keeps runs of 3+ and collapses runs of exactly 2 (HTML duplicates). |
 | Middlemarch (terminal marker) | 145 | Terminal marker subtitle merge | "THE END" / "FINIS" merged as subtitle of preceding heading; `_TERMINAL_MARKER_RE` guard prevents this. Distinct from the existing omitted-closing-matter entry. |
 | Poe Works Vols 1, 3, 4 | 2147 | Split-title empty parent | h2 main title + h3 subtitle creates empty parent section; documented but not yet resolved. |
+| Shakespeare Complete Works | 100 | Dramatic parent keyword refinement | Restrict dramatic parent→child heading promotion to known keyword pairs (e.g. ACT→SCENE); unrelated keywords (e.g. CHAPTER) must not refine between SCENE entries. |
 
 ## Patterns to reuse
 
