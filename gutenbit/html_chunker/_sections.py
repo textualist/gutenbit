@@ -947,7 +947,23 @@ def _refine_toc_sections(
                 continue
             if candidate_pos >= first_pos:
                 break
-            if _FALLBACK_START_HEADING_RE.match(candidate.heading_text):
+            # Allow front-matter headings (PREFACE, INTRODUCTION, etc.)
+            # and broad container headings (VOLUME, BOOK, PART) that sit
+            # above the first TOC section in the hierarchy.  Require the
+            # container to use a strictly more prominent HTML tag (lower
+            # rank number) than the first TOC entry so that leftover
+            # CONTENTS-line fragments like "VOLUME I" (same rank as the
+            # TOC chapters) are not admitted.
+            candidate_kw = _heading_keyword(candidate.heading_text)
+            is_front_matter = _FALLBACK_START_HEADING_RE.match(candidate.heading_text)
+            is_broad_container = (
+                candidate_kw in _BROAD_KEYWORDS
+                and candidate.level < first_toc.level
+                and candidate.heading_rank is not None
+                and first_toc.heading_rank is not None
+                and candidate.heading_rank < first_toc.heading_rank
+            )
+            if is_front_matter or is_broad_container:
                 refined.append(candidate._with_level(min(candidate.level, first_toc.level)))
                 added += 1
             heading_idx += 1

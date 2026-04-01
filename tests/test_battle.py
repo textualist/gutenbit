@@ -1250,6 +1250,53 @@ def test_peter_rabbit_collapses_title_block_into_single_section():
 # ---------------------------------------------------------------------------
 
 
+def test_thackeray_biography_chapter_i_not_dropped():
+    """PG 18645 — Thackeray by Trollope must include CHAPTER I.
+
+    The TOC uses <ul class="toc"> with <li> entries.  The first <li>
+    has a ``<span class="tocright">PAGE</span>`` residue that caused
+    _is_toc_context_link to reject the CHAPTER I link.
+    """
+    headings = _headings(18645)
+    heading_texts = [h.content for h in headings]
+
+    assert any("CHAPTER I" in t for t in heading_texts), (
+        f"CHAPTER I missing from headings: {heading_texts[:5]}"
+    )
+    # All nine chapters present.
+    for n in ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"):
+        assert any(f"CHAPTER {n}." in t or f"CHAPTER {n} " in t for t in heading_texts), (
+            f"CHAPTER {n} missing"
+        )
+
+
+def test_eye_for_an_eye_volume_i_nests_chapters():
+    """PG 16804 — An Eye for an Eye must include Volume I as a container.
+
+    The TOC links only reference chapters (not volumes).  Volume I appears
+    before the first TOC section and uses h2 while chapters are h3.  The
+    pre-TOC refinement scan must admit broad container headings when they
+    are strictly more prominent than the TOC entries.
+    """
+    headings = _headings(16804)
+
+    # Volume I should be present
+    vol1 = [h for h in headings if "Volume I" in h.content]
+    assert vol1, "Volume I. missing"
+
+    # Volume I chapters should nest (div1 = Volume I.)
+    vol1_chapters = [h for h in headings if h.div1 == "Volume I." and "Chapter" in h.div2]
+    assert len(vol1_chapters) >= 12, (
+        f"Expected >=12 chapters under Volume I., got {len(vol1_chapters)}"
+    )
+
+    # Volume II should also be present with nested chapters
+    vol2_chapters = [h for h in headings if h.div1 == "Volume II." and "Chapter" in h.div2]
+    assert len(vol2_chapters) >= 10, (
+        f"Expected >=10 chapters under Volume II., got {len(vol2_chapters)}"
+    )
+
+
 def test_henry_esmond_collected_preserves_all_three_works():
     """PG 29363 — Collected edition must not truncate after Appendix.
 

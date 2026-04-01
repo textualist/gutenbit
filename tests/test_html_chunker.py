@@ -3412,3 +3412,126 @@ def test_anchorless_act_headings_refined_between_scene_toc_entries():
     assert scene_texts == ["SCENE I. Tower.", "SCENE II. Street."]
 
 
+def test_ul_toc_class_links_with_residue_recognised():
+    """Links inside <ul class="toc"> should be recognised as TOC links even
+    when individual <li> items have non-empty residue such as a PAGE header.
+
+    Regression: PG 18645 (Thackeray by Trollope) has the first chapter link
+    in an <li> with ``<span class="tocright">PAGE</span>`` residue, which
+    caused the link to be rejected as non-TOC context.
+    """
+    html = _make_html("""
+    <h2>CONTENTS.</h2>
+    <ul class="toc">
+      <li><a href="#ch1" class="pginternal">CHAPTER I.</a> <span class="tocright">PAGE</span></li>
+      <li><a href="#ch2" class="pginternal">CHAPTER II.</a></li>
+      <li><a href="#ch3" class="pginternal">CHAPTER III.</a></li>
+    </ul>
+
+    <h2><a id="ch1"></a>CHAPTER I.</h2>
+    <p>First chapter content paragraph one.</p>
+    <p>First chapter content paragraph two.</p>
+
+    <h2><a id="ch2"></a>CHAPTER II.</h2>
+    <p>Second chapter content here.</p>
+    <p>Second chapter content continued.</p>
+
+    <h2><a id="ch3"></a>CHAPTER III.</h2>
+    <p>Third chapter content here.</p>
+    <p>Third chapter content continued.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "CHAPTER I." in heading_texts, (
+        f"CHAPTER I. missing from headings: {heading_texts}"
+    )
+    assert "CHAPTER II." in heading_texts
+    assert "CHAPTER III." in heading_texts
+
+
+def test_pre_toc_volume_heading_admitted_when_more_prominent():
+    """A VOLUME heading appearing before the first TOC chapter should be
+    admitted as a broad container when its HTML rank is strictly more
+    prominent than the TOC entries (e.g. h2 VOLUME vs h3 CHAPTER).
+
+    Regression: PG 16804 (An Eye for an Eye) lost Volume I because
+    _refine_toc_sections only allowed _FALLBACK_START_HEADING_RE headings
+    in the pre-TOC scan.
+    """
+    html = _make_html("""
+    <h2>CONTENTS</h2>
+    <p class="toc"><a href="#ch1" class="pginternal">Chapter I. Opening</a></p>
+    <p class="toc"><a href="#ch2" class="pginternal">Chapter II. Middle</a></p>
+    <p class="toc"><a href="#ch3" class="pginternal">Chapter III. Close</a></p>
+
+    <h2>Volume I.</h2>
+
+    <h3><a id="ch1"></a>Chapter I.</h3>
+    <h4>Opening.</h4>
+    <p>First chapter content paragraph one.</p>
+    <p>First chapter content paragraph two.</p>
+
+    <h3><a id="ch2"></a>Chapter II.</h3>
+    <h4>Middle.</h4>
+    <p>Second chapter content here.</p>
+    <p>Second chapter content continued.</p>
+
+    <h3><a id="ch3"></a>Chapter III.</h3>
+    <h4>Close.</h4>
+    <p>Third chapter content here.</p>
+    <p>Third chapter content continued.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    # Volume I should be present as a container
+    assert any("Volume I" in h.content for h in headings), (
+        f"Volume I. missing from headings: {[h.content for h in headings]}"
+    )
+    # Chapters should nest under Volume I
+    ch1 = [h for h in headings if "Chapter I" in h.content]
+    assert ch1, "Chapter I missing"
+    assert ch1[0].div1 == "Volume I.", (
+        f"Chapter I should be under Volume I., got div1={ch1[0].div1!r}"
+    )
+
+
+def test_pre_toc_volume_heading_rejected_when_same_rank():
+    """A VOLUME heading at the same HTML rank as the TOC entries should
+    NOT be admitted — it is likely a leftover from a CONTENTS heading
+    (e.g. 'CONTENTS VOLUME I' stripped to 'VOLUME I').
+
+    Guards against regression for PG 996 (Don Quixote) where 'VOLUME I'
+    was a stripped CONTENTS fragment at h2, same rank as TOC entries.
+    """
+    html = _make_html("""
+    <h2>VOLUME I</h2>
+
+    <p class="toc"><a href="#intro" class="pginternal">INTRODUCTION</a></p>
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <p class="toc"><a href="#ch2" class="pginternal">CHAPTER II</a></p>
+
+    <h2><a id="intro"></a>INTRODUCTION</h2>
+    <p>Some introductory text here.</p>
+    <p>More introduction content.</p>
+
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>First chapter content.</p>
+    <p>First chapter continued.</p>
+
+    <h2><a id="ch2"></a>CHAPTER II</h2>
+    <p>Second chapter content.</p>
+    <p>Second chapter continued.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    # VOLUME I should NOT be a section — it's same rank as TOC entries
+    assert "VOLUME I" not in heading_texts, (
+        f"VOLUME I should not appear as section: {heading_texts}"
+    )
+
+
