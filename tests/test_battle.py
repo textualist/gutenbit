@@ -1250,6 +1250,26 @@ def test_peter_rabbit_collapses_title_block_into_single_section():
 # ---------------------------------------------------------------------------
 
 
+def test_thackeray_biography_chapter_i_not_dropped():
+    """PG 18645 — Thackeray by Trollope must include CHAPTER I.
+
+    The TOC uses <ul class="toc"> with <li> entries.  The first <li>
+    has a ``<span class="tocright">PAGE</span>`` residue that caused
+    _is_toc_context_link to reject the CHAPTER I link.
+    """
+    headings = _headings(18645)
+    heading_texts = [h.content for h in headings]
+
+    assert any("CHAPTER I" in t for t in heading_texts), (
+        f"CHAPTER I missing from headings: {heading_texts[:5]}"
+    )
+    # All nine chapters present.
+    for n in ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"):
+        assert any(f"CHAPTER {n}." in t or f"CHAPTER {n} " in t for t in heading_texts), (
+            f"CHAPTER {n} missing"
+        )
+
+
 def test_henry_esmond_collected_preserves_all_three_works():
     """PG 29363 — Collected edition must not truncate after Appendix.
 

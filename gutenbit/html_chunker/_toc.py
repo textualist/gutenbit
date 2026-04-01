@@ -71,6 +71,17 @@ def _is_toc_context_link(link: Tag) -> bool:
         if _NON_ALNUM_RE.sub("", residue) == "":
             return _cache_result(True)
 
+    # Check ancestor list/nav elements for TOC class (e.g. <ul class="toc">
+    # wrapping <li> entries where individual items have non-empty residue
+    # such as a "PAGE" column header).
+    for name in ("ul", "ol", "nav"):
+        ancestor = link.find_parent(name)
+        if ancestor is None:
+            continue
+        classes = {str(c).lower() for c in (ancestor.get("class") or [])}
+        if "toc" in classes or "contents" in classes:
+            return _cache_result(True)
+
     # Multi-link paragraphs immediately following a "CONTENTS" heading
     # are TOC blocks even when the residue is non-empty (e.g., discourse
     # titles alongside Roman-numeral links).  Results are cached in

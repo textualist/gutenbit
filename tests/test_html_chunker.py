@@ -3412,3 +3412,42 @@ def test_anchorless_act_headings_refined_between_scene_toc_entries():
     assert scene_texts == ["SCENE I. Tower.", "SCENE II. Street."]
 
 
+def test_ul_toc_class_links_with_residue_recognised():
+    """Links inside <ul class="toc"> should be recognised as TOC links even
+    when individual <li> items have non-empty residue such as a PAGE header.
+
+    Regression: PG 18645 (Thackeray by Trollope) has the first chapter link
+    in an <li> with ``<span class="tocright">PAGE</span>`` residue, which
+    caused the link to be rejected as non-TOC context.
+    """
+    html = _make_html("""
+    <h2>CONTENTS.</h2>
+    <ul class="toc">
+      <li><a href="#ch1" class="pginternal">CHAPTER I.</a> <span class="tocright">PAGE</span></li>
+      <li><a href="#ch2" class="pginternal">CHAPTER II.</a></li>
+      <li><a href="#ch3" class="pginternal">CHAPTER III.</a></li>
+    </ul>
+
+    <h2><a id="ch1"></a>CHAPTER I.</h2>
+    <p>First chapter content paragraph one.</p>
+    <p>First chapter content paragraph two.</p>
+
+    <h2><a id="ch2"></a>CHAPTER II.</h2>
+    <p>Second chapter content here.</p>
+    <p>Second chapter content continued.</p>
+
+    <h2><a id="ch3"></a>CHAPTER III.</h2>
+    <p>Third chapter content here.</p>
+    <p>Third chapter content continued.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "CHAPTER I." in heading_texts, (
+        f"CHAPTER I. missing from headings: {heading_texts}"
+    )
+    assert "CHAPTER II." in heading_texts
+    assert "CHAPTER III." in heading_texts
+
+
