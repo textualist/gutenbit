@@ -1270,6 +1270,33 @@ def test_thackeray_biography_chapter_i_not_dropped():
         )
 
 
+def test_eye_for_an_eye_volume_i_nests_chapters():
+    """PG 16804 — An Eye for an Eye must include Volume I as a container.
+
+    The TOC links only reference chapters (not volumes).  Volume I appears
+    before the first TOC section and uses h2 while chapters are h3.  The
+    pre-TOC refinement scan must admit broad container headings when they
+    are strictly more prominent than the TOC entries.
+    """
+    headings = _headings(16804)
+
+    # Volume I should be present
+    vol1 = [h for h in headings if "Volume I" in h.content]
+    assert vol1, "Volume I. missing"
+
+    # Volume I chapters should nest (div1 = Volume I.)
+    vol1_chapters = [h for h in headings if h.div1 == "Volume I." and "Chapter" in h.div2]
+    assert len(vol1_chapters) >= 12, (
+        f"Expected >=12 chapters under Volume I., got {len(vol1_chapters)}"
+    )
+
+    # Volume II should also be present with nested chapters
+    vol2_chapters = [h for h in headings if h.div1 == "Volume II." and "Chapter" in h.div2]
+    assert len(vol2_chapters) >= 10, (
+        f"Expected >=10 chapters under Volume II., got {len(vol2_chapters)}"
+    )
+
+
 def test_henry_esmond_collected_preserves_all_three_works():
     """PG 29363 — Collected edition must not truncate after Appendix.
 
