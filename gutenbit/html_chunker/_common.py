@@ -34,6 +34,12 @@ _FRONT_MATTER_HEADINGS = frozenset(
 _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 _HEADING_TAG_SET = frozenset(_HEADING_TAGS)
 
+# Decorative image alt-text that should not surface as content.
+_DECORATIVE_ALT_RE = re.compile(
+    r"(?i)^(?:decorative|book\s*cover|ornament|vignette|colophon"
+    r"|tail-?piece|head-?piece|fleuron|printer'?s\s*(?:mark|device))\b"
+)
+
 # ---------------------------------------------------------------------------
 # Compiled regex patterns (used by multiple modules)
 # ---------------------------------------------------------------------------
@@ -201,7 +207,7 @@ def _collect_text_parts(node: Tag, parts: list[str]) -> None:
             elif child.name == "img":
                 alt_value = child.get("alt")
                 alt_text = " ".join(str(alt_value or "").split()).strip()
-                if alt_text:
+                if alt_text and not _DECORATIVE_ALT_RE.search(alt_text):
                     parts.append(alt_text)
             else:
                 _collect_text_parts(child, parts)
