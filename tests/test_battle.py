@@ -897,6 +897,17 @@ def test_wuthering_heights_keeps_thirty_four_flat_chapters():
     assert all(h.div2 == "" for h in headings)
 
 
+def test_the_devil_keeps_variation_of_conclusion():
+    headings = _headings(67224)
+
+    heading_texts = [h.content for h in headings]
+    assert heading_texts[0] == "PREFACE"
+    assert heading_texts[1] == "I"
+    assert heading_texts[-2] == "XXI"
+    assert heading_texts[-1] == "VARIATION OF THE CONCLUSION OF THE DEVIL"
+    assert len(headings) == 23
+
+
 def test_dorian_gray_keeps_preface_before_twenty_chapters():
     heading_texts = [h.content for h in _headings(174)]
 

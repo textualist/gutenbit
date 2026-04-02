@@ -114,6 +114,7 @@ _TAIL_BOUNDARY_HEADING_RE = re.compile(
 )
 _TAIL_SECTION_HEADING_RE = re.compile(
     r"^(?:note\b|note to\b|letter\b|a letter from\b|finale\b|the conclusion\b|"
+    r"variation\b|"
     r"author'?s?\s+endnotes?\b|(?:the\s+)?afterthought\b)",
     re.IGNORECASE,
 )
