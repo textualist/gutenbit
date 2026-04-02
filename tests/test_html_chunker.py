@@ -3535,3 +3535,353 @@ def test_pre_toc_volume_heading_rejected_when_same_rank():
     )
 
 
+# ---------------------------------------------------------------------------
+# Russian literature corpus: structural patterns
+# ---------------------------------------------------------------------------
+
+
+# Flat-TOC BOOK/CHAPTER at same rank with title wrapper (cf. PG 1938, Resurrection)
+def test_flat_toc_book_chapter_nesting_under_title_wrapper():
+    """When BOOK and CHAPTER are both h2 and a title wrapper (h1) sits above
+    them, chapters must still nest under their BOOK containers after the
+    title wrapper is flattened.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#pre" class="pginternal">TRANSLATOR'S PREFACE</a></p>
+    <p class="toc"><a href="#title" class="pginternal">THE NOVEL</a></p>
+    <p class="toc"><a href="#b1" class="pginternal">BOOK I.</a></p>
+    <p class="toc"><a href="#c1" class="pginternal">CHAPTER I.</a></p>
+    <p class="toc"><a href="#c2" class="pginternal">CHAPTER II.</a></p>
+    <p class="toc"><a href="#c3" class="pginternal">CHAPTER III.</a></p>
+    <p class="toc"><a href="#b2" class="pginternal">BOOK II.</a></p>
+    <p class="toc"><a href="#c4" class="pginternal">CHAPTER I.</a></p>
+    <p class="toc"><a href="#c5" class="pginternal">CHAPTER II.</a></p>
+
+    <h2><a id="pre"></a>TRANSLATOR'S PREFACE</h2>
+    <p>The translator notes here.</p>
+
+    <h1><a id="title"></a>THE NOVEL</h1>
+    <h2><a id="b1"></a>BOOK I.</h2>
+    <h2><a id="c1"></a>CHAPTER I.</h2>
+    <p>First chapter of book one.</p>
+    <h2><a id="c2"></a>CHAPTER II.</h2>
+    <p>Second chapter of book one.</p>
+    <h2><a id="c3"></a>CHAPTER III.</h2>
+    <p>Third chapter of book one.</p>
+
+    <h2><a id="b2"></a>BOOK II.</h2>
+    <h2><a id="c4"></a>CHAPTER I.</h2>
+    <p>First chapter of book two.</p>
+    <h2><a id="c5"></a>CHAPTER II.</h2>
+    <p>Second chapter of book two.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    # BOOK I and BOOK II at div1.
+    assert any(h.div1 == "BOOK I." for h in headings)
+    assert any(h.div1 == "BOOK II." for h in headings)
+
+    # Chapters nest under their books at div2.
+    b1_chapters = [h for h in headings if h.div1 == "BOOK I." and h.div2.startswith("CHAPTER")]
+    assert len(b1_chapters) == 3
+    b2_chapters = [h for h in headings if h.div1 == "BOOK II." and h.div2.startswith("CHAPTER")]
+    assert len(b2_chapters) == 2
+
+
+# Four-part novel with chapters (cf. PG 2638, The Idiot; PG 8117, The Possessed)
+def test_four_parts_with_chapters_nested():
+    """Four PART containers with chapters nesting under each."""
+    html = _make_html("""
+    <p class="toc"><a href="#p1" class="pginternal"><b>PART I</b></a></p>
+    <p class="toc"><a href="#p1c1" class="pginternal">CHAPTER I.</a></p>
+    <p class="toc"><a href="#p1c2" class="pginternal">CHAPTER II.</a></p>
+    <p class="toc"><a href="#p2" class="pginternal"><b>PART II</b></a></p>
+    <p class="toc"><a href="#p2c1" class="pginternal">CHAPTER III.</a></p>
+    <p class="toc"><a href="#p2c2" class="pginternal">CHAPTER IV.</a></p>
+    <p class="toc"><a href="#p3" class="pginternal"><b>PART III</b></a></p>
+    <p class="toc"><a href="#p3c1" class="pginternal">CHAPTER V.</a></p>
+    <p class="toc"><a href="#p4" class="pginternal"><b>PART IV</b></a></p>
+    <p class="toc"><a href="#p4c1" class="pginternal">CHAPTER VI.</a></p>
+    <p class="toc"><a href="#p4c2" class="pginternal">CHAPTER VII.</a></p>
+
+    <h2><a id="p1"></a>PART I</h2>
+    <h3><a id="p1c1"></a>CHAPTER I.</h3>
+    <p>Part one, chapter one.</p>
+    <h3><a id="p1c2"></a>CHAPTER II.</h3>
+    <p>Part one, chapter two.</p>
+
+    <h2><a id="p2"></a>PART II</h2>
+    <h3><a id="p2c1"></a>CHAPTER III.</h3>
+    <p>Part two, chapter three.</p>
+    <h3><a id="p2c2"></a>CHAPTER IV.</h3>
+    <p>Part two, chapter four.</p>
+
+    <h2><a id="p3"></a>PART III</h2>
+    <h3><a id="p3c1"></a>CHAPTER V.</h3>
+    <p>Part three, chapter five.</p>
+
+    <h2><a id="p4"></a>PART IV</h2>
+    <h3><a id="p4c1"></a>CHAPTER VI.</h3>
+    <p>Part four, chapter six.</p>
+    <h3><a id="p4c2"></a>CHAPTER VII.</h3>
+    <p>Part four, chapter seven.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    div1_values = sorted({h.div1 for h in headings if h.div1})
+
+    assert div1_values == ["PART I", "PART II", "PART III", "PART IV"]
+
+    assert len([h for h in headings if h.div1 == "PART I" and h.div2.startswith("CHAPTER")]) == 2
+    assert len([h for h in headings if h.div1 == "PART II" and h.div2.startswith("CHAPTER")]) == 2
+    assert len([h for h in headings if h.div1 == "PART III" and h.div2.startswith("CHAPTER")]) == 1
+    assert len([h for h in headings if h.div1 == "PART IV" and h.div2.startswith("CHAPTER")]) == 2
+
+
+# Epistolary duplicate-date preservation (cf. PG 2302, Poor Folk)
+def test_duplicate_date_headings_preserved_when_content_between():
+    """Adjacent same-text headings with substantial content between them are
+    genuine distinct sections (epistolary letters on the same date), not
+    HTML duplicates.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#d1" class="pginternal">June 1st</a></p>
+    <p class="toc"><a href="#d2" class="pginternal">June 2nd</a></p>
+    <p class="toc"><a href="#d3" class="pginternal">June 2nd</a></p>
+    <p class="toc"><a href="#d4" class="pginternal">June 3rd</a></p>
+
+    <h2><a id="d1"></a>June 1st</h2>
+    <p>Dear friend, I write to you on the first of June.</p>
+    <p>The weather is fine and I hope you are well.</p>
+    <p>I remain, yours truly.</p>
+    <p>P.S. Please reply soon.</p>
+    <p>P.P.S. I forgot to mention the cat.</p>
+    <p>The cat is doing well.</p>
+    <p>She sends her regards.</p>
+    <p>As do I.</p>
+    <p>Farewell for now.</p>
+
+    <h2><a id="d2"></a>June 2nd</h2>
+    <p>My dear friend, thank you for your letter.</p>
+    <p>I was most pleased to receive it.</p>
+    <p>The news about the cat was delightful.</p>
+    <p>I have a cat of my own.</p>
+    <p>She is striped and very friendly.</p>
+    <p>We shall talk more of cats when we meet.</p>
+    <p>Until then, I remain yours.</p>
+    <p>With warmest regards.</p>
+    <p>Your devoted friend.</p>
+
+    <h2><a id="d3"></a>June 2nd</h2>
+    <p>Dear friend, a second letter on the same day!</p>
+    <p>I forgot to mention something important.</p>
+    <p>The matter I wished to discuss is urgent.</p>
+    <p>Please consider it carefully.</p>
+    <p>I await your reply with great anticipation.</p>
+    <p>Your humble servant.</p>
+    <p>P.S. The cat says hello again.</p>
+    <p>P.P.S. Really, the cat insists.</p>
+    <p>Goodbye once more.</p>
+
+    <h2><a id="d4"></a>June 3rd</h2>
+    <p>My friend, your two letters arrived today.</p>
+    <p>I shall reply to both presently.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 4
+    assert heading_texts.count("June 2nd") == 2
+
+
+# Play with acts and scenes (cf. PG 26661, Power of Darkness)
+def test_play_with_acts_and_scenes():
+    """A play with CHARACTERS, ACT/SCENE structure."""
+    html = _make_html("""
+    <p class="toc"><a href="#chars" class="pginternal">CHARACTERS</a></p>
+    <p class="toc"><a href="#a1" class="pginternal">ACT I</a></p>
+    <p class="toc"><a href="#a2" class="pginternal">ACT II</a></p>
+    <p class="toc"><a href="#a3" class="pginternal">ACT III</a></p>
+    <p class="toc"><a href="#a3s2" class="pginternal">Scene 2.</a></p>
+
+    <h2><a id="chars"></a>CHARACTERS</h2>
+    <p>IVAN. A peasant. MARYA. His wife.</p>
+
+    <h2><a id="a1"></a>ACT I</h2>
+    <p>The scene is a village street.</p>
+
+    <h2><a id="a2"></a>ACT II</h2>
+    <p>Interior of the hut.</p>
+
+    <h2><a id="a3"></a>ACT III</h2>
+    <h3><a id="a3s2"></a>Scene 2.</h3>
+    <p>The yard in front of the hut.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "CHARACTERS" in heading_texts
+    assert "ACT I" in heading_texts
+    assert "ACT II" in heading_texts
+    assert "ACT III" in heading_texts
+    assert len(headings) == 5
+
+
+# Preface before numbered chapters (cf. PG 67224, The Devil; PG 44266, Katia)
+def test_preface_as_peer_of_numbered_chapters():
+    """PREFACE at the same level as numbered chapters, not nesting them."""
+    html = _make_html("""
+    <p class="toc"><a href="#pre" class="pginternal">PREFACE</a></p>
+    <p class="toc"><a href="#c1" class="pginternal">I</a></p>
+    <p class="toc"><a href="#c2" class="pginternal">II</a></p>
+    <p class="toc"><a href="#c3" class="pginternal">III</a></p>
+
+    <h2><a id="pre"></a>PREFACE</h2>
+    <p>The author's preface to the work.</p>
+    <h2><a id="c1"></a>I</h2>
+    <p>Chapter one content.</p>
+    <h2><a id="c2"></a>II</h2>
+    <p>Chapter two content.</p>
+    <h2><a id="c3"></a>III</h2>
+    <p>Chapter three content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 4
+    assert headings[0].div1 == "PREFACE"
+    assert headings[1].div1 == "I"
+    # PREFACE does not nest chapters — all at div1.
+    assert all(h.div2 == "" for h in headings)
+
+
+# Tail-section variation/alternate ending (cf. PG 67224, The Devil)
+def test_variation_heading_preserved_as_tail_section():
+    """A 'VARIATION' heading after the last TOC entry is kept as closing matter."""
+    html = _make_html("""
+    <p class="toc"><a href="#c1" class="pginternal">I</a></p>
+    <p class="toc"><a href="#c2" class="pginternal">II</a></p>
+    <p class="toc"><a href="#c3" class="pginternal">III</a></p>
+
+    <h2><a id="c1"></a>I</h2>
+    <p>Chapter one.</p>
+    <h2><a id="c2"></a>II</h2>
+    <p>Chapter two.</p>
+    <h2><a id="c3"></a>III</h2>
+    <p>Chapter three — the main ending.</p>
+
+    <h2>VARIATION OF THE CONCLUSION</h2>
+    <p>An alternate ending provided by the author.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 4
+    assert heading_texts[-1] == "VARIATION OF THE CONCLUSION"
+
+
+# Story collection with container stories and sub-chapters
+# (cf. PG 689, Kreutzer Sonata; PG 40745, Dostoevsky Short Stories)
+def test_story_collection_with_chapter_nesting():
+    """Named stories with Roman numeral sub-chapters nest correctly."""
+    html = _make_html("""
+    <p class="toc"><a href="#s1" class="pginternal"><b>THE FIRST STORY</b></a></p>
+    <p class="toc"><a href="#s1c1" class="pginternal">I</a></p>
+    <p class="toc"><a href="#s1c2" class="pginternal">II</a></p>
+    <p class="toc"><a href="#s2" class="pginternal"><b>THE SECOND STORY</b></a></p>
+    <p class="toc"><a href="#s2c1" class="pginternal">I</a></p>
+    <p class="toc"><a href="#s3" class="pginternal"><b>A SHORT TALE</b></a></p>
+
+    <h2><a id="s1"></a>THE FIRST STORY</h2>
+    <h3><a id="s1c1"></a>I</h3>
+    <p>First story, chapter one.</p>
+    <h3><a id="s1c2"></a>II</h3>
+    <p>First story, chapter two.</p>
+
+    <h2><a id="s2"></a>THE SECOND STORY</h2>
+    <h3><a id="s2c1"></a>I</h3>
+    <p>Second story, chapter one.</p>
+
+    <h2><a id="s3"></a>A SHORT TALE</h2>
+    <p>A complete short story with no sub-chapters.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    story1 = [h for h in headings if h.div1 == "THE FIRST STORY"]
+    story2 = [h for h in headings if h.div1 == "THE SECOND STORY"]
+    story3 = [h for h in headings if h.div1 == "A SHORT TALE"]
+
+    assert len(story1) == 3  # story heading + 2 chapters
+    assert len(story2) == 2  # story heading + 1 chapter
+    assert len(story3) == 1  # story heading only
+
+
+# Treatise with preface and numbered chapters
+# (cf. PG 4602, Kingdom of God; PG 43794, My Religion; PG 64908, What Is Art?)
+def test_treatise_preface_then_chapters():
+    """Non-fiction treatise: PREFACE + titled work heading + numbered chapters."""
+    html = _make_html("""
+    <p class="toc"><a href="#pre" class="pginternal">PREFACE.</a></p>
+    <p class="toc"><a href="#title" class="pginternal">THE TREATISE</a></p>
+    <p class="toc"><a href="#c1" class="pginternal">CHAPTER I.</a></p>
+    <p class="toc"><a href="#c2" class="pginternal">CHAPTER II.</a></p>
+    <p class="toc"><a href="#c3" class="pginternal">CHAPTER III.</a></p>
+
+    <h2><a id="pre"></a>PREFACE.</h2>
+    <p>In this preface the author explains the purpose.</p>
+
+    <h2><a id="title"></a>THE TREATISE</h2>
+    <h2><a id="c1"></a>CHAPTER I.</h2>
+    <p>The first chapter of the treatise.</p>
+    <h2><a id="c2"></a>CHAPTER II.</h2>
+    <p>The second chapter of the treatise.</p>
+    <h2><a id="c3"></a>CHAPTER III.</h2>
+    <p>The third chapter of the treatise.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts[0] == "PREFACE."
+    assert "CHAPTER I." in heading_texts
+    assert "CHAPTER II." in heading_texts
+    assert "CHAPTER III." in heading_texts
+    assert len(headings) >= 4
+
+
+# Flat numbered chapters without keywords
+# (cf. PG 985, Father Sergius; PG 986, Master and Man; PG 2197, The Gambler)
+def test_flat_roman_numeral_chapters():
+    """A novella with bare Roman numeral chapters at a single level."""
+    html = _make_html("""
+    <p class="toc"><a href="#c1" class="pginternal">I</a></p>
+    <p class="toc"><a href="#c2" class="pginternal">II</a></p>
+    <p class="toc"><a href="#c3" class="pginternal">III</a></p>
+    <p class="toc"><a href="#c4" class="pginternal">IV</a></p>
+    <p class="toc"><a href="#c5" class="pginternal">V</a></p>
+
+    <h2><a id="c1"></a>I</h2>
+    <p>In the first chapter something happened.</p>
+    <h2><a id="c2"></a>II</h2>
+    <p>In the second chapter more happened.</p>
+    <h2><a id="c3"></a>III</h2>
+    <p>The third chapter brought a twist.</p>
+    <h2><a id="c4"></a>IV</h2>
+    <p>Chapter four resolved some tension.</p>
+    <h2><a id="c5"></a>V</h2>
+    <p>The final chapter concluded the story.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 5
+    assert [h.content for h in headings] == ["I", "II", "III", "IV", "V"]
+    # All flat at div1.
+    assert all(h.div2 == "" for h in headings)
+
+

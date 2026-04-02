@@ -150,6 +150,12 @@ def chunk_html(html: str) -> list[Chunk]:
     # merging so that level changes from flattening are visible to the
     # subtitle pass (e.g. note-apparatus headings at the correct level).
     sections = _flatten_single_work_title_wrapper(sections)
+    # Re-run keyword nesting after title-wrapper flattening: when a single
+    # work title (e.g. "RESURRECTION") wraps BOOK + CHAPTER at the same
+    # rank, rank nesting pushes both under the title, then flattening
+    # promotes them back to the same level.  This second pass restores the
+    # BOOK → CHAPTER hierarchy that was lost in the flatten step.
+    sections = _nest_chapters_under_broad_containers(sections)
     sections = _equalize_orphan_level_gap(sections)
     sections = _merge_chapter_subtitle_sections(sections, toc_anchor_ids=toc_anchor_ids)
     # Merge ALL-CAPS description paragraphs into bare chapter headings so
@@ -160,7 +166,7 @@ def chunk_html(html: str) -> list[Chunk]:
     # grouped together.
     sections, skip_paragraph_ids = _merge_chapter_description_paragraphs(sections)
     _skip_tag_ids = frozenset(skip_paragraph_ids) if skip_paragraph_ids else None
-    sections = _merge_adjacent_duplicate_sections(sections)
+    sections = _merge_adjacent_duplicate_sections(sections, doc_index=doc_index)
 
     # Compact levels so the shallowest level maps to div1.
     # e.g. chapter-only books (min_level=2) shift chapters to div1.

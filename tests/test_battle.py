@@ -853,6 +853,30 @@ def test_anna_karenina_nests_chapters_under_eight_parts():
     assert ch1_part8.div2 == "Chapter 1"
 
 
+def test_resurrection_nests_chapters_under_three_books():
+    headings = _headings(1938)
+    div1_values = sorted({h.div1 for h in headings if h.div1})
+
+    assert "BOOK I." in div1_values
+    assert "BOOK II." in div1_values
+    assert "BOOK III." in div1_values
+
+    book1_chapters = [
+        h for h in headings if h.div1 == "BOOK I." and h.div2.startswith("CHAPTER")
+    ]
+    assert len(book1_chapters) == 59
+
+    book2_chapters = [
+        h for h in headings if h.div1 == "BOOK II." and h.div2.startswith("CHAPTER")
+    ]
+    assert len(book2_chapters) == 42
+
+    book3_chapters = [
+        h for h in headings if h.div1 == "BOOK III." and h.div2.startswith("CHAPTER")
+    ]
+    assert len(book3_chapters) == 28
+
+
 def test_frankenstein_keeps_letters_and_chapters_flat():
     headings = _headings(84)
     heading_texts = [h.content for h in headings]
@@ -871,6 +895,27 @@ def test_wuthering_heights_keeps_thirty_four_flat_chapters():
     assert heading_texts[0] == "CHAPTER I"
     assert heading_texts[-1] == "CHAPTER XXXIV"
     assert all(h.div2 == "" for h in headings)
+
+
+def test_the_devil_keeps_variation_of_conclusion():
+    headings = _headings(67224)
+
+    heading_texts = [h.content for h in headings]
+    assert heading_texts[0] == "PREFACE"
+    assert heading_texts[1] == "I"
+    assert heading_texts[-2] == "XXI"
+    assert heading_texts[-1] == "VARIATION OF THE CONCLUSION OF THE DEVIL"
+    assert len(headings) == 23
+
+
+def test_poor_folk_keeps_duplicate_date_letters():
+    """PG 2302 — epistolary novel: two letters on the same date are distinct."""
+    headings = _headings(2302)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 52
+    assert heading_texts.count("July 28th.") == 2
+    assert heading_texts.count("September 27th.") == 2
 
 
 def test_dorian_gray_keeps_preface_before_twenty_chapters():
