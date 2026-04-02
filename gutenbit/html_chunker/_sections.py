@@ -1616,10 +1616,26 @@ def _filter_fallback_heading_rows(heading_rows: list[_HeadingRow]) -> list[_Head
     for idx, row in enumerate(heading_rows):
         if _STANDALONE_BYLINE_RE.fullmatch(row.heading_text.strip()):
             byline_indices.add(idx)
-            if idx + 1 < len(heading_rows) and _is_title_like_heading(
-                heading_rows[idx + 1].heading_text
-            ):
-                byline_indices.add(idx + 1)
+            # Drop the author name and any subsequent title-page metadata
+            # (publisher names, city addresses, dates) that follow the "BY"
+            # heading.  Only extend past the author name into deep-rank (h4+)
+            # title-like headings — shallow-rank headings (h2/h3) may be real
+            # structural content like "BEFORE THE CURTAIN" (Vanity Fair).
+            for j in range(idx + 1, len(heading_rows)):
+                nxt = heading_rows[j]
+                if _heading_keyword(nxt.heading_text):
+                    break
+                if _is_front_matter_heading(nxt.heading_text):
+                    break
+                if nxt.tag.find("a", id=True) is not None:
+                    break
+                if not _is_title_like_heading(nxt.heading_text):
+                    break
+                # First row after "BY" is the author name (any rank);
+                # subsequent rows must be deep-rank (h4+) to be metadata.
+                if j > idx + 1 and nxt.rank < 4:
+                    break
+                byline_indices.add(j)
 
     filtered: list[_HeadingRow] = []
     for idx, row in enumerate(heading_rows):
