@@ -389,7 +389,7 @@ def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
 def _merge_adjacent_duplicate_sections(
     sections: list[_Section],
     *,
-    doc_index: _DocumentIndex | None = None,
+    doc_index: _DocumentIndex,
 ) -> list[_Section]:
     """Drop immediately repeated section headings such as duplicate running headers.
 
@@ -400,14 +400,14 @@ def _merge_adjacent_duplicate_sections(
     those are typically redundant heading tags in the source HTML.
 
     Guard: when *doc_index* is available and the positional gap between two
-    same-text siblings is large enough to contain real content (> 2 paragraph
+    same-text siblings is large enough to contain real content (> 8 document
     positions), the pair is kept — they are genuine distinct sections (e.g.
     two letters dated "July 28th." in an epistolary novel).
     """
     if len(sections) < 2:
         return sections
 
-    tag_positions = doc_index.tag_positions if doc_index else {}
+    tag_positions = doc_index.tag_positions
 
     # Pre-compute same-text run lengths so we can distinguish genuine
     # structural runs (≥3) from HTML-duplicate pairs (exactly 2).
@@ -450,12 +450,11 @@ def _merge_adjacent_duplicate_sections(
             # duplicates (same heading in the TOC then again in the body)
             # typically have gaps ≤ 8; genuine content sections have gaps
             # > 8 (at least several paragraphs of letter/chapter text).
-            if tag_positions:
-                prev_pos = _tag_position(previous.body_anchor, tag_positions)
-                curr_pos = _tag_position(section.body_anchor, tag_positions)
-                if prev_pos is not None and curr_pos is not None and curr_pos - prev_pos > 8:
-                    merged.append(section)
-                    continue
+            prev_pos = _tag_position(previous.body_anchor, tag_positions)
+            curr_pos = _tag_position(section.body_anchor, tag_positions)
+            if prev_pos is not None and curr_pos is not None and curr_pos - prev_pos > 8:
+                merged.append(section)
+                continue
             continue
         merged.append(section)
     return merged
