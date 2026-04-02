@@ -166,7 +166,7 @@ def chunk_html(html: str) -> list[Chunk]:
     # grouped together.
     sections, skip_paragraph_ids = _merge_chapter_description_paragraphs(sections)
     _skip_tag_ids = frozenset(skip_paragraph_ids) if skip_paragraph_ids else None
-    sections = _merge_adjacent_duplicate_sections(sections)
+    sections = _merge_adjacent_duplicate_sections(sections, doc_index=doc_index)
 
     # Compact levels so the shallowest level maps to div1.
     # e.g. chapter-only books (min_level=2) shift chapters to div1.

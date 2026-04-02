@@ -386,7 +386,11 @@ def _merge_bare_heading_pairs(sections: list[_Section]) -> list[_Section]:
     return merged
 
 
-def _merge_adjacent_duplicate_sections(sections: list[_Section]) -> list[_Section]:
+def _merge_adjacent_duplicate_sections(
+    sections: list[_Section],
+    *,
+    doc_index: _DocumentIndex | None = None,
+) -> list[_Section]:
     """Drop immediately repeated section headings such as duplicate running headers.
 
     When three or more consecutive sections share the same text, level, and
@@ -394,9 +398,16 @@ def _merge_adjacent_duplicate_sections(sections: list[_Section]) -> list[_Sectio
     "LEGENDS OF THE PROVINCE HOUSE" headings each introducing a different
     story) and are all kept.  Runs of exactly two are collapsed to one —
     those are typically redundant heading tags in the source HTML.
+
+    Guard: when *doc_index* is available and the positional gap between two
+    same-text siblings is large enough to contain real content (> 2 paragraph
+    positions), the pair is kept — they are genuine distinct sections (e.g.
+    two letters dated "July 28th." in an epistolary novel).
     """
     if len(sections) < 2:
         return sections
+
+    tag_positions = doc_index.tag_positions if doc_index else {}
 
     # Pre-compute same-text run lengths so we can distinguish genuine
     # structural runs (≥3) from HTML-duplicate pairs (exactly 2).
@@ -433,6 +444,18 @@ def _merge_adjacent_duplicate_sections(sections: list[_Section]) -> list[_Sectio
             and _same_heading_text(previous.heading_text, section.heading_text)
             and run_length[idx] <= 2
         ):
+            # Before collapsing, check the positional gap.  A large gap
+            # means real content exists between the two headings (e.g. two
+            # letters on the same date in an epistolary novel).  HTML
+            # duplicates (same heading in the TOC then again in the body)
+            # typically have gaps ≤ 8; genuine content sections have gaps
+            # > 8 (at least several paragraphs of letter/chapter text).
+            if tag_positions:
+                prev_pos = _tag_position(previous.body_anchor, tag_positions)
+                curr_pos = _tag_position(section.body_anchor, tag_positions)
+                if prev_pos is not None and curr_pos is not None and curr_pos - prev_pos > 8:
+                    merged.append(section)
+                    continue
             continue
         merged.append(section)
     return merged

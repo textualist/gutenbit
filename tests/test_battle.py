@@ -908,6 +908,16 @@ def test_the_devil_keeps_variation_of_conclusion():
     assert len(headings) == 23
 
 
+def test_poor_folk_keeps_duplicate_date_letters():
+    """PG 2302 — epistolary novel: two letters on the same date are distinct."""
+    headings = _headings(2302)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 52
+    assert heading_texts.count("July 28th.") == 2
+    assert heading_texts.count("September 27th.") == 2
+
+
 def test_dorian_gray_keeps_preface_before_twenty_chapters():
     heading_texts = [h.content for h in _headings(174)]
 
