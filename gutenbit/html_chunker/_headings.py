@@ -93,6 +93,14 @@ _PUBLICATION_METADATA_RE = re.compile(
     r"^(?:printed|published|reprinted|first\s+published|originally\s+published)\b",
     re.IGNORECASE,
 )
+# Publisher advertisement headings: "WORKS BY HENRY JAMES", "Henry James's
+# Books", "ALSO BY", "OTHER BOOKS BY", etc.
+_PUBLISHER_AD_HEADING_RE = re.compile(
+    r"^(?:(?:other\s+)?(?:works|books|volumes|novels|writings)\s+by\b"
+    r"|also\s+by\b"
+    r"|.{1,40}'s\s+(?:books|works|novels|writings)\.?\s*$)",
+    re.IGNORECASE,
+)
 _FRONT_MATTER_ATTRIBUTION_HEADING_RE = re.compile(
     r"^(?:introduction|preface|foreword|afterword)\s+by\b",
     re.IGNORECASE,
@@ -206,6 +214,8 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
     if _FRONT_MATTER_ATTRIBUTION_RE.match(text):
         return True
     if _PUBLICATION_METADATA_RE.match(text):
+        return True
+    if _PUBLISHER_AD_HEADING_RE.match(text):
         return True
     if _VERSE_REFERENCE_HEADING_RE.match(text):
         return True
