@@ -853,6 +853,30 @@ def test_anna_karenina_nests_chapters_under_eight_parts():
     assert ch1_part8.div2 == "Chapter 1"
 
 
+def test_resurrection_nests_chapters_under_three_books():
+    headings = _headings(1938)
+    div1_values = sorted({h.div1 for h in headings if h.div1})
+
+    assert "BOOK I." in div1_values
+    assert "BOOK II." in div1_values
+    assert "BOOK III." in div1_values
+
+    book1_chapters = [
+        h for h in headings if h.div1 == "BOOK I." and h.div2.startswith("CHAPTER")
+    ]
+    assert len(book1_chapters) == 59
+
+    book2_chapters = [
+        h for h in headings if h.div1 == "BOOK II." and h.div2.startswith("CHAPTER")
+    ]
+    assert len(book2_chapters) == 42
+
+    book3_chapters = [
+        h for h in headings if h.div1 == "BOOK III." and h.div2.startswith("CHAPTER")
+    ]
+    assert len(book3_chapters) == 28
+
+
 def test_frankenstein_keeps_letters_and_chapters_flat():
     headings = _headings(84)
     heading_texts = [h.content for h in headings]
