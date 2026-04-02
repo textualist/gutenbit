@@ -490,7 +490,9 @@ def test_dracula_keeps_the_final_note_section():
 def test_middlemarch_keeps_the_finale_section():
     heading_texts = [heading.content for heading in _headings(145)]
 
-    assert heading_texts[-2:] == ["FINALE.", "THE END"]
+    assert heading_texts[-1] == "FINALE."
+    # "THE END" is a terminal marker, not navigable content — suppressed.
+    assert "THE END" not in heading_texts
 
 
 def test_jane_eyre_keeps_preface_and_note_before_chapter_one():

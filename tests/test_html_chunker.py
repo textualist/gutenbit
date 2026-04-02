@@ -3341,9 +3341,9 @@ def test_two_same_text_headings_deduplicated():
     assert len(etym) == 1
 
 
-def test_terminal_marker_not_merged_as_subtitle():
-    """'THE END' and 'FINIS' must not be merged as a subtitle of the
-    preceding heading.
+def test_terminal_marker_suppressed_entirely():
+    """'THE END' and 'FINIS' must not appear as sections at all — they are
+    terminal markers, not navigable content.
 
     Pattern: h3 "FINALE." followed by h4 "THE END".
     """
@@ -3368,10 +3368,8 @@ def test_terminal_marker_not_merged_as_subtitle():
     heading_texts = [h.content for h in headings]
 
     assert "FINALE." in heading_texts
-    assert "THE END" in heading_texts
-    # Must NOT be merged into "FINALE. THE END".
-    merged = [h for h in heading_texts if "FINALE" in h and "END" in h]
-    assert merged == []
+    # "THE END" is a terminal marker, not structural content — suppressed.
+    assert "THE END" not in heading_texts
 
 
 def test_anchorless_act_headings_refined_between_scene_toc_entries():

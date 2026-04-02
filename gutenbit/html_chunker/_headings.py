@@ -85,6 +85,11 @@ _NON_STRUCTURAL_HEADING_RE = re.compile(
     r"editor's note|editors note|finis)\b",
     re.IGNORECASE,
 )
+# Terminal markers that should never become standalone sections.
+_TERMINAL_NONSTRUCTURAL_RE = re.compile(
+    r"^(?:the\s+end|finis)\.?\s*$",
+    re.IGNORECASE,
+)
 _FRONT_MATTER_ATTRIBUTION_RE = re.compile(
     r"^(?:by|translated\s+by|edited\s+by|illustrated\s+by)\s",
     re.IGNORECASE,
@@ -216,6 +221,8 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
     if _PUBLICATION_METADATA_RE.match(text):
         return True
     if _PUBLISHER_AD_HEADING_RE.match(text):
+        return True
+    if _TERMINAL_NONSTRUCTURAL_RE.match(text):
         return True
     if _VERSE_REFERENCE_HEADING_RE.match(text):
         return True
