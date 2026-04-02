@@ -179,12 +179,12 @@ def _extract_heading_text(heading_el: Tag) -> str:
     return ""
 
 
-def _collect_text_parts(node: Tag, parts: list[str], *, replace_br: bool = True) -> None:
+def _collect_text_parts(node: Tag, parts: list[str]) -> None:
     """Collect text parts from an element, skipping pagenum spans.
 
-    When *replace_br* is True (the default, used for headings), ``<br>`` tags
-    are replaced with a space.  When False (used for paragraphs), ``<br>`` is
-    ignored — whitespace collapsing handles it.
+    ``<br>`` tags are always replaced with a space to prevent adjacent
+    words from concatenating (e.g. ``Henry James<br>1922`` → ``Henry
+    James 1922``).
     """
     for child in node.children:
         if isinstance(child, Comment):
@@ -193,8 +193,7 @@ def _collect_text_parts(node: Tag, parts: list[str], *, replace_br: bool = True)
             parts.append(str(child))
         elif isinstance(child, Tag):
             if child.name == "br":
-                if replace_br:
-                    parts.append(" ")
+                parts.append(" ")
             elif child.name == "span" and "pagenum" in {
                 c.lower() for c in (child.get("class") or [])
             }:
@@ -205,7 +204,7 @@ def _collect_text_parts(node: Tag, parts: list[str], *, replace_br: bool = True)
                 if alt_text:
                     parts.append(alt_text)
             else:
-                _collect_text_parts(child, parts, replace_br=replace_br)
+                _collect_text_parts(child, parts)
 
 
 @lru_cache(maxsize=4096)

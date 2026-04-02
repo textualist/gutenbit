@@ -351,11 +351,11 @@ def _extract_paragraph_text(
     if has_img is None:
         has_img = paragraph.find("img") is not None
 
-    if not has_pagenum and not has_img:
+    if not has_pagenum and not has_img and not paragraph.find("br"):
         return " ".join(paragraph.get_text().split()).strip()
 
     parts: list[str] = []
-    _collect_text_parts(paragraph, parts, replace_br=False)
+    _collect_text_parts(paragraph, parts)
     return " ".join("".join(parts).split()).strip()
 
 
