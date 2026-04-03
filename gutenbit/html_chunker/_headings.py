@@ -84,8 +84,7 @@ _PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
 _NON_STRUCTURAL_HEADING_RE = re.compile(
     r"^(?:notes|footnotes?|endnotes?|"
     r"transcriber'?s?\s+notes?|"
-    r"editor'?s?\s+notes?|"
-    r"index)\b",
+    r"editor'?s?\s+notes?)\b",
     re.IGNORECASE,
 )
 # Bare date headings: standalone years ("1882.", "1917") or month+year
