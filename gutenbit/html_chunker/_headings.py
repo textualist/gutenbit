@@ -109,7 +109,14 @@ _PUBLICATION_METADATA_RE = re.compile(
 _PUBLISHER_AD_HEADING_RE = re.compile(
     r"^(?:(?:other\s+)?(?:works|books|volumes|novels|writings)\s+by\b"
     r"|also\s+by\b"
-    r"|.{1,40}'s\s+(?:books|works|novels|writings)\.?\s*$)",
+    r"|.{1,40}'s\s+(?:books|works|novels|writings)\.?\s*$"
+    r"|edited\s+by\b)",
+    re.IGNORECASE,
+)
+# Business entity headings: publisher/printer names containing legal suffixes.
+_BUSINESS_ENTITY_HEADING_RE = re.compile(
+    r"(?:(?:&|and)\s+co\b|\bco\.\b|\bltd\b|\binc\b|\bsons\b"
+    r"|\bpress\b|\bprinters?\b|\bpublications?\b)",
     re.IGNORECASE,
 )
 _FRONT_MATTER_ATTRIBUTION_HEADING_RE = re.compile(
@@ -234,6 +241,12 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
         return True
     if _DATE_ONLY_HEADING_RE.fullmatch(text):
         return True
+    if (
+        _BUSINESS_ENTITY_HEADING_RE.search(text)
+        and not _heading_keyword(text)
+        and len(text.split()) <= 8
+    ):
+        return True
     return _NON_STRUCTURAL_HEADING_RE.match(text) is not None
 
 
@@ -345,7 +358,11 @@ def _next_heading_is_subtitle(heading_text: str) -> bool:
         return False
     # Headings starting with "NOTE" / "A NOTE" / "NOTES" are editorial
     # apparatus, not chapter subtitles.
-    return not _NOTE_APPARATUS_HEADING_RE.match(heading_text)
+    if _NOTE_APPARATUS_HEADING_RE.match(heading_text):
+        return False
+    if _BUSINESS_ENTITY_HEADING_RE.search(heading_text) and len(heading_text.split()) <= 8:
+        return False
+    return True
 
 
 def _normalize_heading_subtitle(heading_text: str) -> str:
