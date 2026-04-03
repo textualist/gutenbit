@@ -52,7 +52,7 @@ from gutenbit.html_chunker._sections import (
 # ---------------------------------------------------------------------------
 
 HTML_PARSER_BACKEND = "lxml"
-CHUNKER_VERSION = 35
+CHUNKER_VERSION = 36
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +150,9 @@ def chunk_html(html: str) -> list[Chunk]:
     # Flatten title wrappers and equalise orphan gaps *before* subtitle
     # merging so that level changes from flattening are visible to the
     # subtitle pass (e.g. note-apparatus headings at the correct level).
+    # Strip leading title-page clusters.  Runs *after* rank nesting so the
+    # children-depth guard sees rank-adjusted levels, and *before* flatten
+    # so that removed title wrappers don't confuse the flatten heuristic.
     sections = _strip_leading_title_page_sections(sections, doc_index=doc_index)
     sections = _flatten_single_work_title_wrapper(sections)
     # Re-run keyword nesting after title-wrapper flattening: when a single

@@ -3372,6 +3372,70 @@ def test_terminal_marker_suppressed_entirely():
     assert "THE END" not in heading_texts
 
 
+def test_date_only_headings_suppressed():
+    """Bare date headings (years, month+year, year ranges) are not structural."""
+    html = _make_html("""
+    <h2>VENICE</h2>
+    <p>A city of canals.</p>
+    <h3>1882.</h3>
+    <h2>THE GRAND CANAL</h2>
+    <p>The main waterway.</p>
+    <h3>1900-1909.</h3>
+    <h2>ROMAN RIDES</h2>
+    <p>On horseback.</p>
+    <h3>August 1892.</h3>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "VENICE" in heading_texts
+    assert "THE GRAND CANAL" in heading_texts
+    assert "ROMAN RIDES" in heading_texts
+    assert "1882." not in heading_texts
+    assert "1900-1909." not in heading_texts
+    assert "August 1892." not in heading_texts
+
+
+def test_publisher_ad_heading_suppressed():
+    """'WORKS BY AUTHOR' and 'Author's Books' headings are back-matter ads."""
+    html = _make_html("""
+    <h2>CHAPTER I</h2>
+    <p>First chapter.</p>
+    <h2>CHAPTER II</h2>
+    <p>Second chapter.</p>
+    <h2>WORKS BY HENRY JAMES.</h2>
+    <p>The Ambassadors, The Golden Bowl, etc.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "CHAPTER I" in heading_texts
+    assert "CHAPTER II" in heading_texts
+    assert "WORKS BY HENRY JAMES." not in heading_texts
+
+
+def test_strip_leading_title_page_cluster():
+    """Title-like headings before the first structural heading are stripped."""
+    html = _make_html("""
+    <h1>THE GREAT NOVEL</h1>
+    <h3>JOHN Q. AUTHOR</h3>
+    <h2>CHAPTER I</h2>
+    <p>First chapter content.</p>
+    <h2>CHAPTER II</h2>
+    <p>Second chapter content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "THE GREAT NOVEL" not in heading_texts
+    assert "JOHN Q. AUTHOR" not in heading_texts
+    assert "CHAPTER I" in heading_texts
+    assert "CHAPTER II" in heading_texts
+
+
 def test_anchorless_act_headings_refined_between_scene_toc_entries():
     """When the TOC links scenes directly (skipping acts) and the ACT h2
     headings have no anchor IDs, refinement should still insert them as
