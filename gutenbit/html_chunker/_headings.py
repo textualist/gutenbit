@@ -81,13 +81,24 @@ _EMBEDDED_ORDINAL_KEYWORD_RE = re.compile(
 )
 _PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
 _NON_STRUCTURAL_HEADING_RE = re.compile(
-    r"^(?:notes|footnotes?|endnotes?|transcriber's note|transcribers note|"
-    r"editor's note|editors note|finis)\b",
+    r"^(?:notes|footnotes?|endnotes?|"
+    r"transcriber'?s?\s+notes?|"
+    r"editor'?s?\s+notes?|"
+    r"index)\b",
     re.IGNORECASE,
 )
 # Terminal markers that should never become standalone sections.
 _TERMINAL_NONSTRUCTURAL_RE = re.compile(
     r"^(?:the\s+end|finis)\.?\s*$",
+    re.IGNORECASE,
+)
+# Bare date headings: standalone years ("1882.", "1917") or month+year
+# ("August 1892.") that are composition-date annotations, not structure.
+_DATE_ONLY_HEADING_RE = re.compile(
+    r"^(?:\d{4}"
+    r"|(?:january|february|march|april|may|june|july|august"
+    r"|september|october|november|december)\s+\d{4})"
+    r"[.\-\s]*$",
     re.IGNORECASE,
 )
 _FRONT_MATTER_ATTRIBUTION_RE = re.compile(
@@ -225,6 +236,8 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
     if _TERMINAL_NONSTRUCTURAL_RE.match(text):
         return True
     if _VERSE_REFERENCE_HEADING_RE.match(text):
+        return True
+    if _DATE_ONLY_HEADING_RE.fullmatch(text):
         return True
     return _NON_STRUCTURAL_HEADING_RE.match(text) is not None
 

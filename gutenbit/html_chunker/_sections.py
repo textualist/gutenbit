@@ -109,7 +109,8 @@ _MIN_MAJORITY_RATIO = 3
 # Tail-boundary pattern: only clearly apparatus headings, not ambiguous
 # singular "NOTE" which can be a narrative epilogue (e.g. Dracula).
 _TAIL_BOUNDARY_HEADING_RE = re.compile(
-    r"^(?:footnotes?|endnotes?|notes\b|transcriber'?s?\s+note|editor'?s?\s+note)",
+    r"^(?:footnotes?|endnotes?|notes\b|transcriber'?s?\s+notes?|editor'?s?\s+notes?"
+    r"|index)\b",
     re.IGNORECASE,
 )
 _TAIL_SECTION_HEADING_RE = re.compile(
