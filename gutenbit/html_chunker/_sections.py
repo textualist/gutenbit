@@ -926,6 +926,62 @@ def _collapse_degenerate_title_block(
     return [sections[-1]]
 
 
+def _strip_leading_title_page_sections(
+    sections: list[_Section],
+    *,
+    doc_index: _DocumentIndex,
+) -> list[_Section]:
+    """Drop title-like sections at the start that precede all real structure.
+
+    A leading prefix of sections where each is ``_is_title_like_heading`` and
+    has no structural keyword or front-matter keyword is a title-page cluster.
+    Drop it when no content paragraphs exist between the cluster and the first
+    structural section (prevents false positives on legitimate title headings
+    with body text like *The Metamorphosis*).
+    """
+    if len(sections) < 2:
+        return sections
+
+    # Find the first section with a structural or front-matter keyword.
+    first_real = 0
+    for idx, section in enumerate(sections):
+        if _heading_keyword(section.heading_text):
+            first_real = idx
+            break
+        if _FALLBACK_START_HEADING_RE.match(section.heading_text):
+            first_real = idx
+            break
+        if not _is_title_like_heading(section.heading_text):
+            first_real = idx
+            break
+        # Keep TOC-anchored sections — they were in the source TOC.
+        if section.anchor_id:
+            first_real = idx
+            break
+        # Keep title-like sections that have children at a deeper level —
+        # they are structural containers (e.g. "OUR PARISH" nesting chapters).
+        if idx + 1 < len(sections) and sections[idx + 1].level > section.level:
+            first_real = idx
+            break
+    else:
+        return sections  # every section is title-like — leave to _collapse_degenerate
+
+    if first_real == 0:
+        return sections  # nothing to strip
+
+    # Check that no content paragraphs exist in the title-page zone.
+    first_pos = _tag_position(sections[0].body_anchor, doc_index.tag_positions)
+    real_pos = _tag_position(sections[first_real].body_anchor, doc_index.tag_positions)
+    if first_pos is None or real_pos is None:
+        return sections
+    lo = bisect_right(doc_index.paragraph_positions, first_pos)
+    hi = bisect_left(doc_index.paragraph_positions, real_pos)
+    if lo < hi:
+        return sections  # content exists in the title zone — keep all
+
+    return sections[first_real:]
+
+
 # ---------------------------------------------------------------------------
 # TOC refinement
 # ---------------------------------------------------------------------------

@@ -1055,7 +1055,7 @@ def test_heading_scan_keeps_part_headings_separate_from_numbered_child_sections(
     assert headings[4].div2 == "22 Earlshall"
 
 
-def test_heading_scan_keeps_leading_title_page_headings_and_skips_attributions():
+def test_heading_scan_strips_title_page_noise_and_keeps_real_structure():
     html = _make_html("""
     <h3>THE MODERN LIBRARY</h3>
     <h4>OF THE WORLD'S BEST BOOKS</h4>
@@ -1074,15 +1074,15 @@ def test_heading_scan_keeps_leading_title_page_headings_and_skips_attributions()
     headings = [c for c in chunks if c.kind == "heading"]
     heading_texts = [h.content for h in headings]
 
-    assert heading_texts[:5] == [
-        "THE MODERN LIBRARY",
-        "CANDIDE BY VOLTAIRE",
-        "INTRODUCTION",
-        "CANDIDE",
-        "I",
-    ]
+    # Publisher series titles are title-page noise — stripped.
+    assert "THE MODERN LIBRARY" not in heading_texts
+    assert "CANDIDE BY VOLTAIRE" not in heading_texts
     assert "INTRODUCTION BY PHILIP LITTELL" not in heading_texts
     assert "BONI AND LIVERIGHT, INC. PUBLISHERS NEW YORK" not in heading_texts
+    # Real structural headings are preserved.
+    assert "INTRODUCTION" in heading_texts
+    assert "CANDIDE" in heading_texts
+    assert "I" in heading_texts
 
 
 def test_heading_scan_starts_at_front_matter_without_immediate_title_repeat():
