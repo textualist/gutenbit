@@ -91,10 +91,10 @@ _NON_STRUCTURAL_HEADING_RE = re.compile(
 # Bare date headings: standalone years ("1882.", "1917") or month+year
 # ("August 1892.") that are composition-date annotations, not structure.
 _DATE_ONLY_HEADING_RE = re.compile(
-    r"^(?:\d{4}(?:\s*[-–]\s*\d{4})?"
+    r"^\{?(?:\d{4}(?:\s*[-–]\s*\d{4})?"
     r"|(?:january|february|march|april|may|june|july|august"
     r"|september|october|november|december)\s+\d{4})"
-    r"[.\-–\s]*$",
+    r"[.\-–\s}]*$",
     re.IGNORECASE,
 )
 _FRONT_MATTER_ATTRIBUTION_RE = re.compile(
