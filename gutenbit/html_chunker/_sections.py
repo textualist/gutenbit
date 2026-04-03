@@ -17,6 +17,7 @@ from gutenbit.html_chunker._common import (
     _NUMERIC_LINK_TEXT_RE,
     _PLAY_HEADING_PARAGRAPH_RE,
     _STANDALONE_STRUCTURAL_RE,
+    _TERMINAL_MARKER_RE,
     _clean_heading_text,
     _extract_heading_text,
     _heading_tag_rank,
@@ -80,10 +81,6 @@ from gutenbit.html_chunker._toc import (
 # ---------------------------------------------------------------------------
 
 _STANDALONE_BYLINE_RE = re.compile(r"^by\.?$", re.IGNORECASE)
-_TERMINAL_MARKER_RE = re.compile(
-    r"^(?:the\s+end|finis)\.?$",
-    re.IGNORECASE,
-)
 
 # ---------------------------------------------------------------------------
 # Thresholds for _merge_chapter_description_paragraphs
@@ -894,6 +891,22 @@ def _parse_heading_sections(
     return _respect_heading_rank_nesting(sections, infer_from_rank=True)
 
 
+def _has_paragraphs_between(
+    section_a: _Section,
+    section_b: _Section,
+    *,
+    doc_index: _DocumentIndex,
+) -> bool:
+    """Return True if any indexed paragraphs exist between two sections."""
+    pos_a = _tag_position(section_a.body_anchor, doc_index.tag_positions)
+    pos_b = _tag_position(section_b.body_anchor, doc_index.tag_positions)
+    if pos_a is None or pos_b is None:
+        return True  # assume content exists when positions are unknown
+    lo = bisect_right(doc_index.paragraph_positions, pos_a)
+    hi = bisect_left(doc_index.paragraph_positions, pos_b)
+    return lo < hi
+
+
 def _collapse_degenerate_title_block(
     sections: list[_Section],
     *,
@@ -908,22 +921,32 @@ def _collapse_degenerate_title_block(
     """
     if len(sections) < 2:
         return sections
-    # Every section except the last must be a pure title-like heading.
     if not all(
         _is_title_like_heading(s.heading_text)
         and not _FALLBACK_START_HEADING_RE.match(s.heading_text)
         for s in sections[:-1]
     ):
         return sections
-    first_pos = _tag_position(sections[0].body_anchor, doc_index.tag_positions)
-    last_pos = _tag_position(sections[-1].body_anchor, doc_index.tag_positions)
-    if first_pos is None or last_pos is None:
+    if _has_paragraphs_between(sections[0], sections[-1], doc_index=doc_index):
         return sections
-    lo = bisect_right(doc_index.paragraph_positions, first_pos)
-    hi = bisect_left(doc_index.paragraph_positions, last_pos)
-    if lo < hi:
-        return sections  # content exists before last section
     return [sections[-1]]
+
+
+def _is_title_page_candidate(section: _Section, next_section: _Section | None) -> bool:
+    """Return True if *section* looks like a title-page heading to strip."""
+    if _heading_keyword(section.heading_text):
+        return False
+    if _FALLBACK_START_HEADING_RE.match(section.heading_text):
+        return False
+    if not _is_title_like_heading(section.heading_text):
+        return False
+    if section.anchor_id:
+        return False
+    # Title-like sections with children at a deeper level are structural
+    # containers (e.g. "OUR PARISH" nesting chapters), not title pages.
+    if next_section is not None and next_section.level > section.level:
+        return False
+    return True
 
 
 def _strip_leading_title_page_sections(
@@ -942,42 +965,21 @@ def _strip_leading_title_page_sections(
     if len(sections) < 2:
         return sections
 
-    # Find the first section with a structural or front-matter keyword.
-    first_real = 0
-    for idx, section in enumerate(sections):
-        if _heading_keyword(section.heading_text):
-            first_real = idx
-            break
-        if _FALLBACK_START_HEADING_RE.match(section.heading_text):
-            first_real = idx
-            break
-        if not _is_title_like_heading(section.heading_text):
-            first_real = idx
-            break
-        # Keep TOC-anchored sections — they were in the source TOC.
-        if section.anchor_id:
-            first_real = idx
-            break
-        # Keep title-like sections that have children at a deeper level —
-        # they are structural containers (e.g. "OUR PARISH" nesting chapters).
-        if idx + 1 < len(sections) and sections[idx + 1].level > section.level:
-            first_real = idx
-            break
-    else:
-        return sections  # every section is title-like — leave to _collapse_degenerate
-
-    if first_real == 0:
-        return sections  # nothing to strip
-
-    # Check that no content paragraphs exist in the title-page zone.
-    first_pos = _tag_position(sections[0].body_anchor, doc_index.tag_positions)
-    real_pos = _tag_position(sections[first_real].body_anchor, doc_index.tag_positions)
-    if first_pos is None or real_pos is None:
+    first_real = next(
+        (
+            idx
+            for idx, section in enumerate(sections)
+            if not _is_title_page_candidate(
+                section, sections[idx + 1] if idx + 1 < len(sections) else None
+            )
+        ),
+        None,
+    )
+    if first_real is None or first_real == 0:
         return sections
-    lo = bisect_right(doc_index.paragraph_positions, first_pos)
-    hi = bisect_left(doc_index.paragraph_positions, real_pos)
-    if lo < hi:
-        return sections  # content exists in the title zone — keep all
+
+    if _has_paragraphs_between(sections[0], sections[first_real], doc_index=doc_index):
+        return sections
 
     return sections[first_real:]
 

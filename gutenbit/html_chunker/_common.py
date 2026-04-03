@@ -34,10 +34,17 @@ _FRONT_MATTER_HEADINGS = frozenset(
 _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 _HEADING_TAG_SET = frozenset(_HEADING_TAGS)
 
+# Terminal markers: "THE END", "FINIS" — never structural content.
+_TERMINAL_MARKER_RE = re.compile(
+    r"^(?:the\s+end|finis)\.?\s*$",
+    re.IGNORECASE,
+)
+
 # Decorative image alt-text that should not surface as content.
 _DECORATIVE_ALT_RE = re.compile(
-    r"(?i)^(?:decorative|book\s*cover|ornament|vignette|colophon"
-    r"|tail-?piece|head-?piece|fleuron|printer'?s\s*(?:mark|device))\b"
+    r"^(?:decorative|book\s*cover|ornament|vignette|colophon"
+    r"|tail-?piece|head-?piece|fleuron|printer'?s\s*(?:mark|device))\b",
+    re.IGNORECASE,
 )
 
 # ---------------------------------------------------------------------------
@@ -186,12 +193,7 @@ def _extract_heading_text(heading_el: Tag) -> str:
 
 
 def _collect_text_parts(node: Tag, parts: list[str]) -> None:
-    """Collect text parts from an element, skipping pagenum spans.
-
-    ``<br>`` tags are always replaced with a space to prevent adjacent
-    words from concatenating (e.g. ``Henry James<br>1922`` → ``Henry
-    James 1922``).
-    """
+    """Collect text parts from an element, skipping pagenum spans."""
     for child in node.children:
         if isinstance(child, Comment):
             continue

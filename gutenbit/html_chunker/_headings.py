@@ -21,6 +21,7 @@ from gutenbit.html_chunker._common import (
     _PLAY_HEADING_PARAGRAPH_RE,
     _ROMAN_NUMERAL_RE,
     _STANDALONE_STRUCTURAL_RE,
+    _TERMINAL_MARKER_RE,
     _clean_heading_text,
     _front_matter_heading_key,
     _HeadingRow,
@@ -85,11 +86,6 @@ _NON_STRUCTURAL_HEADING_RE = re.compile(
     r"transcriber'?s?\s+notes?|"
     r"editor'?s?\s+notes?|"
     r"index)\b",
-    re.IGNORECASE,
-)
-# Terminal markers that should never become standalone sections.
-_TERMINAL_NONSTRUCTURAL_RE = re.compile(
-    r"^(?:the\s+end|finis)\.?\s*$",
     re.IGNORECASE,
 )
 # Bare date headings: standalone years ("1882.", "1917") or month+year
@@ -233,7 +229,7 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
         return True
     if _PUBLISHER_AD_HEADING_RE.match(text):
         return True
-    if _TERMINAL_NONSTRUCTURAL_RE.match(text):
+    if _TERMINAL_MARKER_RE.match(text):
         return True
     if _VERSE_REFERENCE_HEADING_RE.match(text):
         return True
