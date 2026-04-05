@@ -31,6 +31,7 @@ from gutenbit.html_chunker._sections import (
     _equalize_orphan_level_gap,
     _find_non_structural_boundary_after,
     _flatten_single_work_title_wrapper,
+    _drop_empty_interior_title_repeats,
     _merge_adjacent_duplicate_sections,
     _merge_chapter_description_paragraphs,
     _merge_chapter_subtitle_sections,
@@ -45,6 +46,7 @@ from gutenbit.html_chunker._sections import (
     _refine_toc_sections,
     _respect_heading_rank_nesting,
     _strip_leading_title_page_sections,
+    _strip_printed_toc_page_runs,
 )
 
 # ---------------------------------------------------------------------------
@@ -52,7 +54,7 @@ from gutenbit.html_chunker._sections import (
 # ---------------------------------------------------------------------------
 
 HTML_PARSER_BACKEND = "lxml"
-CHUNKER_VERSION = 36
+CHUNKER_VERSION = 37
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +141,11 @@ def chunk_html(html: str) -> list[Chunk]:
             chunks.append(Chunk(pos_idx, "", "", "", "", ip.text, "text"))
         return chunks
 
+    # Strip printed-TOC runs (heading tags whose text ends with a trailing
+    # page number) before any hierarchy-normalisation pass runs: those
+    # entries are source-HTML artefacts, not real sections, and they skew
+    # the rank and level statistics used by the nesting passes below.
+    sections = _strip_printed_toc_page_runs(sections)
     sections = _normalize_collection_titles(sections)
     sections = _nest_broad_subdivisions(sections)
     sections = _nest_chapters_under_broad_containers(sections)
@@ -172,6 +179,10 @@ def chunk_html(html: str) -> list[Chunk]:
     sections, skip_paragraph_ids = _merge_chapter_description_paragraphs(sections)
     _skip_tag_ids = frozenset(skip_paragraph_ids) if skip_paragraph_ids else None
     sections = _merge_adjacent_duplicate_sections(sections, doc_index=doc_index)
+    # Drop interior title-like headings that repeat an earlier title and
+    # own no content (decorative "ghost" headings that reappear after the
+    # front matter or nest as empty siblings inside a book container).
+    sections = _drop_empty_interior_title_repeats(sections, doc_index=doc_index)
 
     # Compact levels so the shallowest level maps to div1.
     # e.g. chapter-only books (min_level=2) shift chapters to div1.

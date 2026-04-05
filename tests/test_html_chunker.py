@@ -2833,7 +2833,9 @@ def test_toc_anchor_skips_intervening_title_heading():
     assert "PART TWO" in heading_texts
 
     # Chapters under PART ONE must be nested (div1 = PART ONE).
-    part1_chapters = [h for h in headings if h.div1 == "PART ONE" and h.content.startswith("CHAPTER")]
+    part1_chapters = [
+        h for h in headings if h.div1 == "PART ONE" and h.content.startswith("CHAPTER")
+    ]
     assert len(part1_chapters) == 2
 
 
@@ -3062,16 +3064,10 @@ def test_story_collection_with_numbered_sections():
     assert "JANET'S REPENTANCE" in div1_values
 
     # Sections nested under their stories.
-    amos_sections = [
-        h for h in headings
-        if "AMOS BARTON" in h.div1 and h.div2
-    ]
+    amos_sections = [h for h in headings if "AMOS BARTON" in h.div1 and h.div2]
     assert len(amos_sections) >= 2
 
-    gilfil_sections = [
-        h for h in headings
-        if "GILFIL" in h.div1 and h.div2
-    ]
+    gilfil_sections = [h for h in headings if "GILFIL" in h.div1 and h.div2]
     assert len(gilfil_sections) >= 3
 
 
@@ -3558,9 +3554,7 @@ def test_ul_toc_class_links_with_residue_recognised():
     headings = [c for c in chunks if c.kind == "heading"]
     heading_texts = [h.content for h in headings]
 
-    assert "CHAPTER I." in heading_texts, (
-        f"CHAPTER I. missing from headings: {heading_texts}"
-    )
+    assert "CHAPTER I." in heading_texts, f"CHAPTER I. missing from headings: {heading_texts}"
     assert "CHAPTER II." in heading_texts
     assert "CHAPTER III." in heading_texts
 
@@ -3999,3 +3993,196 @@ def test_flat_roman_numeral_chapters():
     assert all(h.div2 == "" for h in headings)
 
 
+# ------------------------------------------------------------------
+# Printed table-of-contents page runs (cf. PG 26659, PG 5117)
+# ------------------------------------------------------------------
+
+
+def test_printed_toc_page_runs_suppressed():
+    """Runs of non-keyword headings ending with trailing page numbers are
+    dropped as printed-TOC artefacts so they don't duplicate the real
+    essay headings that follow.
+
+    Pattern: The Will to Believe (PG 26659) embeds a printed TOC page with
+    headings like "THE WILL TO BELIEVE 1", "THE SENTIMENT OF RATIONALITY 63"
+    before the real essay headings appear without page numbers.
+    """
+    html = _make_html("""
+    <h2>PREFACE.</h2>
+    <p>An introduction to the collected essays.</p>
+    <h2>THE WILL TO BELIEVE 1</h2>
+    <h2>IS LIFE WORTH LIVING? 32</h2>
+    <h2>THE SENTIMENT OF RATIONALITY 63</h2>
+    <h2>REFLEX ACTION AND THEISM 111</h2>
+    <h2>THE WILL TO BELIEVE</h2>
+    <p>When we look at certain facts of human existence.</p>
+    <h2>IS LIFE WORTH LIVING?</h2>
+    <p>When Mr. Mallock's book with this title appeared.</p>
+    <h2>THE SENTIMENT OF RATIONALITY</h2>
+    <p>What is the task which philosophers set themselves to perform.</p>
+    <h2>REFLEX ACTION AND THEISM</h2>
+    <p>Members of the Ministerial Alliance.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    # Printed-TOC entries with trailing page numbers are suppressed.
+    assert "THE WILL TO BELIEVE 1" not in heading_texts
+    assert "IS LIFE WORTH LIVING? 32" not in heading_texts
+    assert "THE SENTIMENT OF RATIONALITY 63" not in heading_texts
+    assert "REFLEX ACTION AND THEISM 111" not in heading_texts
+
+    # Real essay headings survive.
+    assert "PREFACE." in heading_texts
+    assert "THE WILL TO BELIEVE" in heading_texts
+    assert "IS LIFE WORTH LIVING?" in heading_texts
+    assert "THE SENTIMENT OF RATIONALITY" in heading_texts
+    assert "REFLEX ACTION AND THEISM" in heading_texts
+
+
+def test_printed_toc_filter_preserves_isolated_numeric_title():
+    """A single non-keyword heading ending in a number is NOT a printed-TOC
+    entry — the ≥3 run threshold keeps isolated cases intact.
+    """
+    html = _make_html("""
+    <h2>INTRODUCTION</h2>
+    <p>Opening remarks.</p>
+    <h2>ACT 2</h2>
+    <p>The curtain rises on the second act.</p>
+    <h2>EPILOGUE</h2>
+    <p>Closing remarks.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "ACT 2" in heading_texts
+
+
+def test_printed_toc_filter_preserves_chapter_number_run():
+    """A run of CHAPTER 1 / CHAPTER 2 / CHAPTER 3 must not be mistaken for
+    a printed-TOC run — the structural-keyword guard keeps them intact.
+    """
+    html = _make_html("""
+    <h2>CHAPTER 1</h2>
+    <p>The first chapter.</p>
+    <h2>CHAPTER 2</h2>
+    <p>The second chapter.</p>
+    <h2>CHAPTER 3</h2>
+    <p>The third chapter.</p>
+    <h2>CHAPTER 4</h2>
+    <p>The fourth chapter.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts == ["CHAPTER 1", "CHAPTER 2", "CHAPTER 3", "CHAPTER 4"]
+
+
+# ------------------------------------------------------------------
+# Empty interior title repeats (cf. PG 7433, PG 29452, PG 2718)
+# ------------------------------------------------------------------
+
+
+def test_empty_interior_title_repeat_dropped():
+    """A title-like heading that repeats an earlier title and owns no
+    content is dropped as a decorative ghost heading.
+
+    Pattern: The Awkward Age (PG 7433) repeats the work title after the
+    PREFACE, immediately before BOOK FIRST, with no intervening body text.
+    """
+    html = _make_html("""
+    <h1>THE AWKWARD AGE</h1>
+    <h2>PREFACE</h2>
+    <p>Of all the productions long or short.</p>
+    <h1>THE AWKWARD AGE</h1>
+    <h2>BOOK FIRST. LADY JULIA</h2>
+    <p>Save when it happened to rain.</p>
+    <h2>BOOK SECOND. LITTLE AGGIE</h2>
+    <p>Mrs. Brookenham's drawing-room.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    # Only one "THE AWKWARD AGE" survives (the leading title page strip
+    # takes one; the ghost interior repeat is dropped by the new pass).
+    assert heading_texts.count("THE AWKWARD AGE") <= 1
+    assert "PREFACE" in heading_texts
+    assert "BOOK FIRST. LADY JULIA" in heading_texts
+    assert "BOOK SECOND. LITTLE AGGIE" in heading_texts
+
+
+# Anthology series runs (3+ same-text headings with content between each)
+# are already guarded by ``test_three_or_more_same_text_headings_preserved``.
+# ``_drop_empty_interior_title_repeats`` only drops a repeat when
+# ``_has_paragraphs_between`` is False, so that guard doubles as a
+# regression for this pass.
+
+
+# ------------------------------------------------------------------
+# Scope-prefixed front-matter headings (cf. PG 432)
+# ------------------------------------------------------------------
+
+
+def test_volume_scope_prefixed_preface_not_structural_parent():
+    """A short 'VOLUME I PREFACE' heading is a front-matter heading, not a
+    broad structural container that books should nest under.
+
+    Pattern: The Ambassadors Vol I (PG 432) has a ``<h2>Volume I
+    Preface</h2>`` before ``BOOK FIRST``; the scope prefix must not cause
+    subsequent BOOK headings to become children of the preface.
+    """
+    html = _make_html("""
+    <h2><a id="vol1pref"></a>Volume I Preface</h2>
+    <p>In describing my attempt to present the case of Strether.</p>
+    <h2><a id="b1"></a>BOOK FIRST</h2>
+    <h3><a id="b1c1"></a>I</h3>
+    <p>Strether's first question, when he reached the hotel.</p>
+    <h2><a id="b2"></a>BOOK SECOND</h2>
+    <h3><a id="b2c1"></a>I</h3>
+    <p>Those occasions on which Strether was to remember.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    book_first = next(h for h in headings if h.content == "BOOK FIRST")
+    book_second = next(h for h in headings if h.content == "BOOK SECOND")
+
+    # BOOK FIRST / BOOK SECOND are siblings at the broadest level, not
+    # nested under the preface.
+    assert book_first.div1 == "BOOK FIRST"
+    assert book_second.div1 == "BOOK SECOND"
+
+
+# ------------------------------------------------------------------
+# Paragraph-only LECTURE recovery (cf. PG 11984)
+# ------------------------------------------------------------------
+
+
+def test_paragraph_fallback_lecture_headings_recovered():
+    """When no heading tags exist and chapter text is encoded as plain
+    ``<p>`` elements starting with LECTURE [IVX]+, the paragraph-fallback
+    section scanner creates sections from them.
+
+    Pattern: A Pluralistic Universe (PG 11984) has no heading tags on the
+    lecture bodies — only opening paragraphs labelled 'LECTURE I',
+    'LECTURE II', etc.
+    """
+    html = _make_html("""
+    <p>LECTURE I. THE TYPES OF PHILOSOPHIC THINKING.</p>
+    <p>As these lectures are meant to be public.</p>
+    <p>LECTURE II. MONISTIC IDEALISM.</p>
+    <p>Let me recall to you the programme which I indicated.</p>
+    <p>LECTURE III. HEGEL AND HIS METHOD.</p>
+    <p>In my last lecture I gave a miserably scanty outline.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert any(text.startswith("LECTURE I") for text in heading_texts)
+    assert any(text.startswith("LECTURE II") for text in heading_texts)
+    assert any(text.startswith("LECTURE III") for text in heading_texts)

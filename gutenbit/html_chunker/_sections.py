@@ -130,6 +130,23 @@ _REFINEMENT_STOP_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Trailing isolated page number on a heading (e.g. "THE WILL TO BELIEVE 1").
+# Matches a space-separated bare integer at the end of the heading text.
+# Used to detect printed-TOC entries that leak into the heading sequence.
+_TRAILING_PAGE_NUMBER_RE = re.compile(r"\s+\d{1,4}\s*$")
+
+# Minimum length for a printed-TOC run before it is suppressed.  Three entries
+# keeps the filter far from real chapter titles that happen to end with a
+# number (e.g. a standalone "ACT 2" or "HENRY V, PART 2").
+_PRINTED_TOC_RUN_MIN = 3
+
+# Minimum word count (excluding the trailing number) required for a heading
+# to be treated as a printed-TOC entry.  Printed-TOC rows for essay
+# collections are multi-word titles like "THE WILL TO BELIEVE" or "THE
+# SENTIMENT OF RATIONALITY"; shorter forms like "Letter 1" or "Scene 2"
+# are bare enumeration labels that must not be suppressed.
+_PRINTED_TOC_MIN_BODY_WORDS = 3
+
 # ---------------------------------------------------------------------------
 # TOC parsing
 # ---------------------------------------------------------------------------
@@ -194,9 +211,7 @@ def _parse_toc_sections(
                 )
                 if candidate is None:
                     break
-                candidate_text = _clean_heading_text(
-                    _extract_heading_text(candidate)
-                )
+                candidate_text = _clean_heading_text(_extract_heading_text(candidate))
                 if candidate_text and _toc_entry_matches_heading(link_text, candidate_text):
                     heading_el = candidate
                     break
@@ -262,8 +277,7 @@ def _parse_toc_sections(
             apparatus_rank = section.heading_rank
             if apparatus_rank is not None:
                 has_higher_rank_after = any(
-                    s.heading_rank is not None
-                    and s.heading_rank < apparatus_rank
+                    s.heading_rank is not None and s.heading_rank < apparatus_rank
                     for s in sections[trim_idx + 1 :]
                 )
             else:
@@ -456,6 +470,103 @@ def _merge_adjacent_duplicate_sections(
             continue
         merged.append(section)
     return merged
+
+
+def _strip_printed_toc_page_runs(sections: list[_Section]) -> list[_Section]:
+    """Drop runs of non-keyword headings that end with a trailing page number.
+
+    Some Gutenberg editions embed a printed table-of-contents page as
+    heading tags whose text ends with an isolated page number (e.g.
+    ``<h2>THE WILL TO BELIEVE 1</h2>``, ``<h2>THE SENTIMENT OF
+    RATIONALITY 63</h2>``). These printed-TOC entries leak into the section
+    list and duplicate the real essay headings that appear later.
+
+    A run of at least :data:`_PRINTED_TOC_RUN_MIN` consecutive non-keyword
+    headings with trailing page numbers is treated as a printed TOC and
+    dropped.  Requiring ≥3 entries keeps the filter from touching isolated
+    chapter titles that end in a number (e.g. a single ``ACT 2`` heading);
+    requiring no structural keyword keeps it off runs like
+    ``CHAPTER 1 / CHAPTER 2 / CHAPTER 3``.
+    """
+    if len(sections) < _PRINTED_TOC_RUN_MIN:
+        return sections
+
+    def _looks_printed_toc(section: _Section) -> bool:
+        if _heading_keyword(section.heading_text):
+            return False
+        if _TRAILING_PAGE_NUMBER_RE.search(section.heading_text) is None:
+            return False
+        # Require the text before the trailing number to have enough words
+        # to look like an essay title; bare enumeration labels like
+        # "Letter 1" / "Scene 2" must survive.
+        body = _TRAILING_PAGE_NUMBER_RE.sub("", section.heading_text).strip()
+        return len(body.split()) >= _PRINTED_TOC_MIN_BODY_WORDS
+
+    drop = [False] * len(sections)
+    i = 0
+    while i < len(sections):
+        if not _looks_printed_toc(sections[i]):
+            i += 1
+            continue
+        j = i + 1
+        while j < len(sections) and _looks_printed_toc(sections[j]):
+            j += 1
+        if j - i >= _PRINTED_TOC_RUN_MIN:
+            for k in range(i, j):
+                drop[k] = True
+        i = j
+
+    if not any(drop):
+        return sections
+    return [section for section, dropped in zip(sections, drop, strict=True) if not dropped]
+
+
+def _drop_empty_interior_title_repeats(
+    sections: list[_Section],
+    *,
+    doc_index: _DocumentIndex,
+) -> list[_Section]:
+    """Drop interior title-like headings that duplicate an earlier title and own no content.
+
+    Some editions repeat the work title as a decorative heading *after* the
+    front matter (e.g. between the preface and ``BOOK FIRST``, or nested as
+    an empty sibling inside a book container).  Those ghost headings add
+    empty TOC entries with no content beneath them.
+
+    A repeat is dropped when:
+
+    1. Its text matches an earlier kept section's text (case-insensitive,
+       punctuation-insensitive).
+    2. No body paragraphs appear between it and the next section — i.e. it
+       owns no content of its own.
+    3. It is title-like (no structural keyword and not front/back matter),
+       so deliberate ``PART I`` / ``BOOK I`` containers are unaffected.
+
+    Deliberate anthology repetitions like *Twice-Told Tales* keep their
+    copies because each one introduces body paragraphs of the next tale.
+    """
+    if len(sections) < 2:
+        return sections
+
+    seen_keys: set[str] = set()
+    keep = [True] * len(sections)
+    for idx, section in enumerate(sections):
+        key = _heading_key(section.heading_text)
+        if not _is_title_like_heading(section.heading_text):
+            seen_keys.add(key)
+            continue
+        if key not in seen_keys:
+            seen_keys.add(key)
+            continue
+        if idx + 1 >= len(sections):
+            continue
+        if _has_paragraphs_between(section, sections[idx + 1], doc_index=doc_index):
+            continue
+        keep[idx] = False
+
+    if all(keep):
+        return sections
+    return [section for section, kept in zip(sections, keep, strict=True) if kept]
 
 
 def _merge_chapter_subtitle_sections(
@@ -1759,7 +1870,7 @@ def _should_scan_paragraph_heading_rows(
 # a number or Roman numeral — indicating a chapter/section heading encoded
 # as a plain <p>, not an <h1>–<h6>.
 _PARAGRAPH_SECTION_RE = re.compile(
-    r"^(?:CHAPTER|SECTION|BOOK|PART|VOLUME)\s+[IVXLCDM0-9]+\b",
+    r"^(?:CHAPTER|SECTION|BOOK|PART|VOLUME|LECTURE)\s+[IVXLCDM0-9]+\b",
     re.IGNORECASE,
 )
 

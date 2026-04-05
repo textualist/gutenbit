@@ -140,6 +140,17 @@ _FRONT_MATTER_PREFIX_RE = re.compile(
     rf"^(?:{_FRONT_MATTER_KEYWORD_ALT})\b",
     re.IGNORECASE,
 )
+# Same keywords as whole-word matches anywhere in a heading.  Used to catch
+# front-matter headings where a scope prefix (e.g. "VOLUME I") precedes the
+# keyword ("VOLUME I PREFACE") so the ``^`` anchor of the prefix regex fails.
+_FRONT_MATTER_WORD_RE = re.compile(
+    rf"\b(?:{_FRONT_MATTER_KEYWORD_ALT})\b",
+    re.IGNORECASE,
+)
+# Word cap for the "keyword anywhere" match.  Keeps the check off long
+# narrative titles that happen to contain a front-matter word (e.g.
+# "A Preface to the Notes on the Text of ...").
+_FRONT_MATTER_WORD_MAX_WORDS = 5
 _STANDALONE_FRONT_MATTER_RE = re.compile(
     rf"^(?:{_FRONT_MATTER_KEYWORD_ALT}|AUTHOR'?S?\s*NOTE|"
     r"BIOGRAPHICAL\s+NOTICE|NOTE\s+ON\s+THE\s+TEXT)\.?\s*$",
@@ -549,14 +560,23 @@ def _is_standalone_front_matter_heading(heading_text: str) -> bool:
 def _is_front_matter_heading(heading_text: str) -> bool:
     """Return True for any front/back-matter heading, standalone or with trailer.
 
-    Matches both bare ``PREFACE`` and ``PREFACE TO THE FIRST VOLUME``.
+    Matches bare ``PREFACE``, ``PREFACE TO THE FIRST VOLUME``, and scope-
+    prefixed forms like ``VOLUME I PREFACE`` where a BROAD-keyword scope
+    precedes the front-matter keyword.  The scope-prefixed form is only
+    recognised for short headings (≤ :data:`_FRONT_MATTER_WORD_MAX_WORDS`
+    words) to avoid matching long narrative titles that happen to contain
+    a front-matter word.
+
     Use this when the heading should be excluded from structural container
     roles (e.g. nesting chapters under it).
     """
-    return (
-        _STANDALONE_FRONT_MATTER_RE.match(heading_text) is not None
-        or _FRONT_MATTER_PREFIX_RE.match(heading_text) is not None
-    )
+    if _STANDALONE_FRONT_MATTER_RE.match(heading_text) is not None:
+        return True
+    if _FRONT_MATTER_PREFIX_RE.match(heading_text) is not None:
+        return True
+    if len(heading_text.split()) <= _FRONT_MATTER_WORD_MAX_WORDS:
+        return _FRONT_MATTER_WORD_RE.search(heading_text) is not None
+    return False
 
 
 def _is_bare_keyword_heading(heading_text: str, keyword: str | None = None) -> bool:
