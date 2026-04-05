@@ -3384,6 +3384,9 @@ def test_date_only_headings_suppressed():
     <h2>ROMAN RIDES</h2>
     <p>On horseback.</p>
     <h3>August 1892.</h3>
+    <h2>ITALY REVISITED</h2>
+    <p>Return visit.</p>
+    <h3>{1899.}</h3>
     """)
     chunks = chunk_html(html)
     headings = [c for c in chunks if c.kind == "heading"]
@@ -3392,9 +3395,11 @@ def test_date_only_headings_suppressed():
     assert "VENICE" in heading_texts
     assert "THE GRAND CANAL" in heading_texts
     assert "ROMAN RIDES" in heading_texts
+    assert "ITALY REVISITED" in heading_texts
     assert "1882." not in heading_texts
     assert "1900-1909." not in heading_texts
     assert "August 1892." not in heading_texts
+    assert "{1899.}" not in heading_texts
 
 
 def test_publisher_ad_heading_suppressed():
@@ -3414,6 +3419,53 @@ def test_publisher_ad_heading_suppressed():
     assert "CHAPTER I" in heading_texts
     assert "CHAPTER II" in heading_texts
     assert "WORKS BY HENRY JAMES." not in heading_texts
+
+
+def test_business_entity_headings_suppressed():
+    """Short publisher/printer headings with legal suffixes are non-structural."""
+    html = _make_html("""
+    <h2>CHAPTER I</h2>
+    <p>First chapter content.</p>
+    <h2>CHAPTER II</h2>
+    <p>Second chapter content.</p>
+    <h3>MACMILLAN AND CO., LONDON.</h3>
+    <h3>CHARLES SCRIBNER'S SONS</h3>
+    <h3>The Riverside Press</h3>
+    <h3>MACMILLAN AND CO.'S PUBLICATIONS.</h3>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "CHAPTER I" in heading_texts
+    assert "CHAPTER II" in heading_texts
+    assert "MACMILLAN AND CO., LONDON." not in heading_texts
+    assert "CHARLES SCRIBNER'S SONS" not in heading_texts
+    assert "The Riverside Press" not in heading_texts
+    assert "MACMILLAN AND CO.'S PUBLICATIONS." not in heading_texts
+
+
+def test_business_entity_filter_preserves_narrative_titles():
+    """Narrative titles containing business-suffix words must not be suppressed.
+
+    Regression guard: 'THE PUBLISHER TO THE READER' (Gulliver's Travels)
+    contains the word 'publisher' but is a real structural heading.
+    """
+    html = _make_html("""
+    <h2>THE PUBLISHER TO THE READER.</h2>
+    <p>Preface text.</p>
+    <h2>A LETTER FROM CAPTAIN GULLIVER TO HIS COUSIN SYMPSON.</h2>
+    <p>Letter text.</p>
+    <h2>CHAPTER I.</h2>
+    <p>First chapter.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "THE PUBLISHER TO THE READER." in heading_texts
+    assert "A LETTER FROM CAPTAIN GULLIVER TO HIS COUSIN SYMPSON." in heading_texts
+    assert "CHAPTER I." in heading_texts
 
 
 def test_strip_leading_title_page_cluster():
