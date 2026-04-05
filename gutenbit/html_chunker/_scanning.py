@@ -106,6 +106,7 @@ def _scan_document(soup: BeautifulSoup) -> _DocumentIndex:
     blocks: list[Tag] = []
     paragraphs_with_pagenum: set[int] = set()
     paragraphs_with_img: set[int] = set()
+    paragraphs_with_br: set[int] = set()
     paragraphs_with_pginternal: set[int] = set()
     start_marker_parent: Tag | None = None
     end_marker_parent: Tag | None = None
@@ -161,6 +162,8 @@ def _scan_document(soup: BeautifulSoup) -> _DocumentIndex:
                         paragraphs_with_pagenum.add(id(current_block))
                     elif name == "img":
                         paragraphs_with_img.add(id(current_block))
+                    elif name == "br":
+                        paragraphs_with_br.add(id(current_block))
                     elif (
                         name == "a"
                         and "pginternal" in (node.get("class") or [])
@@ -254,7 +257,10 @@ def _scan_document(soup: BeautifulSoup) -> _DocumentIndex:
         else:
             has_pagenum = id(block) in paragraphs_with_pagenum
             has_img = id(block) in paragraphs_with_img
-            text = _extract_paragraph_text(block, has_pagenum=has_pagenum, has_img=has_img)
+            has_br = id(block) in paragraphs_with_br
+            text = _extract_paragraph_text(
+                block, has_pagenum=has_pagenum, has_img=has_img, has_br=has_br
+            )
             is_toc = _is_toc_paragraph(
                 block, has_pginternal=id(block) in paragraphs_with_pginternal
             )
@@ -336,26 +342,29 @@ def _extract_paragraph_text(
     *,
     has_pagenum: bool | None = None,
     has_img: bool | None = None,
+    has_br: bool | None = None,
 ) -> str:
     """Get clean paragraph text, preserving drop-cap img ``alt`` text.
 
     Strips ``<span class="pagenum">`` page-number markers and replaces
     ``<img>`` tags with their ``alt`` text.
 
-    When *has_pagenum* / *has_img* are provided, skip per-paragraph find()
-    calls (already pre-indexed by the caller).
+    When *has_pagenum* / *has_img* / *has_br* are provided, skip
+    per-paragraph find() calls (already pre-indexed by the caller).
     """
-    # Fast path: most paragraphs have no pagenum spans or images.
+    # Fast path: most paragraphs have no pagenum spans, images, or <br>.
     if has_pagenum is None:
         has_pagenum = paragraph.find("span", class_="pagenum") is not None
     if has_img is None:
         has_img = paragraph.find("img") is not None
+    if has_br is None:
+        has_br = paragraph.find("br") is not None
 
-    if not has_pagenum and not has_img:
+    if not has_pagenum and not has_img and not has_br:
         return " ".join(paragraph.get_text().split()).strip()
 
     parts: list[str] = []
-    _collect_text_parts(paragraph, parts, replace_br=False)
+    _collect_text_parts(paragraph, parts)
     return " ".join("".join(parts).split()).strip()
 
 

@@ -1055,7 +1055,7 @@ def test_heading_scan_keeps_part_headings_separate_from_numbered_child_sections(
     assert headings[4].div2 == "22 Earlshall"
 
 
-def test_heading_scan_keeps_leading_title_page_headings_and_skips_attributions():
+def test_heading_scan_strips_title_page_noise_and_keeps_real_structure():
     html = _make_html("""
     <h3>THE MODERN LIBRARY</h3>
     <h4>OF THE WORLD'S BEST BOOKS</h4>
@@ -1074,15 +1074,15 @@ def test_heading_scan_keeps_leading_title_page_headings_and_skips_attributions()
     headings = [c for c in chunks if c.kind == "heading"]
     heading_texts = [h.content for h in headings]
 
-    assert heading_texts[:5] == [
-        "THE MODERN LIBRARY",
-        "CANDIDE BY VOLTAIRE",
-        "INTRODUCTION",
-        "CANDIDE",
-        "I",
-    ]
+    # Publisher series titles are title-page noise — stripped.
+    assert "THE MODERN LIBRARY" not in heading_texts
+    assert "CANDIDE BY VOLTAIRE" not in heading_texts
     assert "INTRODUCTION BY PHILIP LITTELL" not in heading_texts
     assert "BONI AND LIVERIGHT, INC. PUBLISHERS NEW YORK" not in heading_texts
+    # Real structural headings are preserved.
+    assert "INTRODUCTION" in heading_texts
+    assert "CANDIDE" in heading_texts
+    assert "I" in heading_texts
 
 
 def test_heading_scan_starts_at_front_matter_without_immediate_title_repeat():
@@ -3341,9 +3341,9 @@ def test_two_same_text_headings_deduplicated():
     assert len(etym) == 1
 
 
-def test_terminal_marker_not_merged_as_subtitle():
-    """'THE END' and 'FINIS' must not be merged as a subtitle of the
-    preceding heading.
+def test_terminal_marker_suppressed_entirely():
+    """'THE END' and 'FINIS' must not appear as sections at all — they are
+    terminal markers, not navigable content.
 
     Pattern: h3 "FINALE." followed by h4 "THE END".
     """
@@ -3368,10 +3368,124 @@ def test_terminal_marker_not_merged_as_subtitle():
     heading_texts = [h.content for h in headings]
 
     assert "FINALE." in heading_texts
-    assert "THE END" in heading_texts
-    # Must NOT be merged into "FINALE. THE END".
-    merged = [h for h in heading_texts if "FINALE" in h and "END" in h]
-    assert merged == []
+    # "THE END" is a terminal marker, not structural content — suppressed.
+    assert "THE END" not in heading_texts
+
+
+def test_date_only_headings_suppressed():
+    """Bare date headings (years, month+year, year ranges) are not structural."""
+    html = _make_html("""
+    <h2>VENICE</h2>
+    <p>A city of canals.</p>
+    <h3>1882.</h3>
+    <h2>THE GRAND CANAL</h2>
+    <p>The main waterway.</p>
+    <h3>1900-1909.</h3>
+    <h2>ROMAN RIDES</h2>
+    <p>On horseback.</p>
+    <h3>August 1892.</h3>
+    <h2>ITALY REVISITED</h2>
+    <p>Return visit.</p>
+    <h3>{1899.}</h3>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "VENICE" in heading_texts
+    assert "THE GRAND CANAL" in heading_texts
+    assert "ROMAN RIDES" in heading_texts
+    assert "ITALY REVISITED" in heading_texts
+    assert "1882." not in heading_texts
+    assert "1900-1909." not in heading_texts
+    assert "August 1892." not in heading_texts
+    assert "{1899.}" not in heading_texts
+
+
+def test_publisher_ad_heading_suppressed():
+    """'WORKS BY AUTHOR' and 'Author's Books' headings are back-matter ads."""
+    html = _make_html("""
+    <h2>CHAPTER I</h2>
+    <p>First chapter.</p>
+    <h2>CHAPTER II</h2>
+    <p>Second chapter.</p>
+    <h2>WORKS BY HENRY JAMES.</h2>
+    <p>The Ambassadors, The Golden Bowl, etc.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "CHAPTER I" in heading_texts
+    assert "CHAPTER II" in heading_texts
+    assert "WORKS BY HENRY JAMES." not in heading_texts
+
+
+def test_business_entity_headings_suppressed():
+    """Short publisher/printer headings with legal suffixes are non-structural."""
+    html = _make_html("""
+    <h2>CHAPTER I</h2>
+    <p>First chapter content.</p>
+    <h2>CHAPTER II</h2>
+    <p>Second chapter content.</p>
+    <h3>MACMILLAN AND CO., LONDON.</h3>
+    <h3>CHARLES SCRIBNER'S SONS</h3>
+    <h3>The Riverside Press</h3>
+    <h3>MACMILLAN AND CO.'S PUBLICATIONS.</h3>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "CHAPTER I" in heading_texts
+    assert "CHAPTER II" in heading_texts
+    assert "MACMILLAN AND CO., LONDON." not in heading_texts
+    assert "CHARLES SCRIBNER'S SONS" not in heading_texts
+    assert "The Riverside Press" not in heading_texts
+    assert "MACMILLAN AND CO.'S PUBLICATIONS." not in heading_texts
+
+
+def test_business_entity_filter_preserves_narrative_titles():
+    """Narrative titles containing business-suffix words must not be suppressed.
+
+    Regression guard: 'THE PUBLISHER TO THE READER' (Gulliver's Travels)
+    contains the word 'publisher' but is a real structural heading.
+    """
+    html = _make_html("""
+    <h2>THE PUBLISHER TO THE READER.</h2>
+    <p>Preface text.</p>
+    <h2>A LETTER FROM CAPTAIN GULLIVER TO HIS COUSIN SYMPSON.</h2>
+    <p>Letter text.</p>
+    <h2>CHAPTER I.</h2>
+    <p>First chapter.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "THE PUBLISHER TO THE READER." in heading_texts
+    assert "A LETTER FROM CAPTAIN GULLIVER TO HIS COUSIN SYMPSON." in heading_texts
+    assert "CHAPTER I." in heading_texts
+
+
+def test_strip_leading_title_page_cluster():
+    """Title-like headings before the first structural heading are stripped."""
+    html = _make_html("""
+    <h1>THE GREAT NOVEL</h1>
+    <h3>JOHN Q. AUTHOR</h3>
+    <h2>CHAPTER I</h2>
+    <p>First chapter content.</p>
+    <h2>CHAPTER II</h2>
+    <p>Second chapter content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert "THE GREAT NOVEL" not in heading_texts
+    assert "JOHN Q. AUTHOR" not in heading_texts
+    assert "CHAPTER I" in heading_texts
+    assert "CHAPTER II" in heading_texts
 
 
 def test_anchorless_act_headings_refined_between_scene_toc_entries():

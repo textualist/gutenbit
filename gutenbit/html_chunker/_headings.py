@@ -21,6 +21,7 @@ from gutenbit.html_chunker._common import (
     _PLAY_HEADING_PARAGRAPH_RE,
     _ROMAN_NUMERAL_RE,
     _STANDALONE_STRUCTURAL_RE,
+    _TERMINAL_MARKER_RE,
     _clean_heading_text,
     _front_matter_heading_key,
     _HeadingRow,
@@ -81,8 +82,18 @@ _EMBEDDED_ORDINAL_KEYWORD_RE = re.compile(
 )
 _PAGE_HEADING_RE = re.compile(r"^(?:page|p\.)\s+\d+\b", re.IGNORECASE)
 _NON_STRUCTURAL_HEADING_RE = re.compile(
-    r"^(?:notes|footnotes?|endnotes?|transcriber's note|transcribers note|"
-    r"editor's note|editors note|finis)\b",
+    r"^(?:notes|footnotes?|endnotes?|"
+    r"transcriber'?s?\s+notes?|"
+    r"editor'?s?\s+notes?)\b",
+    re.IGNORECASE,
+)
+# Bare date headings: standalone years ("1882.", "1917") or month+year
+# ("August 1892.") that are composition-date annotations, not structure.
+_DATE_ONLY_HEADING_RE = re.compile(
+    r"^\{?(?:\d{4}(?:\s*[-–]\s*\d{4})?"
+    r"|(?:january|february|march|april|may|june|july|august"
+    r"|september|october|november|december)\s+\d{4})"
+    r"[.\-–\s}]*$",
     re.IGNORECASE,
 )
 _FRONT_MATTER_ATTRIBUTION_RE = re.compile(
@@ -93,6 +104,29 @@ _PUBLICATION_METADATA_RE = re.compile(
     r"^(?:printed|published|reprinted|first\s+published|originally\s+published)\b",
     re.IGNORECASE,
 )
+# Publisher advertisement headings: "WORKS BY HENRY JAMES", "Henry James's
+# Books", "ALSO BY", "OTHER BOOKS BY", etc.  Editor credits ("Edited by X")
+# are caught separately by _FRONT_MATTER_ATTRIBUTION_RE.
+_PUBLISHER_AD_HEADING_RE = re.compile(
+    r"^(?:(?:other\s+)?(?:works|books|volumes|novels|writings)\s+by\b"
+    r"|also\s+by\b"
+    r"|.{1,40}'s\s+(?:books|works|novels|writings)\.?\s*$)",
+    re.IGNORECASE,
+)
+# Business entity headings: publisher/printer names containing legal suffixes.
+# Uses search() (not match()) because the suffix typically appears at the end
+# of the heading ("MACMILLAN AND CO., LONDON."), not at the start.
+# \bpress\b is anchored to end-of-string to avoid matching "FREEDOM OF THE
+# PRESS" and similar narrative titles.
+_BUSINESS_ENTITY_HEADING_RE = re.compile(
+    r"(?:(?:&|and)\s+co\b|\bco\.\b|\bltd\b|\binc\b|\bsons\b"
+    r"|\bpress\.?\s*$|\bprinters?\b|\bpublications?\b)",
+    re.IGNORECASE,
+)
+# Maximum heading word count for the business entity filter to apply.
+# Prevents false positives on narrative titles that happen to contain a
+# business-suffix word (e.g. "THE PUBLISHER TO THE READER" in Gulliver).
+_BUSINESS_ENTITY_MAX_WORDS = 8
 _FRONT_MATTER_ATTRIBUTION_HEADING_RE = re.compile(
     r"^(?:introduction|preface|foreword|afterword)\s+by\b",
     re.IGNORECASE,
@@ -207,9 +241,33 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
         return True
     if _PUBLICATION_METADATA_RE.match(text):
         return True
+    if _PUBLISHER_AD_HEADING_RE.match(text):
+        return True
+    if _TERMINAL_MARKER_RE.match(text):
+        return True
     if _VERSE_REFERENCE_HEADING_RE.match(text):
         return True
+    if _DATE_ONLY_HEADING_RE.fullmatch(text):
+        return True
+    if _is_business_entity_heading(text):
+        return True
     return _NON_STRUCTURAL_HEADING_RE.match(text) is not None
+
+
+def _is_business_entity_heading(text: str) -> bool:
+    """Return True for short publisher/printer imprint headings.
+
+    Short (≤ _BUSINESS_ENTITY_MAX_WORDS words) non-structural headings
+    containing a legal-suffix keyword ("CO.", "LTD.", "SONS", etc.) —
+    e.g. "MACMILLAN AND CO., LONDON.", "CHARLES SCRIBNER'S SONS".  The
+    structural-keyword guard prevents suppressing real chapter titles
+    that incidentally contain a business-suffix word.
+    """
+    return (
+        _BUSINESS_ENTITY_HEADING_RE.search(text) is not None
+        and not _heading_keyword(text)
+        and len(text.split()) <= _BUSINESS_ENTITY_MAX_WORDS
+    )
 
 
 def _is_title_like_heading(heading_text: str) -> bool:
@@ -320,7 +378,11 @@ def _next_heading_is_subtitle(heading_text: str) -> bool:
         return False
     # Headings starting with "NOTE" / "A NOTE" / "NOTES" are editorial
     # apparatus, not chapter subtitles.
-    return not _NOTE_APPARATUS_HEADING_RE.match(heading_text)
+    if _NOTE_APPARATUS_HEADING_RE.match(heading_text):
+        return False
+    if _is_business_entity_heading(heading_text):
+        return False
+    return True
 
 
 def _normalize_heading_subtitle(heading_text: str) -> str:

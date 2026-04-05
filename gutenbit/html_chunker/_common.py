@@ -34,6 +34,19 @@ _FRONT_MATTER_HEADINGS = frozenset(
 _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 _HEADING_TAG_SET = frozenset(_HEADING_TAGS)
 
+# Terminal markers: "THE END", "FINIS" — never structural content.
+_TERMINAL_MARKER_RE = re.compile(
+    r"^(?:the\s+end|finis)\.?\s*$",
+    re.IGNORECASE,
+)
+
+# Decorative image alt-text that should not surface as content.
+_DECORATIVE_ALT_RE = re.compile(
+    r"^(?:decorative|book\s*cover|ornament|vignette|colophon"
+    r"|tail-?piece|head-?piece|fleuron|printer'?s\s*(?:mark|device))\b",
+    re.IGNORECASE,
+)
+
 # ---------------------------------------------------------------------------
 # Compiled regex patterns (used by multiple modules)
 # ---------------------------------------------------------------------------
@@ -179,13 +192,8 @@ def _extract_heading_text(heading_el: Tag) -> str:
     return ""
 
 
-def _collect_text_parts(node: Tag, parts: list[str], *, replace_br: bool = True) -> None:
-    """Collect text parts from an element, skipping pagenum spans.
-
-    When *replace_br* is True (the default, used for headings), ``<br>`` tags
-    are replaced with a space.  When False (used for paragraphs), ``<br>`` is
-    ignored — whitespace collapsing handles it.
-    """
+def _collect_text_parts(node: Tag, parts: list[str]) -> None:
+    """Collect text parts from an element, skipping pagenum spans."""
     for child in node.children:
         if isinstance(child, Comment):
             continue
@@ -193,8 +201,7 @@ def _collect_text_parts(node: Tag, parts: list[str], *, replace_br: bool = True)
             parts.append(str(child))
         elif isinstance(child, Tag):
             if child.name == "br":
-                if replace_br:
-                    parts.append(" ")
+                parts.append(" ")
             elif child.name == "span" and "pagenum" in {
                 c.lower() for c in (child.get("class") or [])
             }:
@@ -202,10 +209,10 @@ def _collect_text_parts(node: Tag, parts: list[str], *, replace_br: bool = True)
             elif child.name == "img":
                 alt_value = child.get("alt")
                 alt_text = " ".join(str(alt_value or "").split()).strip()
-                if alt_text:
+                if alt_text and not _DECORATIVE_ALT_RE.search(alt_text):
                     parts.append(alt_text)
             else:
-                _collect_text_parts(child, parts, replace_br=replace_br)
+                _collect_text_parts(child, parts)
 
 
 @lru_cache(maxsize=4096)

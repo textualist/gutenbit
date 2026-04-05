@@ -17,6 +17,7 @@ from gutenbit.html_chunker._common import (
     _NUMERIC_LINK_TEXT_RE,
     _PLAY_HEADING_PARAGRAPH_RE,
     _STANDALONE_STRUCTURAL_RE,
+    _TERMINAL_MARKER_RE,
     _clean_heading_text,
     _extract_heading_text,
     _heading_tag_rank,
@@ -80,10 +81,6 @@ from gutenbit.html_chunker._toc import (
 # ---------------------------------------------------------------------------
 
 _STANDALONE_BYLINE_RE = re.compile(r"^by\.?$", re.IGNORECASE)
-_TERMINAL_MARKER_RE = re.compile(
-    r"^(?:the\s+end|finis)\.?$",
-    re.IGNORECASE,
-)
 
 # ---------------------------------------------------------------------------
 # Thresholds for _merge_chapter_description_paragraphs
@@ -109,7 +106,8 @@ _MIN_MAJORITY_RATIO = 3
 # Tail-boundary pattern: only clearly apparatus headings, not ambiguous
 # singular "NOTE" which can be a narrative epilogue (e.g. Dracula).
 _TAIL_BOUNDARY_HEADING_RE = re.compile(
-    r"^(?:footnotes?|endnotes?|notes\b|transcriber'?s?\s+note|editor'?s?\s+note)",
+    r"^(?:footnotes?|endnotes?|notes\b|transcriber'?s?\s+notes?|editor'?s?\s+notes?"
+    r"|index)\b",
     re.IGNORECASE,
 )
 _TAIL_SECTION_HEADING_RE = re.compile(
@@ -893,6 +891,22 @@ def _parse_heading_sections(
     return _respect_heading_rank_nesting(sections, infer_from_rank=True)
 
 
+def _has_paragraphs_between(
+    section_a: _Section,
+    section_b: _Section,
+    *,
+    doc_index: _DocumentIndex,
+) -> bool:
+    """Return True if any indexed paragraphs exist between two sections."""
+    pos_a = _tag_position(section_a.body_anchor, doc_index.tag_positions)
+    pos_b = _tag_position(section_b.body_anchor, doc_index.tag_positions)
+    if pos_a is None or pos_b is None:
+        return True  # assume content exists when positions are unknown
+    lo = bisect_right(doc_index.paragraph_positions, pos_a)
+    hi = bisect_left(doc_index.paragraph_positions, pos_b)
+    return lo < hi
+
+
 def _collapse_degenerate_title_block(
     sections: list[_Section],
     *,
@@ -907,22 +921,67 @@ def _collapse_degenerate_title_block(
     """
     if len(sections) < 2:
         return sections
-    # Every section except the last must be a pure title-like heading.
     if not all(
         _is_title_like_heading(s.heading_text)
         and not _FALLBACK_START_HEADING_RE.match(s.heading_text)
         for s in sections[:-1]
     ):
         return sections
-    first_pos = _tag_position(sections[0].body_anchor, doc_index.tag_positions)
-    last_pos = _tag_position(sections[-1].body_anchor, doc_index.tag_positions)
-    if first_pos is None or last_pos is None:
+    if _has_paragraphs_between(sections[0], sections[-1], doc_index=doc_index):
         return sections
-    lo = bisect_right(doc_index.paragraph_positions, first_pos)
-    hi = bisect_left(doc_index.paragraph_positions, last_pos)
-    if lo < hi:
-        return sections  # content exists before last section
     return [sections[-1]]
+
+
+def _is_title_page_candidate(section: _Section, next_section: _Section | None) -> bool:
+    """Return True if *section* looks like a title-page heading to strip."""
+    if _heading_keyword(section.heading_text):
+        return False
+    if _FALLBACK_START_HEADING_RE.match(section.heading_text):
+        return False
+    if not _is_title_like_heading(section.heading_text):
+        return False
+    if section.anchor_id:
+        return False
+    # Title-like sections with children at a deeper level are structural
+    # containers (e.g. "OUR PARISH" nesting chapters), not title pages.
+    if next_section is not None and next_section.level > section.level:
+        return False
+    return True
+
+
+def _strip_leading_title_page_sections(
+    sections: list[_Section],
+    *,
+    doc_index: _DocumentIndex,
+) -> list[_Section]:
+    """Drop title-like sections at the start that precede all real structure.
+
+    A leading prefix of sections where each is ``_is_title_like_heading`` and
+    has no structural keyword or front-matter keyword is a title-page cluster.
+    Drop it when no content paragraphs exist between the cluster and the first
+    structural section (prevents false positives on legitimate title headings
+    with body text like *The Metamorphosis*).
+    """
+    if len(sections) < 2:
+        return sections
+
+    first_real = next(
+        (
+            idx
+            for idx, section in enumerate(sections)
+            if not _is_title_page_candidate(
+                section, sections[idx + 1] if idx + 1 < len(sections) else None
+            )
+        ),
+        None,
+    )
+    if first_real is None or first_real == 0:
+        return sections
+
+    if _has_paragraphs_between(sections[0], sections[first_real], doc_index=doc_index):
+        return sections
+
+    return sections[first_real:]
 
 
 # ---------------------------------------------------------------------------
@@ -1616,10 +1675,26 @@ def _filter_fallback_heading_rows(heading_rows: list[_HeadingRow]) -> list[_Head
     for idx, row in enumerate(heading_rows):
         if _STANDALONE_BYLINE_RE.fullmatch(row.heading_text.strip()):
             byline_indices.add(idx)
-            if idx + 1 < len(heading_rows) and _is_title_like_heading(
-                heading_rows[idx + 1].heading_text
-            ):
-                byline_indices.add(idx + 1)
+            # Drop the author name and any subsequent title-page metadata
+            # (publisher names, city addresses, dates) that follow the "BY"
+            # heading.  Only extend past the author name into deep-rank (h4+)
+            # title-like headings — shallow-rank headings (h2/h3) may be real
+            # structural content like "BEFORE THE CURTAIN" (Vanity Fair).
+            for j in range(idx + 1, len(heading_rows)):
+                nxt = heading_rows[j]
+                if _heading_keyword(nxt.heading_text):
+                    break
+                if _is_front_matter_heading(nxt.heading_text):
+                    break
+                if nxt.tag.find("a", id=True) is not None:
+                    break
+                if not _is_title_like_heading(nxt.heading_text):
+                    break
+                # First row after "BY" is the author name (any rank);
+                # subsequent rows must be deep-rank (h4+) to be metadata.
+                if j > idx + 1 and nxt.rank < 4:
+                    break
+                byline_indices.add(j)
 
     filtered: list[_HeadingRow] = []
     for idx, row in enumerate(heading_rows):
