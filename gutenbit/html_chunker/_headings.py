@@ -87,6 +87,14 @@ _NON_STRUCTURAL_HEADING_RE = re.compile(
     r"editor'?s?\s+notes?)\b",
     re.IGNORECASE,
 )
+# Page-break continuation markers: "(Continued)", "[Continued]", "—Continued—".
+# These are print-edition artefacts that signal a structural division (BOOK,
+# CHAPTER, etc.) resumes after a physical page break.  They should never
+# surface as standalone sections.  Matches the whole heading text.
+_CONTINUATION_MARKER_RE = re.compile(
+    r"^[\s\(\[\-\u2013\u2014]*continued[\s\)\]\-\u2013\u2014.]*$",
+    re.IGNORECASE,
+)
 # Bare date headings: standalone years ("1882.", "1917") or month+year
 # ("August 1892.") that are composition-date annotations, not structure.
 _DATE_ONLY_HEADING_RE = re.compile(
@@ -261,6 +269,8 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
     if _DATE_ONLY_HEADING_RE.fullmatch(text):
         return True
     if _is_business_entity_heading(text):
+        return True
+    if _CONTINUATION_MARKER_RE.match(text):
         return True
     return _NON_STRUCTURAL_HEADING_RE.match(text) is not None
 

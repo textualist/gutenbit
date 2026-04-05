@@ -147,6 +147,41 @@ _PRINTED_TOC_RUN_MIN = 3
 # are bare enumeration labels that must not be suppressed.
 _PRINTED_TOC_MIN_BODY_WORDS = 3
 
+# Publisher/copyright metadata paragraph patterns used by title-page
+# stripping to determine whether the paragraphs between a leading title
+# heading and the first real section are imprint noise rather than prose.
+# These patterns are intentionally tight: each alternative must anchor to
+# the start or end of the (short) paragraph line.
+_PUBLISHER_METADATA_PARA_RE = re.compile(
+    r"^(?:"
+    r"by\s+[A-Z][^.]*$"  # "BY HENRY JAMES"
+    r"|(?:translated|edited|illustrated|selected)\s+(?:and\s+\w+\s+)?by\b"
+    r"|(?:first\s+|originally\s+)?(?:published|printed|issued|reprinted)\b"
+    r"|copyright\b"
+    r"|all\s+rights\s+reserved\b"
+    r"|printed\s+in\b"
+    r"|\d{4}[.,]?$"  # bare year "1921." or "1921"
+    r"|[\w\s,.-]+\s+\d{4}\.?$"  # "London, 1921" / "LONDON 1921"
+    r"|.{1,60}\b(?:&|and)\s+co\.?(?:,\s*(?:ltd|inc|limited)\.?)?\s*$"
+    r"|.{1,60}\bco\.?,?\s*(?:ltd|inc|limited)\.?\s*$"  # "CO., LIMITED"
+    r"|.{1,60}\b(?:ltd|inc|limited|sons|press|printers?|publishers?)\.?\s*$"
+    r"|(?:volume|vol\.?|part)\s+[IVXLCDM0-9]+\.?\s*$"
+    # Address line: "ST. MARTIN'S STREET, LONDON"
+    r"|[A-Z][\w'.-]*(?:\s+[\w'.-]+){0,4}\s*"
+    r"(?:street|road|avenue|square|place|lane|court|row|boulevard),"
+    r")",
+    re.IGNORECASE,
+)
+
+# Cap on paragraph count between a title heading and the first real
+# section to qualify as a publisher-metadata-only title zone.  Keeps the
+# check off substantive opening content like prologues or framing prose.
+_MAX_TITLE_ZONE_METADATA_PARAS = 8
+
+# Maximum word count per paragraph for the publisher-metadata check.
+# Real prose paragraphs routinely exceed this; imprint lines are short.
+_MAX_METADATA_PARA_WORDS = 12
+
 # ---------------------------------------------------------------------------
 # TOC parsing
 # ---------------------------------------------------------------------------
@@ -1018,6 +1053,40 @@ def _has_paragraphs_between(
     return lo < hi
 
 
+def _paragraphs_between_are_metadata_only(
+    section_a: _Section,
+    section_b: _Section,
+    *,
+    doc_index: _DocumentIndex,
+) -> bool:
+    """Return True when every paragraph between *a* and *b* is imprint metadata.
+
+    Recognises byline, publisher, city/year, copyright, and "VOLUME N" lines
+    that sit on a title page between the book title and the first structural
+    section.  Requires the paragraph count to be small and each paragraph to
+    be short enough that real prose cannot slip through.
+    """
+    pos_a = _tag_position(section_a.body_anchor, doc_index.tag_positions)
+    pos_b = _tag_position(section_b.body_anchor, doc_index.tag_positions)
+    if pos_a is None or pos_b is None:
+        return False
+    lo = bisect_right(doc_index.paragraph_positions, pos_a)
+    hi = bisect_left(doc_index.paragraph_positions, pos_b)
+    if lo >= hi:
+        return False  # no paragraphs — caller handles the empty case
+    if hi - lo > _MAX_TITLE_ZONE_METADATA_PARAS:
+        return False
+    for ip in doc_index.paragraphs[lo:hi]:
+        text = " ".join(ip.text.split()).strip(" .,:;")
+        if not text:
+            continue
+        if len(text.split()) > _MAX_METADATA_PARA_WORDS:
+            return False
+        if _PUBLISHER_METADATA_PARA_RE.match(text) is None:
+            return False
+    return True
+
+
 def _collapse_degenerate_title_block(
     sections: list[_Section],
     *,
@@ -1043,7 +1112,12 @@ def _collapse_degenerate_title_block(
     return [sections[-1]]
 
 
-def _is_title_page_candidate(section: _Section, next_section: _Section | None) -> bool:
+def _is_title_page_candidate(
+    section: _Section,
+    next_section: _Section | None,
+    *,
+    skip_children_guard: bool = False,
+) -> bool:
     """Return True if *section* looks like a title-page heading to strip."""
     if _heading_keyword(section.heading_text):
         return False
@@ -1051,11 +1125,15 @@ def _is_title_page_candidate(section: _Section, next_section: _Section | None) -
         return False
     if not _is_title_like_heading(section.heading_text):
         return False
+    # Bare enumeration labels (e.g. "I", "II", "1") are chapter entries, not
+    # title-page candidates, even though they lack keywords.
+    if _PLAIN_NUMBER_HEADING_RE.fullmatch(section.heading_text):
+        return False
     if section.anchor_id:
         return False
     # Title-like sections with children at a deeper level are structural
     # containers (e.g. "OUR PARISH" nesting chapters), not title pages.
-    if next_section is not None and next_section.level > section.level:
+    if not skip_children_guard and next_section is not None and next_section.level > section.level:
         return False
     return True
 
@@ -1072,10 +1150,18 @@ def _strip_leading_title_page_sections(
     Drop it when no content paragraphs exist between the cluster and the first
     structural section (prevents false positives on legitimate title headings
     with body text like *The Metamorphosis*).
+
+    Publisher-metadata bypass: when the paragraphs between the leading cluster
+    and the first real section are ALL short imprint lines (byline, publisher
+    name, city/year, copyright), treat the zone as empty and strip the cluster.
+    The children-depth guard is also bypassed in this case, since real chapter
+    containers never have only imprint metadata between their title and first
+    child.
     """
     if len(sections) < 2:
         return sections
 
+    # First pass: strict guards (no children, no paragraphs).
     first_real = next(
         (
             idx
@@ -1086,13 +1172,38 @@ def _strip_leading_title_page_sections(
         ),
         None,
     )
-    if first_real is None or first_real == 0:
-        return sections
+    if (
+        first_real is not None
+        and first_real > 0
+        and not _has_paragraphs_between(sections[0], sections[first_real], doc_index=doc_index)
+    ):
+        return sections[first_real:]
 
-    if _has_paragraphs_between(sections[0], sections[first_real], doc_index=doc_index):
-        return sections
+    # Second pass: publisher-metadata bypass.  Apply only when the title
+    # candidate has no anchor_id (not TOC-linked) and the paragraphs between
+    # it and the first real section are entirely imprint metadata.
+    first_real_relaxed = next(
+        (
+            idx
+            for idx, section in enumerate(sections)
+            if not _is_title_page_candidate(
+                section,
+                sections[idx + 1] if idx + 1 < len(sections) else None,
+                skip_children_guard=True,
+            )
+        ),
+        None,
+    )
+    if (
+        first_real_relaxed is not None
+        and first_real_relaxed > 0
+        and _paragraphs_between_are_metadata_only(
+            sections[0], sections[first_real_relaxed], doc_index=doc_index
+        )
+    ):
+        return sections[first_real_relaxed:]
 
-    return sections[first_real:]
+    return sections
 
 
 # ---------------------------------------------------------------------------
@@ -1555,11 +1666,33 @@ def _flatten_single_work_title_wrapper(sections: list[_Section]) -> list[_Sectio
     container.  Promote its children so chapters become peers at min_level.
 
     Guard: ≥ 2 title-like wrappers at *min_level* → anthology (Shakespeare) → skip.
+    Guard: when the wrapper has title-like peers at *min_level* AND its
+    direct children are all bare enumeration labels (``I``, ``II``, ``III``),
+    the wrapper is one essay among many in a collection and its bare-numeral
+    children are sub-sections — skip flattening to preserve that nesting.
     """
     if len(sections) < 2:
         return sections
 
     min_level = min(s.level for s in sections)
+
+    # Count title-like peers at min_level without children (essay-collection signal).
+    def _has_child(idx: int) -> bool:
+        for next_idx in range(idx + 1, len(sections)):
+            if sections[next_idx].level <= min_level:
+                return False
+            if sections[next_idx].level == min_level + 1:
+                return True
+        return False
+
+    has_peer_essay = any(
+        s.level == min_level
+        and _is_title_like_heading(s.heading_text)
+        and not _is_front_matter_heading(s.heading_text)
+        and not _starts_with_enumerated_heading_prefix(s.heading_text.strip())
+        and not _has_child(idx)
+        for idx, s in enumerate(sections)
+    )
 
     # Identify title-like sections at min_level that have children one level deeper.
     wrapper_indices: list[int] = []
@@ -1573,12 +1706,21 @@ def _flatten_single_work_title_wrapper(sections: list[_Section]) -> list[_Sectio
         if _starts_with_enumerated_heading_prefix(section.heading_text.strip()):
             continue
         # Check for at least one direct child at min_level + 1.
+        direct_children: list[_Section] = []
         for next_idx in range(idx + 1, len(sections)):
             if sections[next_idx].level <= min_level:
                 break
             if sections[next_idx].level == min_level + 1:
-                wrapper_indices.append(idx)
-                break
+                direct_children.append(sections[next_idx])
+        if not direct_children:
+            continue
+        # Essay-collection bare-numeral sub-section guard.
+        if has_peer_essay and all(
+            _PLAIN_NUMBER_HEADING_RE.fullmatch(child.heading_text) is not None
+            for child in direct_children
+        ):
+            return sections
+        wrapper_indices.append(idx)
         if len(wrapper_indices) >= 2:
             return sections
 

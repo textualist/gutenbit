@@ -4186,3 +4186,89 @@ def test_paragraph_fallback_lecture_headings_recovered():
     assert any(text.startswith("LECTURE I") for text in heading_texts)
     assert any(text.startswith("LECTURE II") for text in heading_texts)
     assert any(text.startswith("LECTURE III") for text in heading_texts)
+
+
+def test_continuation_page_break_marker_is_not_structural():
+    """A bare ``(Continued)`` heading is a print-edition page-break marker."""
+    html = _make_html("""
+    <h2><a id="b1"></a>BOOK SECOND</h2>
+    <p>Opening paragraph of book second with enough body text to pass the length filter.</p>
+    <h3>(Continued)</h3>
+    <h3><a id="c24"></a>XXIV</h3>
+    <p>Chapter twenty-four opens here with enough body text to pass the length filter.</p>
+    <h3><a id="c25"></a>XXV</h3>
+    <p>Chapter twenty-five opens here with enough body text to pass the length filter.</p>
+    """)
+    chunks = chunk_html(html)
+    heading_texts = [c.content for c in chunks if c.kind == "heading"]
+
+    assert "(Continued)" not in heading_texts
+    assert "BOOK SECOND" in heading_texts
+    assert "XXIV" in heading_texts
+
+
+def test_title_page_with_publisher_metadata_is_stripped():
+    """Title headings whose only ``<p>`` content is publisher imprint lines
+    should be stripped so the first chapter becomes the opening section."""
+    html = _make_html("""
+    <h1>WASHINGTON SQUARE</h1>
+    <p>BY HENRY JAMES</p>
+    <p>MACMILLAN AND CO., LIMITED</p>
+    <p>ST. MARTIN'S STREET, LONDON</p>
+    <p>1921</p>
+    <h2><a id="c1"></a>I</h2>
+    <p>First chapter content with more than twenty words of body text content appearing here.</p>
+    <h2><a id="c2"></a>II</h2>
+    <p>Second chapter content with more than twenty words of body text content appearing here.</p>
+    """)
+    chunks = chunk_html(html)
+    heading_texts = [c.content for c in chunks if c.kind == "heading"]
+
+    assert "WASHINGTON SQUARE" not in heading_texts
+    assert heading_texts[:2] == ["I", "II"]
+
+
+def test_title_page_strip_preserves_legitimate_single_work_title():
+    """A single-work title heading with real prose content must not be
+    stripped by the publisher-metadata bypass."""
+    html = _make_html("""
+    <h1>THE METAMORPHOSIS</h1>
+    <p>As Gregor Samsa awoke one morning from uneasy dreams he found himself
+    transformed in his bed into a monstrous vermin, a large beetle with many
+    tiny legs waving helplessly in the air above the bedspread.</p>
+    <p>He lay on his armour-hard back and saw his brown, arched abdomen
+    divided up into rigid bow-like sections, his many legs twitching.</p>
+    """)
+    chunks = chunk_html(html)
+    heading_texts = [c.content for c in chunks if c.kind == "heading"]
+
+    assert "THE METAMORPHOSIS" in heading_texts
+
+
+def test_essay_with_bare_numeral_sub_sections_nests_under_parent_title():
+    """In an essay collection, bare-numeral sub-sections of one essay must
+    nest under that essay's title rather than becoming peers of the other
+    essays at div1."""
+    html = _make_html("""
+    <h2>BLACK AND WHITE</h2>
+    <p>Introductory paragraph of the essay with enough words to pass the length filter.</p>
+    <h3>I</h3>
+    <p>First sub-section content with enough words to pass the body-text filter.</p>
+    <h3>II</h3>
+    <p>Second sub-section content with enough words to pass the body-text filter.</p>
+    <h2>EDWIN A. ABBE</h2>
+    <p>Next essay content with enough words to pass the body-text filter.</p>
+    <h2>JOHN S. SARGENT</h2>
+    <p>Another essay content with enough words to pass the body-text filter.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    sub_i = next(h for h in headings if h.content == "I")
+    sub_ii = next(h for h in headings if h.content == "II")
+    assert sub_i.div1 == "BLACK AND WHITE"
+    assert sub_i.div2 == "I"
+    assert sub_ii.div1 == "BLACK AND WHITE"
+    edwin = next(h for h in headings if h.content == "EDWIN A. ABBE")
+    assert edwin.div1 == "EDWIN A. ABBE"
+    assert edwin.div2 == ""
