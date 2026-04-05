@@ -104,21 +104,23 @@ _PUBLICATION_METADATA_RE = re.compile(
     r"^(?:printed|published|reprinted|first\s+published|originally\s+published)\b",
     re.IGNORECASE,
 )
-# Publisher advertisement / editor credit headings: "WORKS BY HENRY JAMES",
-# "Henry James's Books", "ALSO BY", "Edited by John Morley", etc.
+# Publisher advertisement headings: "WORKS BY HENRY JAMES", "Henry James's
+# Books", "ALSO BY", "OTHER BOOKS BY", etc.  Editor credits ("Edited by X")
+# are caught separately by _FRONT_MATTER_ATTRIBUTION_RE.
 _PUBLISHER_AD_HEADING_RE = re.compile(
     r"^(?:(?:other\s+)?(?:works|books|volumes|novels|writings)\s+by\b"
     r"|also\s+by\b"
-    r"|.{1,40}'s\s+(?:books|works|novels|writings)\.?\s*$"
-    r"|edited\s+by\b)",
+    r"|.{1,40}'s\s+(?:books|works|novels|writings)\.?\s*$)",
     re.IGNORECASE,
 )
 # Business entity headings: publisher/printer names containing legal suffixes.
 # Uses search() (not match()) because the suffix typically appears at the end
 # of the heading ("MACMILLAN AND CO., LONDON."), not at the start.
+# \bpress\b is anchored to end-of-string to avoid matching "FREEDOM OF THE
+# PRESS" and similar narrative titles.
 _BUSINESS_ENTITY_HEADING_RE = re.compile(
     r"(?:(?:&|and)\s+co\b|\bco\.\b|\bltd\b|\binc\b|\bsons\b"
-    r"|\bpress\b|\bprinters?\b|\bpublications?\b)",
+    r"|\bpress\.?\s*$|\bprinters?\b|\bpublications?\b)",
     re.IGNORECASE,
 )
 # Maximum heading word count for the business entity filter to apply.
@@ -247,13 +249,25 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
         return True
     if _DATE_ONLY_HEADING_RE.fullmatch(text):
         return True
-    if (
-        _BUSINESS_ENTITY_HEADING_RE.search(text)
-        and not _heading_keyword(text)
-        and len(text.split()) <= _BUSINESS_ENTITY_MAX_WORDS
-    ):
+    if _is_business_entity_heading(text):
         return True
     return _NON_STRUCTURAL_HEADING_RE.match(text) is not None
+
+
+def _is_business_entity_heading(text: str) -> bool:
+    """Return True for short publisher/printer imprint headings.
+
+    Short (≤ _BUSINESS_ENTITY_MAX_WORDS words) non-structural headings
+    containing a legal-suffix keyword ("CO.", "LTD.", "SONS", etc.) —
+    e.g. "MACMILLAN AND CO., LONDON.", "CHARLES SCRIBNER'S SONS".  The
+    structural-keyword guard prevents suppressing real chapter titles
+    that incidentally contain a business-suffix word.
+    """
+    return (
+        _BUSINESS_ENTITY_HEADING_RE.search(text) is not None
+        and not _heading_keyword(text)
+        and len(text.split()) <= _BUSINESS_ENTITY_MAX_WORDS
+    )
 
 
 def _is_title_like_heading(heading_text: str) -> bool:
@@ -366,10 +380,7 @@ def _next_heading_is_subtitle(heading_text: str) -> bool:
     # apparatus, not chapter subtitles.
     if _NOTE_APPARATUS_HEADING_RE.match(heading_text):
         return False
-    if (
-        _BUSINESS_ENTITY_HEADING_RE.search(heading_text)
-        and len(heading_text.split()) <= _BUSINESS_ENTITY_MAX_WORDS
-    ):
+    if _is_business_entity_heading(heading_text):
         return False
     return True
 
