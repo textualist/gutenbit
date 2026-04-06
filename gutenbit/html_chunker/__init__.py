@@ -145,6 +145,8 @@ def chunk_html(html: str) -> list[Chunk]:
     # structure, prefer paragraph sections.  This handles editions where
     # a single title <h1> exists but chapter headings are <p> elements
     # (e.g. PG 29433 "Nature" has <h1>NATURE</h1> + 8 <p>-encoded chapters).
+    # Cache the result so the same scan isn't repeated in the fallback below.
+    para_sections: list | None = None
     if sections and len(sections) <= 2:
         para_sections = _parse_paragraph_sections(doc_index=doc_index)
         if len(para_sections) > 3 * len(sections):
@@ -152,7 +154,9 @@ def chunk_html(html: str) -> list[Chunk]:
     if not sections:
         # Try paragraph-text section scan: some editions encode chapter
         # headings as plain <p> elements instead of <h1>–<h6>.
-        sections = _parse_paragraph_sections(doc_index=doc_index)
+        if para_sections is None:
+            para_sections = _parse_paragraph_sections(doc_index=doc_index)
+        sections = para_sections
     if not sections and doc_index.toc_links:
         # TOC-paragraph fallback: some editions set anchor IDs directly on
         # <p> or <div> elements instead of <a> tags (e.g. PG 39827).

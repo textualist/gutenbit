@@ -130,6 +130,15 @@ _REFINEMENT_STOP_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Subset of the stop-heading pattern that matches only "Conclusion"-family
+# headings (bare "Conclusion", "Review, and Conclusion", etc.).  Used by
+# the peer-chapter exemption to distinguish chapter-title "Conclusion" from
+# genuine apparatus boundaries like APPENDIX.
+_CONCLUSION_HEADING_RE = re.compile(
+    r"^(?:(?:a\s+)?review\s*[,;]?\s*(?:and\s+)?)?conclusion\s*$",
+    re.IGNORECASE,
+)
+
 # Trailing isolated page number on a heading (e.g. "THE WILL TO BELIEVE 1").
 # Matches a space-separated bare integer at the end of the heading text.
 # Used to detect printed-TOC entries that leak into the heading sequence.
@@ -329,26 +338,26 @@ def _parse_toc_sections(
     for trim_idx, section in enumerate(sections):
         if _REFINEMENT_STOP_HEADING_RE.match(section.heading_text):
             apparatus_rank = section.heading_rank
-            remaining = sections[trim_idx + 1 :]
+            has_higher_rank_after = False
             if apparatus_rank is not None:
+                remaining = sections[trim_idx + 1 :]
                 has_higher_rank_after = any(
                     s.heading_rank is not None and s.heading_rank < apparatus_rank
                     for s in remaining
                 )
-            else:
-                has_higher_rank_after = False
             # "Conclusion" is commonly a regular chapter title (e.g. PG 205
             # Walden) rather than an apparatus boundary.  Skip truncation
             # when it shares its heading rank with the majority of preceding
             # sections, indicating it is a peer chapter.  Do not apply this
             # exemption to APPENDIX / NOTES ON which are almost always
-            # genuine apparatus headings.
+            # genuine apparatus headings.  Require at least 3 preceding
+            # sections so that very short books where "Conclusion" truly is
+            # terminal are not incorrectly exempted.
             is_peer_conclusion = False
             if (
                 apparatus_rank is not None
-                and trim_idx >= 2
-                and re.match(r"(?i)^(?:(?:a\s+)?review\s*[,;]?\s*(?:and\s+)?)?conclusion\s*$",
-                             section.heading_text)
+                and trim_idx >= 3
+                and _CONCLUSION_HEADING_RE.match(section.heading_text)
             ):
                 peer_count = sum(
                     1
@@ -2322,6 +2331,10 @@ def _parse_toc_paragraph_sections(
     bounds = doc_index.bounds
     sections: list[_Section] = []
     used_ids: set[str] = set()
+    # Monotonic counter for synthetic positions assigned to newly-resolved
+    # targets.  Starts above the existing maximum so new entries sort after
+    # all scanner-assigned positions without an O(n) max() per iteration.
+    _next_pos = max(tag_positions.values(), default=0) + 1
 
     for link in doc_index.toc_links:
         if not _tag_within_bounds(link, tag_positions, bounds):
@@ -2343,9 +2356,10 @@ def _parse_toc_paragraph_sections(
         target = soup.find(id=anchor_id)
         if target is None or not isinstance(target, Tag):
             continue
-        # Ensure the target has a position for downstream processing.
+        # Assign a synthetic position for downstream processing.
         if id(target) not in tag_positions:
-            tag_positions[id(target)] = max(tag_positions.values(), default=0) + 1
+            tag_positions[id(target)] = _next_pos
+            _next_pos += 1
         if not bounds.contains(tag_positions[id(target)]):
             continue
         used_ids.add(anchor_id)
