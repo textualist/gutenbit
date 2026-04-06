@@ -4272,3 +4272,51 @@ def test_essay_with_bare_numeral_sub_sections_nests_under_parent_title():
     edwin = next(h for h in headings if h.content == "EDWIN A. ABBE")
     assert edwin.div1 == "EDWIN A. ABBE"
     assert edwin.div2 == ""
+
+
+def test_geographic_colophon_headings_filtered():
+    """Printer geographic colophon lines like ``CAMBRIDGE . MASSACHUSETTS``
+    and ``U . S . A`` are not structural headings."""
+    html = _make_html("""
+    <h2><a id="ch1"></a>CHAPTER I.</h2>
+    <p>First chapter with enough body text to pass the length filter.</p>
+    <h2><a id="ch2"></a>CHAPTER II.</h2>
+    <p>Second chapter with enough body text to pass the length filter.</p>
+    <h4>THE END</h4>
+    <h4>The Riverside Press</h4>
+    <h4>CAMBRIDGE . MASSACHUSETTS</h4>
+    <h4>U . S . A</h4>
+    """)
+    chunks = chunk_html(html)
+    heading_texts = [c.content for c in chunks if c.kind == "heading"]
+
+    assert "CHAPTER I." in heading_texts
+    assert "CAMBRIDGE . MASSACHUSETTS" not in heading_texts
+    assert "U . S . A" not in heading_texts
+
+
+def test_single_book_containing_parts_nests_correctly():
+    """When a single BOOK heading wraps multiple PARTs with inverted
+    HTML ranks, the PARTs should nest under the BOOK."""
+    html = _make_html("""
+    <h1>VOLUME I</h1>
+    <h4>BOOK FIRST</h4>
+    <h3>PART FIRST</h3>
+    <h3>I</h3>
+    <p>Chapter one content with enough text for body filter.</p>
+    <h3>II</h3>
+    <p>Chapter two content with enough text for body filter.</p>
+    <h3>PART SECOND</h3>
+    <h3>III</h3>
+    <p>Chapter three content with enough text for body filter.</p>
+    <h3>IV</h3>
+    <p>Chapter four content with enough text for body filter.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    part_first = next(h for h in headings if h.content == "PART FIRST")
+    part_second = next(h for h in headings if h.content == "PART SECOND")
+    # Both PARTs should be under BOOK FIRST.
+    assert part_first.div2 == "BOOK FIRST"
+    assert part_second.div2 == "BOOK FIRST"

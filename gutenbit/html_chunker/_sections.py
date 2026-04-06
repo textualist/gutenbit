@@ -155,23 +155,37 @@ _PRINTED_TOC_MIN_BODY_WORDS = 3
 _PUBLISHER_METADATA_PARA_RE = re.compile(
     r"^(?:"
     r"by\s+[A-Z][^.]*$"  # "BY HENRY JAMES"
-    r"|(?:translated|edited|illustrated|selected)\s+(?:and\s+\w+\s+)?by\b"
-    r"|(?:first\s+|originally\s+)?(?:published|printed|issued|reprinted)\b"
+    r"|by\.?\s*$"  # standalone "BY" or "BY." (name on next line)
+    r"|(?:translated|edited|illustrated|selected)"
+    r"\s+(?:and\s+\w+\s+)?by\b"
+    r"|(?:first\s+|originally\s+)?"
+    r"(?:published|printed|issued|reprinted)\b"
     r"|copyright\b"
     r"|all\s+rights\s+reserved\b"
     r"|printed\s+in\b"
+    r"|new\s+york\s*$"  # standalone city
+    r"|london\s*$"
     r"|\d{4}[.,]?$"  # bare year "1921." or "1921"
-    r"|[\w\s,.-]+\s+\d{4}\.?$"  # "London, 1921" / "LONDON 1921"
-    r"|.{1,60}\b(?:&|and)\s+co\.?(?:,\s*(?:ltd|inc|limited)\.?)?\s*$"
-    r"|.{1,60}\bco\.?,?\s*(?:ltd|inc|limited)\.?\s*$"  # "CO., LIMITED"
-    r"|.{1,60}\b(?:ltd|inc|limited|sons|press|printers?|publishers?)\.?\s*$"
+    r"|[\w\s,.-]+\s+\d{4}\.?$"  # "London, 1921"
+    r"|.{1,60}\b(?:&|and)\s+co\.?"
+    r"(?:,\s*(?:ltd|inc|limited)\.?)?\s*$"
+    r"|.{1,60}\bco\.?,?\s*(?:ltd|inc|limited)\.?\s*$"
+    r"|.{1,60}\b(?:ltd|inc|limited|sons|press|"
+    r"printers?|publishers?)\.?\s*$"
     r"|(?:volume|vol\.?|part)\s+[IVXLCDM0-9]+\.?\s*$"
     # Address line: "ST. MARTIN'S STREET, LONDON"
     r"|[A-Z][\w'.-]*(?:\s+[\w'.-]+){0,4}\s*"
-    r"(?:street|road|avenue|square|place|lane|court|row|boulevard),"
+    r"(?:street|road|avenue|square|place|lane|"
+    r"court|row|boulevard),"
     r")",
     re.IGNORECASE,
 )
+
+# Very short all-uppercase lines on a title page are likely author names
+# or publisher fragments that fell on their own `<p>` element (e.g.
+# "HENRY JAMES", "BOSTON").  Only matched in the publisher-metadata
+# zone, NOT as a standalone classifier.
+_SHORT_ALLCAPS_LINE_MAX_WORDS = 3
 
 # Cap on paragraph count between a title heading and the first real
 # section to qualify as a publisher-metadata-only title zone.  Keeps the
@@ -351,6 +365,61 @@ def _normalize_toc_heading_ranks(sections: list[_Section]) -> list[_Section]:
         rank_counts[kw][section.heading_rank] += 1
 
     mode_ranks = {kw: counts.most_common(1)[0][0] for kw, counts in rank_counts.items()}
+
+    # Single-instance container fix: when one broad keyword has exactly 1
+    # instance and another has ≥ 2, the single instance is the container
+    # (e.g. "BOOK FIRST" wrapping multiple "PART" entries in the Golden
+    # Bowl).  If the container's rank is ≥ the inner keyword's mode rank
+    # (inverted), reassign it to be shallower so rank-based nesting works.
+    # Guard: only apply to non-dramatic structural keywords to avoid
+    # affecting ACT/SCENE/INDUCTION in plays.
+    _DRAMATIC_BROAD = {"act", "induction"}
+    broad_keywords_present = [
+        kw for kw in rank_counts if kw in _BROAD_KEYWORDS and kw not in _DRAMATIC_BROAD
+    ]
+    # Build a lookup to check whether the single instance is front-matter.
+    single_instance_headings: dict[str, str] = {}
+    for section in sections:
+        kw = _heading_keyword(section.heading_text)
+        if kw and sum(rank_counts.get(kw, Counter()).values()) == 1:
+            single_instance_headings[kw] = section.heading_text
+
+    # Build position index for containment check.
+    keyword_positions: dict[str, list[int]] = {}
+    for idx, section in enumerate(sections):
+        kw = _heading_keyword(section.heading_text)
+        if kw:
+            keyword_positions.setdefault(kw, []).append(idx)
+
+    if len(broad_keywords_present) >= 2:
+        for outer_kw in broad_keywords_present:
+            outer_count = sum(rank_counts[outer_kw].values())
+            if outer_count != 1:
+                continue
+            # Don't promote front-matter headings (e.g. "Volume I Preface")
+            # as structural containers.
+            outer_text = single_instance_headings.get(outer_kw, "")
+            if _is_front_matter_heading(outer_text):
+                continue
+            outer_rank = mode_ranks[outer_kw]
+            outer_pos = keyword_positions.get(outer_kw, [None])[0]
+            for inner_kw in broad_keywords_present:
+                if inner_kw == outer_kw:
+                    continue
+                inner_count = sum(rank_counts[inner_kw].values())
+                if inner_count < 2:
+                    continue
+                # Containment check: the single instance must appear
+                # BEFORE all inner instances (it wraps them).  If it
+                # appears after any inner instance, it's a trailing
+                # peer (e.g. EPILOGUE after PARTs), not a container.
+                inner_positions = keyword_positions.get(inner_kw, [])
+                if outer_pos is None or (inner_positions and outer_pos >= inner_positions[0]):
+                    continue
+                inner_rank = mode_ranks[inner_kw]
+                if outer_rank >= inner_rank:
+                    # Container is at same or deeper rank — promote it.
+                    mode_ranks[outer_kw] = max(1, inner_rank - 1)
 
     changed = False
     new_sections = []
@@ -776,7 +845,15 @@ def _is_valid_rank_parent(
     headings like ``OUR PARISH`` may parent when the rank gap is exactly 1,
     except front-matter headings which should never act as containers.
     """
-    if _is_refinement_heading(parent.heading_text):
+    parent_is_refinement = _is_refinement_heading(parent.heading_text)
+    if parent_is_refinement:
+        # Broad-keyword children (PART, BOOK, …) should only nest under
+        # parents that themselves carry a keyword — never under a bare
+        # numeral like "VIII" that happens to sit at a shallower rank due
+        # to inconsistent source HTML tags.
+        child_kw = _heading_keyword(child.heading_text)
+        if child_kw and child_kw in _BROAD_KEYWORDS:
+            return _heading_keyword(parent.heading_text) is not None
         return True
     if not infer_from_rank:
         return False
@@ -1082,8 +1159,19 @@ def _paragraphs_between_are_metadata_only(
             continue
         if len(text.split()) > _MAX_METADATA_PARA_WORDS:
             return False
-        if _PUBLISHER_METADATA_PARA_RE.match(text) is None:
-            return False
+        if _PUBLISHER_METADATA_PARA_RE.match(text) is not None:
+            continue
+        # Short all-caps lines (≤ 3 words) like "HENRY JAMES" or
+        # "BOSTON" are author names / publisher city fragments that
+        # landed on their own <p>.
+        alpha_chars = [c for c in text if c.isalpha()]
+        if (
+            len(text.split()) <= _SHORT_ALLCAPS_LINE_MAX_WORDS
+            and alpha_chars
+            and all(c.isupper() for c in alpha_chars)
+        ):
+            continue
+        return False
     return True
 
 
@@ -1125,9 +1213,12 @@ def _is_title_page_candidate(
         return False
     if not _is_title_like_heading(section.heading_text):
         return False
-    # Bare enumeration labels (e.g. "I", "II", "1") are chapter entries, not
-    # title-page candidates, even though they lack keywords.
+    # Bare enumeration labels (e.g. "I", "II", "1") and enumerated titles
+    # (e.g. "I. FROM MISS AURORA CHURCH...") are chapter entries, not
+    # title-page candidates.
     if _PLAIN_NUMBER_HEADING_RE.fullmatch(section.heading_text):
+        return False
+    if _starts_with_enumerated_heading_prefix(section.heading_text.strip()):
         return False
     if section.anchor_id:
         return False
@@ -1498,6 +1589,108 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
                 new_levels[section_idx] += 1
 
     return [section._with_level(new_levels[idx]) for idx, section in enumerate(sections)]
+
+
+_ROMAN_VALUES = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+
+
+def _roman_to_int(s: str) -> int | None:
+    """Convert a Roman numeral string to an integer, or None on failure."""
+    s = s.upper().strip()
+    if not s or not all(c in _ROMAN_VALUES for c in s):
+        return None
+    total = 0
+    for i, c in enumerate(s):
+        val = _ROMAN_VALUES[c]
+        if i + 1 < len(s) and val < _ROMAN_VALUES[s[i + 1]]:
+            total -= val
+        else:
+            total += val
+    return total
+
+
+_LEADING_ORDINAL_RE = re.compile(r"^([IVXLCDM]+|[0-9]+)(?:[.)]\s+|\s+)", re.IGNORECASE)
+
+
+def _leading_ordinal(heading_text: str) -> int | None:
+    """Extract the leading ordinal number from a heading, or None."""
+    m = _LEADING_ORDINAL_RE.match(heading_text.strip())
+    if m is None:
+        return None
+    token = m.group(1)
+    if token.isdigit():
+        return int(token)
+    return _roman_to_int(token)
+
+
+def _demote_broad_keywords_within_enumerated_series(
+    sections: list[_Section],
+) -> list[_Section]:
+    """Demote broad keyword headings (PART, BOOK, etc.) when they sit inside
+    an enumerated title series.
+
+    When an anthology uses "I TITLE", "II TITLE", "III TITLE" as peer story
+    headings and one story has internal PART I/II/III divisions, the PARTs
+    should not promote above the enumerated titles.
+
+    Detection: if consecutive enumerated-prefix entries (ordinals N and N+k
+    where k is small) bracket a run of broad-keyword headings, the broad
+    keywords are sub-sections of the preceding enumerated entry.  Demote
+    them so their level matches the enumerated entries' level + 1.
+    """
+    if len(sections) < 4:
+        return sections
+
+    # Build (index, ordinal) pairs for enumerated-prefix sections at the
+    # same heading rank.
+    enum_entries: list[tuple[int, int]] = []
+    for idx, sec in enumerate(sections):
+        if _heading_keyword(sec.heading_text):
+            continue
+        ordinal = _leading_ordinal(sec.heading_text)
+        if ordinal is not None:
+            enum_entries.append((idx, ordinal))
+
+    if len(enum_entries) < 2:
+        return sections
+
+    new_levels = [s.level for s in sections]
+    changed = False
+
+    # For each consecutive pair of enumerated entries with sequential
+    # ordinals, check if there's a broad-keyword run between them.
+    for i in range(len(enum_entries) - 1):
+        idx_a, ord_a = enum_entries[i]
+        idx_b, ord_b = enum_entries[i + 1]
+        # Ordinals must be sequential or nearly so (gap ≤ 2 to allow
+        # a missing middle entry like PG 2869's missing section VI).
+        if ord_b <= ord_a or ord_b - ord_a > 2:
+            continue
+        # Must be at the same level.
+        if new_levels[idx_a] != new_levels[idx_b]:
+            continue
+        series_level = new_levels[idx_a]
+        # Check for broad-keyword entries between them at the SAME
+        # level.  PARTs at level 1 bracketed by chapters at level 2
+        # are genuine containers, not peers to demote.
+        has_peer_broad = False
+        for mid_idx in range(idx_a + 1, idx_b):
+            kw = _heading_keyword(sections[mid_idx].heading_text)
+            if kw and kw in _BROAD_KEYWORDS and new_levels[mid_idx] == series_level:
+                has_peer_broad = True
+                break
+        if not has_peer_broad:
+            continue
+        # Demote everything between the two enumerated entries.
+        for mid_idx in range(idx_a + 1, idx_b):
+            if new_levels[mid_idx] <= series_level:
+                new_levels[mid_idx] = min(4, series_level + 1)
+                changed = True
+
+    if not changed:
+        return sections
+
+    return [s._with_level(new_levels[idx]) for idx, s in enumerate(sections)]
 
 
 def _nest_broad_subdivisions(sections: list[_Section]) -> list[_Section]:

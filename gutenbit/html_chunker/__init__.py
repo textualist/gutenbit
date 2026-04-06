@@ -28,10 +28,10 @@ from gutenbit.html_chunker._scanning import (
 )
 from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (keyed by id())
 from gutenbit.html_chunker._sections import (
+    _drop_empty_interior_title_repeats,
     _equalize_orphan_level_gap,
     _find_non_structural_boundary_after,
     _flatten_single_work_title_wrapper,
-    _drop_empty_interior_title_repeats,
     _merge_adjacent_duplicate_sections,
     _merge_chapter_description_paragraphs,
     _merge_chapter_subtitle_sections,
@@ -54,7 +54,7 @@ from gutenbit.html_chunker._sections import (
 # ---------------------------------------------------------------------------
 
 HTML_PARSER_BACKEND = "lxml"
-CHUNKER_VERSION = 38
+CHUNKER_VERSION = 39
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +118,7 @@ def chunk_html(html: str) -> list[Chunk]:
         # (e.g. Dante's Inferno: 2 TOC links vs 37 heading-scan sections).
         # Prefer the richer heading scan in that case.
         if len(heading_sections) > 3 * len(toc_sections) and len(toc_sections) <= 5:
-            sections = heading_sections
+            sections = _normalize_toc_heading_ranks(heading_sections)
         else:
             toc_sections = _normalize_toc_heading_ranks(toc_sections)
             sections = _refine_toc_sections(
@@ -127,7 +127,7 @@ def chunk_html(html: str) -> list[Chunk]:
                 doc_index=doc_index,
             )
     else:
-        sections = heading_sections
+        sections = _normalize_toc_heading_ranks(heading_sections)
     if not sections:
         # Try paragraph-text section scan: some editions encode chapter
         # headings as plain <p> elements instead of <h1>–<h6>.

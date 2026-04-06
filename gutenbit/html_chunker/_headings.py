@@ -95,6 +95,18 @@ _CONTINUATION_MARKER_RE = re.compile(
     r"^[\s\(\[\-\u2013\u2014]*continued[\s\)\]\-\u2013\u2014.]*$",
     re.IGNORECASE,
 )
+# Geographic colophon address lines from printers (e.g. Riverside Press):
+#   "CAMBRIDGE . MASSACHUSETTS", "U . S . A", "U.S.A."
+# Two patterns:
+#   1. Dot-separated single-letter abbreviation: "U . S . A"
+#   2. Two-word geographic pair with dot separator: "CAMBRIDGE . MASSACHUSETTS"
+# Both anchored to full heading text to avoid matching prose fragments.
+_GEOGRAPHIC_COLOPHON_RE = re.compile(
+    r"^(?:"
+    r"(?:[A-Z]\s*\.\s*){2,}[A-Z]?\s*\.?\s*$"  # U . S . A
+    r"|[A-Z]{3,}\s+[.·]\s+[A-Z]{3,}\s*$"  # CAMBRIDGE . MASSACHUSETTS
+    r")",
+)
 # Bare date headings: standalone years ("1882.", "1917") or month+year
 # ("August 1892.") that are composition-date annotations, not structure.
 _DATE_ONLY_HEADING_RE = re.compile(
@@ -271,6 +283,8 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
     if _is_business_entity_heading(text):
         return True
     if _CONTINUATION_MARKER_RE.match(text):
+        return True
+    if _GEOGRAPHIC_COLOPHON_RE.match(text):
         return True
     return _NON_STRUCTURAL_HEADING_RE.match(text) is not None
 
