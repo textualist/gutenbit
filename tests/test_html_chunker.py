@@ -4372,3 +4372,63 @@ def test_front_matter_heading_not_promoted_as_container():
     # not nested under the preface.
     assert book_first.div1 == "BOOK FIRST"
     assert book_second.div1 == "BOOK SECOND"
+
+
+def test_keyword_peer_reset_prevents_subsection_nesting():
+    """When CHAPTER headings at h5 are separated by non-keyword subsection
+    headings at h4, later chapters must not nest under the subsection.
+
+    Pattern: Principles of Psychology Vol II (PG 57634) — CHAPTER XVII's
+    subsections at h4 break the nesting chain; CHAPTER XVIII at h5 should
+    reset to the chapter level, not become a child of the last subsection.
+    """
+    html = _make_html("""
+    <h3>PSYCHOLOGY.</h3>
+    <h5>CHAPTER XVII. SENSATION</h5>
+    <p>Sensation content with enough body text for the filter pass.</p>
+    <h4>THE LAW OF CONTRAST.</h4>
+    <p>Contrast content with enough body text for the filter pass.</p>
+    <h4>THE ECCENTRIC PROJECTION.</h4>
+    <p>Projection content with enough body text for the filter pass.</p>
+    <h5>CHAPTER XVIII. IMAGINATION</h5>
+    <p>Imagination content with enough body text for the filter pass.</p>
+    <h5>CHAPTER XIX. PERCEPTION</h5>
+    <p>Perception content with enough body text for the filter pass.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    # All chapters should be at div1 — not nested under a subsection.
+    chapters = [h for h in headings if "CHAPTER" in h.content]
+    assert len(chapters) == 3
+    assert all(h.div2 == "" for h in chapters)
+
+
+def test_same_rank_broad_keyword_demoted_to_chapter_level():
+    """When all headings use the same HTML tag (e.g. all h4), a PART
+    keyword should not promote above peer non-keyword entries.
+
+    Pattern: A Landscape Painter (PG 68340) — all headings are h4;
+    PART I/II/III should be peers of the story titles, not parents.
+    """
+    html = _make_html("""
+    <h4>PREFACE</h4>
+    <p>Preface content with enough body text for the filter.</p>
+    <h4>I A LANDSCAPE PAINTER</h4>
+    <p>Story one content with enough body text for the filter.</p>
+    <h4>II POOR RICHARD</h4>
+    <p>Story two content with enough body text for the filter.</p>
+    <h4>PART I</h4>
+    <p>Part one content with enough body text for the filter.</p>
+    <h4>PART II</h4>
+    <p>Part two content with enough body text for the filter.</p>
+    <h4>III A DAY OF DAYS</h4>
+    <p>Story three content with enough body text for the filter.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    day_of_days = next(h for h in headings if "DAY OF DAYS" in h.content)
+    # III A DAY OF DAYS must NOT nest under PART II — they are peers.
+    assert day_of_days.div1 == "III A DAY OF DAYS"
+    assert day_of_days.div2 == ""

@@ -910,6 +910,14 @@ def _respect_heading_rank_nesting(
     if len(sections) < 2:
         return sections
 
+    # Pre-index keyword occurrences by (keyword, heading_rank) for the
+    # keyword-peer reset check below.
+    keyword_rank_seen: set[tuple[str, int]] = set()
+    for s in sections:
+        kw = _heading_keyword(s.heading_text)
+        if kw and s.heading_rank is not None:
+            keyword_rank_seen.add((kw, s.heading_rank))
+
     new_levels = [section.level for section in sections]
     changed = False
 
@@ -930,6 +938,57 @@ def _respect_heading_rank_nesting(
             continue
 
         parent = sections[parent_idx]
+
+        # Keyword-peer reset: when a keyword child (e.g. CHAPTER XVIII
+        # at h5) finds a NON-keyword parent (e.g. "THE ECCENTRIC
+        # PROJECTION" at h4) but the same keyword already appeared at
+        # the same rank earlier (CHAPTER XVII at h5), the child may be
+        # a sibling of that peer — not a child of the intervening non-
+        # keyword subsection heading.
+        #
+        # Guard: only fire when the candidate parent is a subsection
+        # heading (deeper rank than the peer's container), not a new
+        # top-level section.  Find the container of the earlier peer
+        # (the first heading before it with a shallower rank); if the
+        # candidate parent's rank is at or shallower than that
+        # container, it signals a structural reset (e.g. "SCENES" at
+        # h2 replacing "OUR PARISH" at h2) and the nesting is correct.
+        child_kw = _heading_keyword(section.heading_text)
+        parent_kw = _heading_keyword(parent.heading_text)
+        if child_kw and not parent_kw and (child_kw, section.heading_rank) in keyword_rank_seen:
+            latest_peer_idx = -1
+            for i in range(idx - 1, -1, -1):
+                if (
+                    _heading_keyword(sections[i].heading_text) == child_kw
+                    and sections[i].heading_rank == section.heading_rank
+                ):
+                    latest_peer_idx = i
+                    break
+            if latest_peer_idx >= 0:
+                if parent_idx > latest_peer_idx:
+                    # Parent sits between the peer and the child.  Check
+                    # the container rank of the peer: only reset when the
+                    # parent is deeper (a subsection, not a new section).
+                    peer_container_rank: int | None = None
+                    peer_rank = sections[latest_peer_idx].heading_rank
+                    if peer_rank is not None:
+                        for i in range(latest_peer_idx - 1, -1, -1):
+                            r = sections[i].heading_rank
+                            if r is not None and r < peer_rank:
+                                peer_container_rank = r
+                                break
+                    if (
+                        peer_container_rank is None
+                        or parent.heading_rank is not None
+                        and parent.heading_rank > peer_container_rank
+                    ):
+                        continue
+                elif new_levels[latest_peer_idx] <= new_levels[parent_idx]:
+                    # The peer comes after the parent but is at the same
+                    # or shallower level — it already "reset" past the
+                    # parent.  The current child should follow suit.
+                    continue
+
         # Use the (possibly updated) parent level so that multi-level
         # rank chains (e.g. h2 → h3 → h4) nest correctly.
         effective_parent_level = new_levels[parent_idx]
@@ -1588,6 +1647,116 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
     return [section._with_level(new_levels[idx]) for idx, section in enumerate(sections)]
 
 
+def _demote_same_rank_broad_keywords(sections: list[_Section]) -> list[_Section]:
+    """Demote broad keywords to chapter level when they share the modal rank.
+
+    Some editions use a single heading tag (e.g. all ``<h4>``) for every
+    structural division, including PART, BOOK, and chapter-level entries.
+    In that case the keyword-based level-1 assignment for broad keywords
+    creates a false hierarchy — the PART headings aren't actual containers.
+
+    When a broad keyword's modal rank equals the overall modal rank of the
+    section list, demote it from level 1 to level 2 (chapter level).
+
+    Only applies to heading-scan sections.  In the TOC path, keyword
+    hierarchy is authoritative regardless of HTML ranks.
+    """
+    if len(sections) < 3:
+        return sections
+
+    # TOC-driven sections have anchor_ids → hierarchy is authoritative.
+    if any(s.anchor_id for s in sections):
+        return sections
+
+    # Overall modal rank across all sections with a known rank.
+    all_ranks: Counter[int] = Counter()
+    broad_kw_ranks: dict[str, Counter[int]] = {}
+    for section in sections:
+        if section.heading_rank is None:
+            continue
+        all_ranks[section.heading_rank] += 1
+        kw = _heading_keyword(section.heading_text)
+        if kw and kw in _BROAD_KEYWORDS and kw not in _DRAMATIC_BROAD_KEYWORDS:
+            broad_kw_ranks.setdefault(kw, Counter())[section.heading_rank] += 1
+
+    if not all_ranks or not broad_kw_ranks:
+        return sections
+
+    # Only demote when exactly one broad keyword type is present.
+    # Multiple broad keywords (VOLUME + BOOK, BOOK + PART) imply a
+    # real multi-level hierarchy that the nesting passes should handle.
+    if len(broad_kw_ranks) > 1:
+        return sections
+
+    # Only demote when the document uses a single heading rank for
+    # (nearly) all sections — i.e. the HTML didn't express hierarchy
+    # via rank variation.  When there IS rank variation (some h2, some
+    # h3), the hierarchy is real and broad keywords are containers.
+    overall_mode = all_ranks.most_common(1)[0][0]
+    mode_count = all_ranks[overall_mode]
+    total_ranked = sum(all_ranks.values())
+    if mode_count < total_ranked * 0.8:
+        return sections
+
+    # Find broad keywords whose modal rank matches the overall mode.
+    demote_keywords: set[str] = set()
+    for kw, ranks in broad_kw_ranks.items():
+        kw_mode = ranks.most_common(1)[0][0]
+        if kw_mode == overall_mode:
+            demote_keywords.add(kw)
+
+    if not demote_keywords:
+        return sections
+
+    new_sections = []
+    changed = False
+    for section in sections:
+        kw = _heading_keyword(section.heading_text)
+        if kw and kw in demote_keywords and section.level == 1:
+            new_sections.append(section._with_level(2))
+            changed = True
+        else:
+            new_sections.append(section)
+
+    return new_sections if changed else sections
+
+
+def _demoted_broad_keywords(sections: list[_Section]) -> frozenset[str]:
+    """Return the set of broad keywords that were demoted by the demotion pass.
+
+    Used by ``_nest_chapters_under_broad_containers`` to skip nesting under
+    demoted keywords.  Only applies to heading-scan sections (no TOC
+    anchors) — in the TOC path, keyword hierarchy is authoritative.
+    """
+    # TOC-driven sections have anchor_ids from pginternal links.
+    # If any section has one, hierarchy is TOC-authoritative → no demotion.
+    if any(s.anchor_id for s in sections):
+        return frozenset()
+
+    all_ranks: Counter[int] = Counter()
+    broad_kw_ranks: dict[str, Counter[int]] = {}
+    for section in sections:
+        if section.heading_rank is None:
+            continue
+        all_ranks[section.heading_rank] += 1
+        kw = _heading_keyword(section.heading_text)
+        if kw and kw in _BROAD_KEYWORDS and kw not in _DRAMATIC_BROAD_KEYWORDS:
+            broad_kw_ranks.setdefault(kw, Counter())[section.heading_rank] += 1
+
+    if not all_ranks or len(broad_kw_ranks) != 1:
+        return frozenset()
+
+    overall_mode = all_ranks.most_common(1)[0][0]
+    mode_count = all_ranks[overall_mode]
+    total_ranked = sum(all_ranks.values())
+    if mode_count < total_ranked * 0.8:
+        return frozenset()
+
+    return frozenset(
+        kw for kw, ranks in broad_kw_ranks.items() if ranks.most_common(1)[0][0] == overall_mode
+    )
+
+
 def _nest_broad_subdivisions(sections: list[_Section]) -> list[_Section]:
     """Nest same-rank broad headings when their keywords imply containment.
 
@@ -1635,7 +1804,11 @@ def _nest_broad_subdivisions(sections: list[_Section]) -> list[_Section]:
     return [section._with_level(new_levels[idx]) for idx, section in enumerate(sections)]
 
 
-def _nest_chapters_under_broad_containers(sections: list[_Section]) -> list[_Section]:
+def _nest_chapters_under_broad_containers(
+    sections: list[_Section],
+    *,
+    skip_keywords: frozenset[str] = frozenset(),
+) -> list[_Section]:
     """Nest chapter-level sections under broad keyword containers at the same level.
 
     When BOOK and CHAPTER share the same heading rank (both ``<h3>``), the
@@ -1656,6 +1829,9 @@ def _nest_chapters_under_broad_containers(sections: list[_Section]) -> list[_Sec
         # Front-matter headings like "PREFACE TO THE FIRST VOLUME" match a
         # broad keyword but are not structural containers.
         if _is_front_matter_heading(section.heading_text):
+            continue
+        # Skip keywords that were demoted by _demote_same_rank_broad_keywords.
+        if keyword in skip_keywords:
             continue
 
         broad_level = new_levels[idx]

@@ -28,6 +28,8 @@ from gutenbit.html_chunker._scanning import (
 )
 from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (keyed by id())
 from gutenbit.html_chunker._sections import (
+    _demote_same_rank_broad_keywords,
+    _demoted_broad_keywords,
     _drop_empty_interior_title_repeats,
     _equalize_orphan_level_gap,
     _find_non_structural_boundary_after,
@@ -54,7 +56,7 @@ from gutenbit.html_chunker._sections import (
 # ---------------------------------------------------------------------------
 
 HTML_PARSER_BACKEND = "lxml"
-CHUNKER_VERSION = 39
+CHUNKER_VERSION = 40
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,7 +157,11 @@ def chunk_html(html: str) -> list[Chunk]:
     sections = _strip_printed_toc_page_runs(sections)
     sections = _normalize_collection_titles(sections)
     sections = _nest_broad_subdivisions(sections)
-    sections = _nest_chapters_under_broad_containers(sections)
+    # Detect broad keywords that share the overall modal heading rank
+    # (single-tag documents like all-h4).  These are peers, not parents.
+    _skip_broad = _demoted_broad_keywords(sections)
+    sections = _nest_chapters_under_broad_containers(sections, skip_keywords=_skip_broad)
+    sections = _demote_same_rank_broad_keywords(sections)
     sections = _promote_more_prominent_heading_runs(sections)
     # Use heading rank (h1→h2→h3) to nest sections under non-keyword
     # parents when the rank gap is exactly 1.  Runs before flatten/orphan
@@ -174,7 +180,7 @@ def chunk_html(html: str) -> list[Chunk]:
     # rank, rank nesting pushes both under the title, then flattening
     # promotes them back to the same level.  This second pass restores the
     # BOOK → CHAPTER hierarchy that was lost in the flatten step.
-    sections = _nest_chapters_under_broad_containers(sections)
+    sections = _nest_chapters_under_broad_containers(sections, skip_keywords=_skip_broad)
     sections = _equalize_orphan_level_gap(sections)
     sections = _merge_chapter_subtitle_sections(sections, toc_anchor_ids=toc_anchor_ids)
     # Merge ALL-CAPS description paragraphs into bare chapter headings so
