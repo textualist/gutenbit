@@ -384,19 +384,16 @@ def _normalize_toc_heading_ranks(sections: list[_Section]) -> list[_Section]:
     broad_keywords_present = [
         kw for kw in rank_counts if kw in _BROAD_KEYWORDS and kw not in _DRAMATIC_BROAD_KEYWORDS
     ]
-    # Build a lookup to check whether the single instance is front-matter.
+    # Build lookups for the containment check in a single pass.
     single_instance_headings: dict[str, str] = {}
-    for section in sections:
-        kw = _heading_keyword(section.heading_text)
-        if kw and total_counts.get(kw) == 1:
-            single_instance_headings[kw] = section.heading_text
-
-    # Build position index for containment check.
     keyword_positions: dict[str, list[int]] = {}
     for idx, section in enumerate(sections):
         kw = _heading_keyword(section.heading_text)
-        if kw:
-            keyword_positions.setdefault(kw, []).append(idx)
+        if not kw:
+            continue
+        keyword_positions.setdefault(kw, []).append(idx)
+        if total_counts.get(kw) == 1:
+            single_instance_headings[kw] = section.heading_text
 
     if len(broad_keywords_present) >= 2:
         for outer_kw in broad_keywords_present:
@@ -1162,7 +1159,8 @@ def _paragraphs_between_are_metadata_only(
         text = " ".join(ip.text.split()).strip(" .,:;")
         if not text:
             continue
-        if len(text.split()) > _MAX_METADATA_PARA_WORDS:
+        words = text.split()
+        if len(words) > _MAX_METADATA_PARA_WORDS:
             return False
         if _PUBLISHER_METADATA_PARA_RE.match(text) is not None:
             continue
@@ -1172,11 +1170,10 @@ def _paragraphs_between_are_metadata_only(
         # would also pass this check, but that's harmless: Roman-
         # numeral chapter headings are <h*> tags, not <p> elements,
         # so they never appear in the title-page paragraph zone.
-        alpha_chars = [c for c in text if c.isalpha()]
         if (
-            len(text.split()) <= _SHORT_ALLCAPS_LINE_MAX_WORDS
-            and alpha_chars
-            and all(c.isupper() for c in alpha_chars)
+            len(words) <= _SHORT_ALLCAPS_LINE_MAX_WORDS
+            and any(c.isalpha() for c in text)
+            and all(c.isupper() or not c.isalpha() for c in text)
         ):
             continue
         return False
@@ -1260,17 +1257,22 @@ def _strip_leading_title_page_sections(
     if len(sections) < 2:
         return sections
 
+    def _first_non_candidate(*, skip_children_guard: bool = False) -> int | None:
+        return next(
+            (
+                idx
+                for idx, section in enumerate(sections)
+                if not _is_title_page_candidate(
+                    section,
+                    sections[idx + 1] if idx + 1 < len(sections) else None,
+                    skip_children_guard=skip_children_guard,
+                )
+            ),
+            None,
+        )
+
     # First pass: strict guards (no children, no paragraphs).
-    first_real = next(
-        (
-            idx
-            for idx, section in enumerate(sections)
-            if not _is_title_page_candidate(
-                section, sections[idx + 1] if idx + 1 < len(sections) else None
-            )
-        ),
-        None,
-    )
+    first_real = _first_non_candidate()
     if (
         first_real is not None
         and first_real > 0
@@ -1278,21 +1280,8 @@ def _strip_leading_title_page_sections(
     ):
         return sections[first_real:]
 
-    # Second pass: publisher-metadata bypass.  Apply only when the title
-    # candidate has no anchor_id (not TOC-linked) and the paragraphs between
-    # it and the first real section are entirely imprint metadata.
-    first_real_relaxed = next(
-        (
-            idx
-            for idx, section in enumerate(sections)
-            if not _is_title_page_candidate(
-                section,
-                sections[idx + 1] if idx + 1 < len(sections) else None,
-                skip_children_guard=True,
-            )
-        ),
-        None,
-    )
+    # Second pass: publisher-metadata bypass.
+    first_real_relaxed = _first_non_candidate(skip_children_guard=True)
     if (
         first_real_relaxed is not None
         and first_real_relaxed > 0
@@ -1775,21 +1764,26 @@ def _flatten_single_work_title_wrapper(sections: list[_Section]) -> list[_Sectio
 
     min_level = min(s.level for s in sections)
 
-    # Count title-like peers at min_level without children (essay-collection signal).
-    def _has_child(idx: int) -> bool:
+    # Precompute which min_level sections have a direct child at
+    # min_level + 1 — O(n) single forward pass instead of per-section
+    # O(n) scan.
+    has_child_at_next = [False] * len(sections)
+    for idx in range(len(sections)):
+        if sections[idx].level != min_level:
+            continue
         for next_idx in range(idx + 1, len(sections)):
             if sections[next_idx].level <= min_level:
-                return False
+                break
             if sections[next_idx].level == min_level + 1:
-                return True
-        return False
+                has_child_at_next[idx] = True
+                break
 
     has_peer_essay = any(
         s.level == min_level
         and _is_title_like_heading(s.heading_text)
         and not _is_front_matter_heading(s.heading_text)
         and not _starts_with_enumerated_heading_prefix(s.heading_text.strip())
-        and not _has_child(idx)
+        and not has_child_at_next[idx]
         for idx, s in enumerate(sections)
     )
 
