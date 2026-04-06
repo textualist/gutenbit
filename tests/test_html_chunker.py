@@ -4404,6 +4404,39 @@ def test_keyword_peer_reset_prevents_subsection_nesting():
     assert all(h.div2 == "" for h in chapters)
 
 
+def test_keyword_peer_reset_peer_after_parent():
+    """When the latest same-keyword peer appears AFTER the candidate parent
+    and has already "reset" past it, subsequent same-keyword headings
+    should follow suit rather than nesting under the stale parent.
+
+    Pattern: CHAPTER XVII subsections → CHAPTER XVIII (resets) →
+    CHAPTER XIX should also reset, even though the candidate parent
+    (a subsection heading) appears before CHAPTER XVIII in the list.
+    """
+    html = _make_html("""
+    <h3>PSYCHOLOGY.</h3>
+    <h5>CHAPTER XVII. SENSATION</h5>
+    <p>Sensation content with enough body text for the filter pass.</p>
+    <h4>SUBSECTION A.</h4>
+    <p>Subsection content with enough body text for the filter pass.</p>
+    <h5>CHAPTER XVIII. IMAGINATION</h5>
+    <p>Imagination content with enough body text for the filter pass.</p>
+    <h5>CHAPTER XIX. PERCEPTION</h5>
+    <p>Perception content with enough body text for the filter pass.</p>
+    <h5>CHAPTER XX. SPACE</h5>
+    <p>Space content with enough body text for the filter pass.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    chapters = [h for h in headings if "CHAPTER" in h.content]
+    assert len(chapters) == 4
+    # All four chapters should be peers at div1 — CHAPTER XIX and XX
+    # must not nest under SUBSECTION A just because it has a shallower
+    # rank.  CHAPTER XVIII already reset past it, so XIX and XX follow.
+    assert all(h.div2 == "" for h in chapters)
+
+
 def test_same_rank_broad_keyword_demoted_to_chapter_level():
     """When all headings use the same HTML tag (e.g. all h4), a PART
     keyword should not promote above peer non-keyword entries.

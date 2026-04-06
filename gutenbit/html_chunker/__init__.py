@@ -28,8 +28,8 @@ from gutenbit.html_chunker._scanning import (
 )
 from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (keyed by id())
 from gutenbit.html_chunker._sections import (
+    _broad_keywords_at_modal_rank,
     _demote_same_rank_broad_keywords,
-    _demoted_broad_keywords,
     _drop_empty_interior_title_repeats,
     _equalize_orphan_level_gap,
     _find_non_structural_boundary_after,
@@ -159,7 +159,10 @@ def chunk_html(html: str) -> list[Chunk]:
     sections = _nest_broad_subdivisions(sections)
     # Detect broad keywords that share the overall modal heading rank
     # (single-tag documents like all-h4).  These are peers, not parents.
-    _skip_broad = _demoted_broad_keywords(sections)
+    # _broad_keywords_at_modal_rank runs first (detection) so that
+    # _nest_chapters_under_broad_containers can skip demoted keywords,
+    # then _demote_same_rank_broad_keywords applies the level change.
+    _skip_broad = _broad_keywords_at_modal_rank(sections)
     sections = _nest_chapters_under_broad_containers(sections, skip_keywords=_skip_broad)
     sections = _demote_same_rank_broad_keywords(sections)
     sections = _promote_more_prominent_heading_runs(sections)

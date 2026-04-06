@@ -977,9 +977,8 @@ def _respect_heading_rank_nesting(
                             if r is not None and r < peer_rank:
                                 peer_container_rank = r
                                 break
-                    if (
-                        peer_container_rank is None
-                        or parent.heading_rank is not None
+                    if peer_container_rank is None or (
+                        parent.heading_rank is not None
                         and parent.heading_rank > peer_container_rank
                     ):
                         continue
@@ -1647,89 +1646,17 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
     return [section._with_level(new_levels[idx]) for idx, section in enumerate(sections)]
 
 
-def _demote_same_rank_broad_keywords(sections: list[_Section]) -> list[_Section]:
-    """Demote broad keywords to chapter level when they share the modal rank.
+def _broad_keywords_at_modal_rank(
+    sections: list[_Section],
+) -> frozenset[str]:
+    """Return broad keywords whose modal heading rank matches the overall mode.
 
-    Some editions use a single heading tag (e.g. all ``<h4>``) for every
-    structural division, including PART, BOOK, and chapter-level entries.
-    In that case the keyword-based level-1 assignment for broad keywords
-    creates a false hierarchy — the PART headings aren't actual containers.
-
-    When a broad keyword's modal rank equals the overall modal rank of the
-    section list, demote it from level 1 to level 2 (chapter level).
-
-    Only applies to heading-scan sections.  In the TOC path, keyword
-    hierarchy is authoritative regardless of HTML ranks.
+    Only fires for heading-scan sections (no TOC anchors), exactly one
+    broad keyword type present, and ≥ 80% of sections sharing the same
+    rank — i.e. the HTML used a single tag for everything and the
+    keyword-based level-1 assignment is misleading.
     """
-    if len(sections) < 3:
-        return sections
-
     # TOC-driven sections have anchor_ids → hierarchy is authoritative.
-    if any(s.anchor_id for s in sections):
-        return sections
-
-    # Overall modal rank across all sections with a known rank.
-    all_ranks: Counter[int] = Counter()
-    broad_kw_ranks: dict[str, Counter[int]] = {}
-    for section in sections:
-        if section.heading_rank is None:
-            continue
-        all_ranks[section.heading_rank] += 1
-        kw = _heading_keyword(section.heading_text)
-        if kw and kw in _BROAD_KEYWORDS and kw not in _DRAMATIC_BROAD_KEYWORDS:
-            broad_kw_ranks.setdefault(kw, Counter())[section.heading_rank] += 1
-
-    if not all_ranks or not broad_kw_ranks:
-        return sections
-
-    # Only demote when exactly one broad keyword type is present.
-    # Multiple broad keywords (VOLUME + BOOK, BOOK + PART) imply a
-    # real multi-level hierarchy that the nesting passes should handle.
-    if len(broad_kw_ranks) > 1:
-        return sections
-
-    # Only demote when the document uses a single heading rank for
-    # (nearly) all sections — i.e. the HTML didn't express hierarchy
-    # via rank variation.  When there IS rank variation (some h2, some
-    # h3), the hierarchy is real and broad keywords are containers.
-    overall_mode = all_ranks.most_common(1)[0][0]
-    mode_count = all_ranks[overall_mode]
-    total_ranked = sum(all_ranks.values())
-    if mode_count < total_ranked * 0.8:
-        return sections
-
-    # Find broad keywords whose modal rank matches the overall mode.
-    demote_keywords: set[str] = set()
-    for kw, ranks in broad_kw_ranks.items():
-        kw_mode = ranks.most_common(1)[0][0]
-        if kw_mode == overall_mode:
-            demote_keywords.add(kw)
-
-    if not demote_keywords:
-        return sections
-
-    new_sections = []
-    changed = False
-    for section in sections:
-        kw = _heading_keyword(section.heading_text)
-        if kw and kw in demote_keywords and section.level == 1:
-            new_sections.append(section._with_level(2))
-            changed = True
-        else:
-            new_sections.append(section)
-
-    return new_sections if changed else sections
-
-
-def _demoted_broad_keywords(sections: list[_Section]) -> frozenset[str]:
-    """Return the set of broad keywords that were demoted by the demotion pass.
-
-    Used by ``_nest_chapters_under_broad_containers`` to skip nesting under
-    demoted keywords.  Only applies to heading-scan sections (no TOC
-    anchors) — in the TOC path, keyword hierarchy is authoritative.
-    """
-    # TOC-driven sections have anchor_ids from pginternal links.
-    # If any section has one, hierarchy is TOC-authoritative → no demotion.
     if any(s.anchor_id for s in sections):
         return frozenset()
 
@@ -1755,6 +1682,40 @@ def _demoted_broad_keywords(sections: list[_Section]) -> frozenset[str]:
     return frozenset(
         kw for kw, ranks in broad_kw_ranks.items() if ranks.most_common(1)[0][0] == overall_mode
     )
+
+
+def _demote_same_rank_broad_keywords(sections: list[_Section]) -> list[_Section]:
+    """Demote broad keywords to chapter level when they share the modal rank.
+
+    Some editions use a single heading tag (e.g. all ``<h4>``) for every
+    structural division, including PART, BOOK, and chapter-level entries.
+    In that case the keyword-based level-1 assignment for broad keywords
+    creates a false hierarchy — the PART headings aren't actual containers.
+
+    Paired with :func:`_broad_keywords_at_modal_rank` (which detects the
+    keywords) and used in the pipeline immediately after
+    ``_nest_chapters_under_broad_containers`` so that legitimate nesting
+    is established first and the demotion only flattens false containers
+    for level compaction.
+    """
+    if len(sections) < 3:
+        return sections
+
+    demote_keywords = _broad_keywords_at_modal_rank(sections)
+    if not demote_keywords:
+        return sections
+
+    new_sections = []
+    changed = False
+    for section in sections:
+        kw = _heading_keyword(section.heading_text)
+        if kw and kw in demote_keywords and section.level == 1:
+            new_sections.append(section._with_level(2))
+            changed = True
+        else:
+            new_sections.append(section)
+
+    return new_sections if changed else sections
 
 
 def _nest_broad_subdivisions(sections: list[_Section]) -> list[_Section]:
