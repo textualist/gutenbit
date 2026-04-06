@@ -1620,3 +1620,182 @@ def test_shakespeare_complete_works_full_structure():
     assert len(headings) > 1000
 
 
+# ---------------------------------------------------------------------------
+# Emerson corpus (issue #179)
+# ---------------------------------------------------------------------------
+
+
+def test_emerson_conduct_of_life_resolves_paragraph_toc_anchors():
+    """PG 39827: TOC links point to <p id="fate"> instead of <a id="...">."""
+    headings = _headings(39827)
+    heading_texts = [h.content for h in headings]
+    assert len(headings) == 9
+    assert heading_texts == [
+        "Fate",
+        "Power",
+        "Wealth",
+        "Culture",
+        "Behavior",
+        "Worship",
+        "Considerations by the Way",
+        "Beauty",
+        "Illusions",
+    ]
+
+
+def test_emerson_nature_prefers_paragraph_chapters_over_sparse_heading():
+    """PG 29433: single <h1>NATURE</h1> vs 8 <p>-encoded chapters."""
+    headings = _headings(29433)
+    heading_texts = [h.content for h in headings]
+    assert len(headings) == 8
+    assert heading_texts[0] == "CHAPTER I."
+    assert heading_texts[-1] == "CHAPTER VIII. PROSPECTS."
+
+
+def test_emerson_essays_first_series_keeps_twelve_essays():
+    headings = _headings(2944)
+    assert len(headings) == 12
+    assert headings[0].content == "I. HISTORY"
+    assert headings[-1].content == "XII. ART"
+
+
+def test_emerson_representative_men_keeps_seven_lectures():
+    headings = _headings(6312)
+    assert len(headings) == 7
+    assert headings[0].content == "I. USES OF GREAT MEN."
+    assert "SHAKSPEARE" in headings[4].content
+
+
+def test_emerson_poems_nests_poems_under_six_parts():
+    headings = _headings(12843)
+    div1_values = sorted({h.div1 for h in headings if h.div1})
+    assert "I — POEMS" in div1_values
+    assert "II — MAY-DAY AND OTHER PIECES" in div1_values
+    assert "V — APPENDIX" in div1_values
+    assert "VI — POEMS OF YOUTH AND EARLY MANHOOD" in div1_values
+    # Poems nested under parts
+    good_bye = next(h for h in headings if h.content == "GOOD-BYE")
+    assert good_bye.div1 == "I — POEMS"
+
+
+def test_emerson_english_traits_keeps_nineteen_chapters():
+    headings = _headings(39862)
+    assert len(headings) == 19
+    assert headings[0].content == "CHAPTER I.--FIRST VISIT TO ENGLAND."
+    assert headings[-1].content == "CHAPTER XIX.--SPEECH AT MANCHESTER."
+
+
+# ---------------------------------------------------------------------------
+# Thoreau corpus (issue #179)
+# ---------------------------------------------------------------------------
+
+
+def test_thoreau_walden_keeps_title_and_eighteen_chapters():
+    headings = _headings(205)
+    heading_texts = [h.content for h in headings]
+    assert len(headings) == 19
+    assert heading_texts[0] == "WALDEN"
+    assert heading_texts[1] == "Economy"
+    assert heading_texts[-1] == "Conclusion"
+
+
+def test_thoreau_week_on_concord_keeps_eight_days():
+    headings = _headings(4232)
+    assert len(headings) == 8
+    assert headings[0].content == "CONCORD RIVER"
+    assert headings[-1].content == "FRIDAY"
+
+
+def test_thoreau_cape_cod_keeps_eleven_chapters():
+    headings = _headings(34392)
+    assert len(headings) == 11
+    assert headings[0].content == "INTRODUCTION"
+    assert headings[-1].content == "X PROVINCETOWN"
+
+
+def test_thoreau_journal_01_keeps_introduction_and_year_sections():
+    headings = _headings(57393)
+    heading_texts = [h.content for h in headings]
+    assert len(headings) == 11
+    assert heading_texts[0] == "INTRODUCTION"
+
+
+# ---------------------------------------------------------------------------
+# Melville corpus (issue #179)
+# ---------------------------------------------------------------------------
+
+
+def test_melville_typee_keeps_preface_and_note():
+    headings = _headings(1900)
+    heading_texts = [h.content for h in headings]
+    assert heading_texts[0] == "PREFACE"
+    assert heading_texts[-1] == "NOTE."
+    assert len(headings) == 39
+
+
+def test_melville_pierre_nests_chapters_under_twentysix_books():
+    headings = _headings(34970)
+    assert len(headings) == 26
+    assert headings[0].content.startswith("BOOK I.")
+    assert headings[-1].content.startswith("BOOK XXVI.")
+
+
+def test_melville_piazza_tales_keeps_six_stories():
+    headings = _headings(15859)
+    heading_texts = [h.content for h in headings]
+    assert len(headings) == 16
+    assert heading_texts[0] == "THE PIAZZA."
+    assert "BARTLEBY." in heading_texts
+    assert heading_texts[-1] == "THE BELL-TOWER."
+
+
+def test_melville_confidence_man_keeps_fortyfive_chapters():
+    headings = _headings(21816)
+    assert len(headings) == 45
+    assert headings[0].content.startswith("CHAPTER I.")
+    assert headings[-1].content.startswith("CHAPTER XLV.")
+
+
+# ---------------------------------------------------------------------------
+# Stevenson corpus (issue #179)
+# ---------------------------------------------------------------------------
+
+
+def test_stevenson_kidnapped_keeps_preface_and_thirty_chapters():
+    headings = _headings(421)
+    heading_texts = [h.content for h in headings]
+    assert len(headings) == 32
+    assert "PREFACE TO THE BIOGRAPHICAL EDITION" in heading_texts[0]
+    assert headings[-1].content.startswith("CHAPTER XXX")
+
+
+def test_stevenson_new_arabian_nights_nests_stories():
+    headings = _headings(839)
+    heading_texts = [h.content for h in headings]
+    assert len(headings) == 28
+    assert "THE SUICIDE CLUB" in heading_texts
+
+
+def test_stevenson_in_south_seas_nests_chapters_under_four_parts():
+    headings = _headings(464)
+    div1_values = sorted({h.div1 for h in headings if h.div1})
+    assert len(div1_values) == 4
+    assert "PART 1: THE MARQUESAS" in div1_values
+    assert "PART IV: THE GILBERTS—APEMAMA" in div1_values
+
+
+def test_stevenson_catriona_nests_chapters_under_two_parts():
+    headings = _headings(589)
+    div1_values = sorted({h.div1 for h in headings if h.div1})
+    assert "PART I. THE LORD ADVOCATE" in div1_values
+    assert "PART II. FATHER AND DAUGHTER" in div1_values
+
+
+def test_stevenson_childs_garden_of_verses_keeps_two_collections():
+    headings = _headings(136)
+    heading_texts = [h.content for h in headings]
+    assert len(headings) == 2
+    assert heading_texts[0] == "THE CHILD ALONE"
+    assert heading_texts[1] == "ENVOYS"
+
+

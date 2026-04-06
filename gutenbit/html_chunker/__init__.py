@@ -26,7 +26,6 @@ from gutenbit.html_chunker._scanning import (
     _paragraphs_in_range,
     _scan_document,
 )
-from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (keyed by id())
 from gutenbit.html_chunker._sections import (
     _broad_keywords_at_modal_rank,
     _demote_same_rank_broad_keywords,
@@ -43,6 +42,7 @@ from gutenbit.html_chunker._sections import (
     _normalize_toc_heading_ranks,
     _parse_heading_sections,
     _parse_paragraph_sections,
+    _parse_toc_paragraph_sections,
     _parse_toc_sections,
     _promote_more_prominent_heading_runs,
     _refine_toc_sections,
@@ -50,6 +50,7 @@ from gutenbit.html_chunker._sections import (
     _strip_leading_title_page_sections,
     _strip_printed_toc_page_runs,
 )
+from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (keyed by id())
 
 # ---------------------------------------------------------------------------
 # Public data structures
@@ -137,10 +138,25 @@ def chunk_html(html: str) -> list[Chunk]:
         # single-instance container heuristic fires before any
         # hierarchy pass.  See _normalize_toc_heading_ranks docstring.
         sections = _normalize_toc_heading_ranks(heading_sections)
+    # When heading scan is very sparse and paragraph scan finds richer
+    # structure, prefer paragraph sections.  This handles editions where
+    # a single title <h1> exists but chapter headings are <p> elements
+    # (e.g. PG 29433 "Nature" has <h1>NATURE</h1> + 8 <p>-encoded chapters).
+    if sections and len(sections) <= 2:
+        para_sections = _parse_paragraph_sections(doc_index=doc_index)
+        if len(para_sections) > 3 * len(sections):
+            sections = para_sections
     if not sections:
         # Try paragraph-text section scan: some editions encode chapter
         # headings as plain <p> elements instead of <h1>–<h6>.
         sections = _parse_paragraph_sections(doc_index=doc_index)
+    if not sections and doc_index.toc_links:
+        # TOC-paragraph fallback: some editions set anchor IDs directly on
+        # <p> or <div> elements instead of <a> tags (e.g. PG 39827).
+        # The scanner only collects <a> IDs, so the normal TOC path finds
+        # nothing.  Resolve missing targets with soup.find(id=...) and
+        # create sections from the TOC link text.
+        sections = _parse_toc_paragraph_sections(soup, doc_index=doc_index)
     if not sections:
         # Final fallback: emit all paragraphs as flat unsectioned text.
         if len(doc_index.paragraphs) < 10:

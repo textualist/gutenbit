@@ -7,7 +7,7 @@ from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 
-from bs4 import Tag
+from bs4 import BeautifulSoup, Tag
 
 from gutenbit.html_chunker._common import (
     _BARE_HEADING_NUMBER_RE,
@@ -251,9 +251,7 @@ def _parse_toc_sections(
         heading_el = body_anchor.find_parent(_HEADING_TAGS)
         if heading_el and not _tag_within_bounds(heading_el, tag_positions, bounds):
             heading_el = None
-        used_fallback_heading = False
         if not heading_el:
-            used_fallback_heading = True
             # The anchor may precede an intervening heading (e.g. a repeated
             # book title) that doesn't correspond to this TOC entry.  Search
             # forward through a few candidates to find one that matches.
@@ -2281,4 +2279,63 @@ def _parse_paragraph_sections(
         if anchor:
             anchor_id = str(anchor.get("id", ""))
         sections.append(_Section(anchor_id, heading_text, level, ip.tag, None))
+    return sections
+
+
+def _parse_toc_paragraph_sections(
+    soup: BeautifulSoup,
+    *,
+    doc_index: _DocumentIndex,
+) -> list[_Section]:
+    """Build sections from TOC links whose targets are non-<a> elements.
+
+    Some Gutenberg editions set ``id`` directly on ``<p>`` or ``<div>``
+    elements instead of child ``<a>`` anchors (e.g. PG 39827 uses
+    ``<p id="fate">``).  The normal scanner only collects ``<a>`` IDs, so
+    these targets are invisible to :func:`_parse_toc_sections`.
+
+    This function resolves the missing targets with ``soup.find(id=...)``
+    and creates sections from the TOC link text.  It is called only when
+    all other parsing strategies have failed.
+    """
+    tag_positions = doc_index.tag_positions
+    bounds = doc_index.bounds
+    sections: list[_Section] = []
+    used_ids: set[str] = set()
+
+    for link in doc_index.toc_links:
+        if not _tag_within_bounds(link, tag_positions, bounds):
+            continue
+        link_text = _clean_heading_text(" ".join(link.get_text().split()))
+        if not link_text:
+            continue
+        if not _is_structural_toc_link(link, link_text, doc_index=doc_index):
+            continue
+        href = str(link.get("href", ""))
+        if not href.startswith("#"):
+            continue
+        anchor_id = href[1:]
+        if anchor_id in used_ids:
+            continue
+        # Already resolved by the normal scanner — skip.
+        if anchor_id in doc_index.anchor_map:
+            continue
+        target = soup.find(id=anchor_id)
+        if target is None or not isinstance(target, Tag):
+            continue
+        # Ensure the target has a position for downstream processing.
+        if id(target) not in tag_positions:
+            tag_positions[id(target)] = max(tag_positions.values(), default=0) + 1
+        if not bounds.contains(tag_positions[id(target)]):
+            continue
+        used_ids.add(anchor_id)
+        heading_text = _clean_heading_text(link_text)
+        if not heading_text or _is_non_structural_heading_text(heading_text):
+            continue
+        level = _classify_level(heading_text, _is_emphasized_toc_link(link))
+        sections.append(_Section(anchor_id, heading_text, level, target, 2))
+
+    sections.sort(
+        key=lambda s: tag_positions.get(id(s.body_anchor), float("inf"))
+    )
     return sections
