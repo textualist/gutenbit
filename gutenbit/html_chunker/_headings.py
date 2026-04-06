@@ -101,6 +101,9 @@ _CONTINUATION_MARKER_RE = re.compile(
 #   1. Dot-separated single-letter abbreviation: "U . S . A"
 #   2. Two-word geographic pair with dot separator: "CAMBRIDGE . MASSACHUSETTS"
 # Both anchored to full heading text to avoid matching prose fragments.
+# Intentionally case-sensitive (no IGNORECASE): colophon address lines
+# are always ALL-CAPS in print editions.  Mixed-case headings like
+# "Cambridge . Massachusetts" are not colophon lines.
 _GEOGRAPHIC_COLOPHON_RE = re.compile(
     r"^(?:"
     r"(?:[A-Z]\s*\.\s*){2,}[A-Z]?\s*\.?\s*$"  # U . S . A

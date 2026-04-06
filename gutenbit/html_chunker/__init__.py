@@ -118,6 +118,10 @@ def chunk_html(html: str) -> list[Chunk]:
         # (e.g. Dante's Inferno: 2 TOC links vs 37 heading-scan sections).
         # Prefer the richer heading scan in that case.
         if len(heading_sections) > 3 * len(toc_sections) and len(toc_sections) <= 5:
+            # Rank normalization runs on heading-scan sections too (not
+            # just TOC sections) so the single-instance container
+            # heuristic can fix inverted BOOK/PART ranks in books like
+            # the Golden Bowl (PG 4262) that lack a pginternal TOC.
             sections = _normalize_toc_heading_ranks(heading_sections)
         else:
             toc_sections = _normalize_toc_heading_ranks(toc_sections)
@@ -127,6 +131,9 @@ def chunk_html(html: str) -> list[Chunk]:
                 doc_index=doc_index,
             )
     else:
+        # Heading-scan fallback: normalise ranks here so the
+        # single-instance container heuristic fires before any
+        # hierarchy pass.  See _normalize_toc_heading_ranks docstring.
         sections = _normalize_toc_heading_ranks(heading_sections)
     if not sections:
         # Try paragraph-text section scan: some editions encode chapter

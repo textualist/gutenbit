@@ -4320,3 +4320,55 @@ def test_single_book_containing_parts_nests_correctly():
     # Both PARTs should be under BOOK FIRST.
     assert part_first.div2 == "BOOK FIRST"
     assert part_second.div2 == "BOOK FIRST"
+
+
+def test_broad_keyword_does_not_nest_under_bare_numeral():
+    """A PART heading must not nest under a bare-numeral chapter that
+    happens to sit at a shallower HTML rank due to inconsistent source
+    tags.  Only keyword-bearing parents (BOOK, VOLUME) qualify."""
+    html = _make_html("""
+    <h1>VOLUME I</h1>
+    <h4>BOOK FIRST</h4>
+    <h5>PART FIRST</h5>
+    <h5>I</h5>
+    <p>Chapter one with enough text for the body filter.</p>
+    <h2>II</h2>
+    <p>Chapter two with enough text for the body filter.</p>
+    <h5>PART SECOND</h5>
+    <h5>III</h5>
+    <p>Chapter three with enough text for the body filter.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    part_second = next(h for h in headings if h.content == "PART SECOND")
+    # PART SECOND must nest under BOOK FIRST (keyword parent), not
+    # under chapter "II" (bare numeral at a shallower h2 rank).
+    assert "BOOK FIRST" in (part_second.div2, part_second.div3)
+    assert part_second.div1 != "II"
+
+
+def test_front_matter_heading_not_promoted_as_container():
+    """A 'Volume I Preface' heading is front-matter and must not be
+    promoted as a structural container for BOOK headings by the
+    single-instance container heuristic."""
+    html = _make_html("""
+    <h2><a id="pref"></a>Volume I Preface</h2>
+    <p>In describing my attempt to present the case.</p>
+    <h2><a id="b1"></a>BOOK FIRST</h2>
+    <h3><a id="c1"></a>I</h3>
+    <p>First question when he reached the hotel.</p>
+    <h2><a id="b2"></a>BOOK SECOND</h2>
+    <h3><a id="c2"></a>I</h3>
+    <p>Those occasions on which he was to remember.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    book_first = next(h for h in headings if h.content == "BOOK FIRST")
+    book_second = next(h for h in headings if h.content == "BOOK SECOND")
+
+    # BOOK FIRST and BOOK SECOND are siblings at the broadest level,
+    # not nested under the preface.
+    assert book_first.div1 == "BOOK FIRST"
+    assert book_second.div1 == "BOOK SECOND"
