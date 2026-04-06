@@ -4465,3 +4465,118 @@ def test_same_rank_broad_keyword_demoted_to_chapter_level():
     # III A DAY OF DAYS must NOT nest under PART II — they are peers.
     assert day_of_days.div1 == "III A DAY OF DAYS"
     assert day_of_days.div2 == ""
+
+
+# ---------------------------------------------------------------------------
+# Issue #185: Mid-heading footnote citations stripped from heading text
+# ---------------------------------------------------------------------------
+
+
+def test_inline_footnote_citations_stripped_from_heading():
+    """Footnote citations like [525] appearing mid-heading should be removed."""
+    html = _make_html("""
+    <p class="toc"><a href="#c1" class="pginternal">SHAKSPEARE; OR, THE POET</a></p>
+    <p class="toc"><a href="#c2" class="pginternal">PRUDENCE</a></p>
+
+    <h2><a id="c1"></a>SHAKSPEARE;[525]OR, THE POET</h2>
+    <p>Great literature is at once the cause and effect of great knowledge.</p>
+    <p>The poet gives us the eminent experiences only.</p>
+
+    <h2><a id="c2"></a>PRUDENCE.[660]</h2>
+    <p>What right have I to write on Prudence?</p>
+    <p>The word Prudence is hateful to me.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 2
+    assert headings[0].content == "SHAKSPEARE; OR, THE POET"
+    assert headings[1].content == "PRUDENCE."
+
+
+# ---------------------------------------------------------------------------
+# Issue #184: Page-number anchors in TOC links resolved to containing heading
+# ---------------------------------------------------------------------------
+
+
+def test_page_anchor_toc_links_resolve_to_heading():
+    """TOC links pointing at page-number anchors inside headings should
+    resolve to the heading text, not be discarded."""
+    html = _make_html("""
+    <p class="toc"><a href="#page3" class="pginternal">3</a>
+       On Some Technical Elements of Style</p>
+    <p class="toc"><a href="#page47" class="pginternal">47</a>
+       The Morality of Letters</p>
+
+    <h2><a id="page3"></a><span class="pagenum">p. 3</span>ON SOME TECHNICAL ELEMENTS OF STYLE</h2>
+    <p>There is nothing more disenchanting to man.</p>
+    <p>Let us begin with the essence of the matter.</p>
+
+    <h2><a id="page47"></a><span class="pagenum">p. 47</span>THE MORALITY OF LETTERS</h2>
+    <p>The profession of letters has been lately debated.</p>
+    <p>We must ask ourselves what we mean by morality.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 2
+    assert headings[0].content == "ON SOME TECHNICAL ELEMENTS OF STYLE"
+    assert headings[1].content == "THE MORALITY OF LETTERS"
+
+
+# ---------------------------------------------------------------------------
+# Issue #181: Epigraph/body heading duplication merged when pattern is widespread
+# ---------------------------------------------------------------------------
+
+
+def test_epigraph_heading_pairs_merged():
+    """When many same-text heading pairs bracket short epigraph content,
+    the first heading of each pair is dropped (epigraph merge)."""
+    # Build 4 essays with epigraph pattern (≥3 pairs triggers merge)
+    essays = []
+    for i, title in enumerate(["ESSAY ONE", "ESSAY TWO", "ESSAY THREE", "ESSAY FOUR"], 1):
+        essays.append(f"""
+        <h2><a id="ep{i}"></a>{title}</h2>
+        <p>Short poem line one for essay {i}.</p>
+        <p>Short poem line two for essay {i}.</p>
+        <h2><a id="body{i}"></a>{title}</h2>
+        <p>The body of essay {i} begins here with substantial content.</p>
+        <p>More body text for essay {i}.</p>
+        """)
+    html = _make_html("\n".join(essays))
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    # Each essay should appear exactly once (not twice)
+    assert len(headings) == 4
+    for title in ["ESSAY ONE", "ESSAY TWO", "ESSAY THREE", "ESSAY FOUR"]:
+        assert sum(1 for h in headings if h.content == title) == 1
+
+
+# ---------------------------------------------------------------------------
+# Issue #182: Poetry collection headings preserved when heading-scan
+# finds far more structure than sparse TOC (5:1 threshold)
+# ---------------------------------------------------------------------------
+
+
+def test_sparse_toc_prefers_heading_scan_at_5x_ratio():
+    """When heading-scan finds 5x more sections than the TOC, prefer
+    heading-scan over refinement (poetry collection pattern)."""
+    # TOC with 6 entries but heading-scan with 30+ poems
+    toc_entries = []
+    headings = []
+    for i in range(1, 7):
+        toc_entries.append(
+            f'<p class="toc"><a href="#p{i}" class="pginternal">Poem {i}</a></p>'
+        )
+    for i in range(1, 35):
+        headings.append(f"""
+        <h3><a id="p{i}"></a>Poem {i}</h3>
+        <p>Text of poem number {i}, which has some content.</p>
+        """)
+    html = _make_html("\n".join(toc_entries) + "\n" + "\n".join(headings))
+    chunks = chunk_html(html)
+    h = [c for c in chunks if c.kind == "heading"]
+
+    # Should have all 34 poems, not just the 6 from TOC
+    assert len(h) >= 30

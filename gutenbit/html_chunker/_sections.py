@@ -66,6 +66,7 @@ from gutenbit.html_chunker._headings import (
 from gutenbit.html_chunker._scanning import (
     _DocumentIndex,
     _IndexedParagraph,
+    _paragraphs_in_range,
     _tag_position,
     _tag_within_bounds,
 )
@@ -92,6 +93,11 @@ _MAX_DESCRIPTION_PARAGRAPH_LEN = 300
 # Minimum fraction of alpha chars that must be uppercase for the paragraph
 # to be considered an ALL-CAPS description (allows minor OCR artifacts).
 _MIN_UPPERCASE_RATIO = 0.9
+# Maximum word count between duplicate heading pairs that qualifies as an
+# epigraph/introductory poem rather than a full section body.  When the
+# content between two same-text headings is at most this many words, the
+# first heading is treated as an epigraph wrapper and merged with the second.
+_MAX_EPIGRAPH_WORDS = 400
 # Maximum number of sections at min_level before _equalize_orphan_level_gap
 # treats them as the primary structure rather than orphan outliers.
 _MAX_ORPHAN_LEVEL_COUNT = 2
@@ -102,6 +108,11 @@ _MIN_MAJORITY_RATIO = 3
 # ---------------------------------------------------------------------------
 # Compiled regex patterns (used only within this module)
 # ---------------------------------------------------------------------------
+
+# Anchor IDs that look like page-number references: "page3", "page_47",
+# "Page111".  Used to detect TOC links that point at page markers inside
+# heading elements rather than at structural anchors.
+_PAGE_ANCHOR_ID_RE = re.compile(r"^[Pp]age[_\-]?\d+$")
 
 # Tail-boundary pattern: only clearly apparatus headings, not ambiguous
 # singular "NOTE" which can be a narrative epilogue (e.g. Dracula).
@@ -230,23 +241,69 @@ def _parse_toc_sections(
 
     anchor_map = doc_index.anchor_map
 
+    # Pre-scan: count page-anchor links that resolve to headings vs total
+    # page-anchor links.  Only enable page-anchor resolution when most
+    # links resolve to headings (e.g. PG 492: 7/7 = 100%).  When only
+    # a fraction resolve (e.g. PG 786: 14/40 = 35%), the TOC is a printed
+    # page-number list and the heading matches are coincidental.
+    page_anchor_total = 0
+    page_anchor_heading = 0
+    for link in toc_links:
+        href = str(link.get("href", ""))
+        if not href.startswith("#"):
+            continue
+        aid = href[1:]
+        raw = _clean_heading_text(" ".join(link.get_text().split()))
+        if _PAGE_ANCHOR_ID_RE.match(aid) and _NUMERIC_LINK_TEXT_RE.fullmatch(raw):
+            page_anchor_total += 1
+            ba = anchor_map.get(str(aid))
+            if ba and ba.find_parent(_HEADING_TAGS):
+                page_anchor_heading += 1
+    enable_page_anchor_resolution = (
+        page_anchor_total > 0
+        and page_anchor_heading / page_anchor_total >= 0.5
+    )
+
     for link in toc_links:
         if not _tag_within_bounds(link, tag_positions, bounds):
             continue
         raw_link_text = _clean_heading_text(" ".join(link.get_text().split()))
         link_text = raw_link_text
-        if not _is_structural_toc_link(link, raw_link_text, doc_index=doc_index):
-            context_text = _toc_context_text(link)
-            if _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text) and _looks_enumerated_toc_entry(
-                context_text
-            ):
-                link_text = context_text
-            else:
-                continue
+
+        # Early resolution: when a numeric TOC link targets a page-number
+        # anchor inside a heading (e.g. PG 492: <a href="#page3">3</a>
+        # → <h2><a id="page3"></a>..HEADING..</h2>), resolve through
+        # the heading and use its text.  This must run before the
+        # structural-link filter, which would otherwise discard the link.
         href = str(link.get("href", ""))
-        if not href.startswith("#"):
+        anchor_id = href[1:] if href.startswith("#") else ""
+        resolved_via_page_anchor = False
+        if (
+            enable_page_anchor_resolution
+            and anchor_id
+            and _PAGE_ANCHOR_ID_RE.match(anchor_id)
+            and _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text)
+        ):
+            body_anchor_early = anchor_map.get(str(anchor_id))
+            if body_anchor_early:
+                heading_parent = body_anchor_early.find_parent(_HEADING_TAGS)
+                if heading_parent and _tag_within_bounds(heading_parent, tag_positions, bounds):
+                    heading_text = _clean_heading_text(_extract_heading_text(heading_parent))
+                    if heading_text:
+                        link_text = heading_text
+                        resolved_via_page_anchor = True
+
+        if not resolved_via_page_anchor:
+            if not _is_structural_toc_link(link, raw_link_text, doc_index=doc_index):
+                context_text = _toc_context_text(link)
+                if _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text) and _looks_enumerated_toc_entry(
+                    context_text
+                ):
+                    link_text = context_text
+                else:
+                    continue
+        if not anchor_id:
             continue
-        anchor_id = href[1:]
         body_anchor = anchor_map.get(str(anchor_id))
         if not body_anchor or not _tag_within_bounds(body_anchor, tag_positions, bounds):
             continue
@@ -254,7 +311,11 @@ def _parse_toc_sections(
         # Skip page-number anchors (e.g. illustrated editions use
         # <span class="pagenum"><a id="page_1">) — these are not sections.
         if body_anchor.find_parent("span", class_="pagenum"):
-            continue
+            heading_parent = body_anchor.find_parent(_HEADING_TAGS)
+            if heading_parent and _tag_within_bounds(heading_parent, tag_positions, bounds):
+                body_anchor = heading_parent
+            else:
+                continue
 
         # Find the associated heading element.
         heading_el = body_anchor.find_parent(_HEADING_TAGS)
@@ -548,6 +609,12 @@ def _merge_adjacent_duplicate_sections(
     same-text siblings is large enough to contain real content (> 8 document
     positions), the pair is kept — they are genuine distinct sections (e.g.
     two letters dated "July 28th." in an epistolary novel).
+
+    Epigraph merge: when many same-text heading pairs (≥ 3) bracket short
+    content (≤ _MAX_EPIGRAPH_WORDS words), the first heading of each pair is
+    an epigraph wrapper and the pair is collapsed to keep only the second
+    (body) heading.  This handles Emerson-style essays where each essay has
+    an introductory poem bracketed by duplicate heading tags.
     """
     if len(sections) < 2:
         return sections
@@ -556,10 +623,6 @@ def _merge_adjacent_duplicate_sections(
 
     # Pre-compute same-text run lengths so we can distinguish genuine
     # structural runs (≥3) from HTML-duplicate pairs (exactly 2).
-    # NOTE: The threshold of 2 can false-positive on genuine 2-item
-    # anthologies where both entries share the same series title.  This is
-    # acceptable because true HTML duplicates (same heading emitted twice
-    # by the source) are far more common than 2-item anthology runs.
     n = len(sections)
     run_length = [1] * n
     i = 0
@@ -577,29 +640,60 @@ def _merge_adjacent_duplicate_sections(
             run_length[k] = length
         i = j
 
+    # Pass 1: identify epigraph pairs — same-text heading pairs (run of 2)
+    # with a large-enough positional gap but short content between them.
+    epigraph_pair_indices: set[int] = set()  # indices of the *first* section in a pair
+    for idx in range(n - 1):
+        if run_length[idx] != 2 or run_length[idx + 1] != 2:
+            continue
+        a, b = sections[idx], sections[idx + 1]
+        if not (
+            a.level == b.level
+            and a.heading_rank == b.heading_rank
+            and _same_heading_text(a.heading_text, b.heading_text)
+        ):
+            continue
+        a_pos = _tag_position(a.body_anchor, tag_positions)
+        b_pos = _tag_position(b.body_anchor, tag_positions)
+        if a_pos is None or b_pos is None or b_pos - a_pos <= 8:
+            continue  # close gap — will be collapsed by the normal dedup
+        between_words = sum(
+            len(t.split())
+            for t in _paragraphs_in_range(
+                doc_index.paragraphs,
+                doc_index.paragraph_positions,
+                a_pos,
+                b_pos,
+            )
+        )
+        if between_words <= _MAX_EPIGRAPH_WORDS:
+            epigraph_pair_indices.add(idx)
+
+    # Only apply epigraph merge when the pattern is widespread (≥ 3 pairs),
+    # preventing false positives on one-off date-heading duplicates in
+    # epistolary novels.
+    apply_epigraph_merge = len(epigraph_pair_indices) >= 3
+
+    # Pass 2: build merged list.
     merged = [sections[0]]
     for idx, section in enumerate(sections[1:], start=1):
         previous = merged[-1]
-        # run_length[idx] describes the run that *section* belongs to in the
-        # original list — that's the right index because we're deciding
-        # whether to keep or drop the current item.
         if (
             previous.level == section.level
             and previous.heading_rank == section.heading_rank
             and _same_heading_text(previous.heading_text, section.heading_text)
             and run_length[idx] <= 2
         ):
-            # Before collapsing, check the positional gap.  A large gap
-            # means real content exists between the two headings (e.g. two
-            # letters on the same date in an epistolary novel).  HTML
-            # duplicates (same heading in the TOC then again in the body)
-            # typically have gaps ≤ 8; genuine content sections have gaps
-            # > 8 (at least several paragraphs of letter/chapter text).
             prev_pos = _tag_position(previous.body_anchor, tag_positions)
             curr_pos = _tag_position(section.body_anchor, tag_positions)
             if prev_pos is not None and curr_pos is not None and curr_pos - prev_pos > 8:
+                # Epigraph merge: replace the first heading with the second.
+                if apply_epigraph_merge and (idx - 1) in epigraph_pair_indices:
+                    merged[-1] = section
+                    continue
                 merged.append(section)
                 continue
+            # Small gap — normal HTML duplicate, drop the second.
             continue
         merged.append(section)
     return merged
@@ -1474,6 +1568,18 @@ def _refine_toc_sections(
         if toc_idx + 1 < len(toc_sections):
             next_pos = _tag_position(toc_sections[toc_idx + 1].body_anchor, tag_positions)
 
+        # When past the last TOC section, compute a tail boundary from
+        # the raw heading index so that sub-headings inside apparatus
+        # sections (e.g. essay titles repeated under a NOTES heading)
+        # are not promoted as structural sections.
+        tail_boundary_pos: int | None = None
+        if next_pos is None and start_pos is not None:
+            tail_anchor = _find_non_structural_boundary_after(
+                toc_section.body_anchor, doc_index=doc_index
+            )
+            if tail_anchor is not None:
+                tail_boundary_pos = tag_positions.get(id(tail_anchor))
+
         while heading_idx < len(heading_sections):
             candidate_pos = _tag_position(heading_sections[heading_idx].body_anchor, tag_positions)
             if candidate_pos is None or candidate_pos < start_pos:
@@ -1489,6 +1595,11 @@ def _refine_toc_sections(
                 scan_idx += 1
                 continue
             if next_pos is not None and candidate_pos >= next_pos:
+                break
+            # Stop at tail boundary (apparatus heading like NOTES) to
+            # prevent sub-headings inside apparatus from leaking into
+            # the structural section list.
+            if tail_boundary_pos is not None and candidate_pos >= tail_boundary_pos:
                 break
             if _same_heading_text(candidate.heading_text, toc_section.heading_text):
                 scan_idx += 1

@@ -1801,3 +1801,77 @@ def test_stevenson_childs_garden_of_verses_keeps_two_collections():
     assert heading_texts[1] == "ENVOYS"
 
 
+# ---------------------------------------------------------------------------
+# Issue #185: PG 16643 — Mid-heading footnote citations stripped;
+# NOTES sub-headings not promoted as sections.
+# ---------------------------------------------------------------------------
+
+
+def test_emerson_essays_merrill_no_notes_sections():
+    """PG 16643: inline citations like [525] stripped from headings;
+    scholarly NOTES sub-headings do not leak into sections."""
+    headings = _headings(16643)
+    heading_texts = [h.content for h in headings]
+
+    assert "SHAKSPEARE; OR, THE POET" in heading_texts
+    # No duplicate essay titles from the NOTES section
+    assert heading_texts.count("THE AMERICAN SCHOLAR") <= 1
+    assert heading_texts.count("COMPENSATION") <= 1
+    assert len(headings) == 14
+
+
+# ---------------------------------------------------------------------------
+# Issue #184: PG 492 — Page-number anchor TOC links resolved to headings.
+# ---------------------------------------------------------------------------
+
+
+def test_stevenson_art_of_writing_page_anchor_toc():
+    """PG 492: TOC links target page-number anchors inside headings.
+    All 7 essays should be parsed as sections."""
+    headings = _headings(492)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 7
+    assert heading_texts[0] == "ON SOME TECHNICAL ELEMENTS OF STYLE IN LITERATURE"
+    assert "THE MORALITY OF THE PROFESSION OF LETTERS" in heading_texts
+    assert any("PREFACE TO" in t and "MASTER OF BALLANTRAE" in t for t in heading_texts)
+
+
+# ---------------------------------------------------------------------------
+# Issue #181: PG 75942 — Epigraph/body heading duplication merged.
+# ---------------------------------------------------------------------------
+
+
+def test_emerson_lectures_epigraph_merge():
+    """PG 75942: duplicate heading pairs bracketing epigraphs collapsed
+    into single sections."""
+    headings = _headings(75942)
+    heading_texts = [h.content for h in headings]
+
+    # Each essay appears exactly once (not twice)
+    assert heading_texts.count("DEMONOLOGY.") == 1
+    assert heading_texts.count("ARISTOCRACY.") == 1
+    assert heading_texts.count("PLUTARCH.") == 1
+    assert heading_texts.count("THOREAU.") == 1
+    assert len(headings) == 19
+
+
+# ---------------------------------------------------------------------------
+# Issue #182: PG 438 — Poetry collection headings preserved.
+# ---------------------------------------------------------------------------
+
+
+def test_stevenson_underwoods_full_poem_list():
+    """PG 438: all 58 poem headings preserved via heading-scan when
+    TOC is sparse (10 vs 58 sections, 5.8:1 ratio)."""
+    headings = _headings(438)
+    heading_texts = [h.content for h in headings]
+
+    # Should have all poems, not just the 10 from the sparse TOC
+    assert len(headings) >= 55
+    assert "NOTE" in heading_texts
+    assert "BOOK I.\u2014In English" in heading_texts or any("BOOK I" in t for t in heading_texts)
+    assert any("ENVOY" in t for t in heading_texts)
+    assert any("REQUIEM" in t for t in heading_texts)
+
+

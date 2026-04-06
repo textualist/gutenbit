@@ -120,8 +120,14 @@ def chunk_html(html: str) -> list[Chunk]:
         # the TOC links are navigational but not structurally representative
         # (e.g. Dante's Inferno: 2 TOC links vs 37 heading-scan sections).
         # Prefer the richer heading scan in that case.
+        # Three tiers: 3:1 with ≤ 5 TOC entries, 5:1 with 6-10 TOC
+        # entries, or 10:1 extreme override.  The middle tier handles
+        # poetry collections (e.g. PG 438: 10 TOC entries, 58 heading
+        # sections, 5.8:1 ratio) without triggering on books with valid
+        # TOCs at a low ratio (e.g. PG 4232: 8 TOC, 25 heading, 3.1:1).
         if len(heading_sections) > 3 * len(toc_sections) and (
             len(toc_sections) <= 5
+            or (len(toc_sections) <= 10 and len(heading_sections) > 5 * len(toc_sections))
             or len(heading_sections) > 10 * len(toc_sections)
         ):
             # Rank normalization runs on heading-scan sections too (not
