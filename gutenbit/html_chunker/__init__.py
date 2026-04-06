@@ -164,7 +164,7 @@ def chunk_html(html: str) -> list[Chunk]:
     # then _demote_same_rank_broad_keywords applies the level change.
     _skip_broad = _broad_keywords_at_modal_rank(sections)
     sections = _nest_chapters_under_broad_containers(sections, skip_keywords=_skip_broad)
-    sections = _demote_same_rank_broad_keywords(sections)
+    sections = _demote_same_rank_broad_keywords(sections, demote_keywords=_skip_broad)
     sections = _promote_more_prominent_heading_runs(sections)
     # Use heading rank (h1→h2→h3) to nest sections under non-keyword
     # parents when the rank gap is exactly 1.  Runs before flatten/orphan

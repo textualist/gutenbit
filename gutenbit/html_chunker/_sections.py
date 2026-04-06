@@ -1174,6 +1174,26 @@ def _parse_heading_sections(
     return _respect_heading_rank_nesting(sections, infer_from_rank=True)
 
 
+def _paragraph_range_between(
+    section_a: _Section,
+    section_b: _Section,
+    *,
+    doc_index: _DocumentIndex,
+) -> tuple[int, int] | None:
+    """Return ``(lo, hi)`` paragraph-position indices between two sections.
+
+    Returns ``None`` when either section's position is unknown.
+    """
+    pos_a = _tag_position(section_a.body_anchor, doc_index.tag_positions)
+    pos_b = _tag_position(section_b.body_anchor, doc_index.tag_positions)
+    if pos_a is None or pos_b is None:
+        return None
+    return (
+        bisect_right(doc_index.paragraph_positions, pos_a),
+        bisect_left(doc_index.paragraph_positions, pos_b),
+    )
+
+
 def _has_paragraphs_between(
     section_a: _Section,
     section_b: _Section,
@@ -1181,13 +1201,10 @@ def _has_paragraphs_between(
     doc_index: _DocumentIndex,
 ) -> bool:
     """Return True if any indexed paragraphs exist between two sections."""
-    pos_a = _tag_position(section_a.body_anchor, doc_index.tag_positions)
-    pos_b = _tag_position(section_b.body_anchor, doc_index.tag_positions)
-    if pos_a is None or pos_b is None:
+    rng = _paragraph_range_between(section_a, section_b, doc_index=doc_index)
+    if rng is None:
         return True  # assume content exists when positions are unknown
-    lo = bisect_right(doc_index.paragraph_positions, pos_a)
-    hi = bisect_left(doc_index.paragraph_positions, pos_b)
-    return lo < hi
+    return rng[0] < rng[1]
 
 
 def _paragraphs_between_are_metadata_only(
@@ -1203,12 +1220,10 @@ def _paragraphs_between_are_metadata_only(
     section.  Requires the paragraph count to be small and each paragraph to
     be short enough that real prose cannot slip through.
     """
-    pos_a = _tag_position(section_a.body_anchor, doc_index.tag_positions)
-    pos_b = _tag_position(section_b.body_anchor, doc_index.tag_positions)
-    if pos_a is None or pos_b is None:
+    rng = _paragraph_range_between(section_a, section_b, doc_index=doc_index)
+    if rng is None:
         return False
-    lo = bisect_right(doc_index.paragraph_positions, pos_a)
-    hi = bisect_left(doc_index.paragraph_positions, pos_b)
+    lo, hi = rng
     if lo >= hi:
         return False  # no paragraphs — caller handles the empty case
     if hi - lo > _MAX_TITLE_ZONE_METADATA_PARAS:
@@ -1684,25 +1699,18 @@ def _broad_keywords_at_modal_rank(
     )
 
 
-def _demote_same_rank_broad_keywords(sections: list[_Section]) -> list[_Section]:
+def _demote_same_rank_broad_keywords(
+    sections: list[_Section],
+    *,
+    demote_keywords: frozenset[str],
+) -> list[_Section]:
     """Demote broad keywords to chapter level when they share the modal rank.
 
-    Some editions use a single heading tag (e.g. all ``<h4>``) for every
-    structural division, including PART, BOOK, and chapter-level entries.
-    In that case the keyword-based level-1 assignment for broad keywords
-    creates a false hierarchy — the PART headings aren't actual containers.
-
-    Paired with :func:`_broad_keywords_at_modal_rank` (which detects the
-    keywords) and used in the pipeline immediately after
-    ``_nest_chapters_under_broad_containers`` so that legitimate nesting
-    is established first and the demotion only flattens false containers
-    for level compaction.
+    *demote_keywords* is the output of :func:`_broad_keywords_at_modal_rank`,
+    computed once in the pipeline and reused here to avoid a redundant
+    iteration over all sections.
     """
-    if len(sections) < 3:
-        return sections
-
-    demote_keywords = _broad_keywords_at_modal_rank(sections)
-    if not demote_keywords:
+    if len(sections) < 3 or not demote_keywords:
         return sections
 
     new_sections = []
@@ -1901,26 +1909,28 @@ def _flatten_single_work_title_wrapper(sections: list[_Section]) -> list[_Sectio
 
     min_level = min(s.level for s in sections)
 
-    # Precompute which min_level sections have a direct child at
-    # min_level + 1 — O(n) single forward pass instead of per-section
-    # O(n) scan.
-    has_child_at_next = [False] * len(sections)
+    # Precompute direct children at min_level + 1 for each min_level
+    # section in a single forward pass.  Used both for the peer-essay
+    # check and for the wrapper-identification loop below.
+    children_of: dict[int, list[_Section]] = {}
     for idx in range(len(sections)):
         if sections[idx].level != min_level:
             continue
+        children: list[_Section] = []
         for next_idx in range(idx + 1, len(sections)):
             if sections[next_idx].level <= min_level:
                 break
             if sections[next_idx].level == min_level + 1:
-                has_child_at_next[idx] = True
-                break
+                children.append(sections[next_idx])
+        if children:
+            children_of[idx] = children
 
     has_peer_essay = any(
         s.level == min_level
         and _is_title_like_heading(s.heading_text)
         and not _is_front_matter_heading(s.heading_text)
         and not _starts_with_enumerated_heading_prefix(s.heading_text.strip())
-        and not has_child_at_next[idx]
+        and idx not in children_of
         for idx, s in enumerate(sections)
     )
 
@@ -1935,13 +1945,7 @@ def _flatten_single_work_title_wrapper(sections: list[_Section]) -> list[_Sectio
         # within a larger work, not work titles — don't flatten them.
         if _starts_with_enumerated_heading_prefix(section.heading_text.strip()):
             continue
-        # Check for at least one direct child at min_level + 1.
-        direct_children: list[_Section] = []
-        for next_idx in range(idx + 1, len(sections)):
-            if sections[next_idx].level <= min_level:
-                break
-            if sections[next_idx].level == min_level + 1:
-                direct_children.append(sections[next_idx])
+        direct_children = children_of.get(idx)
         if not direct_children:
             continue
         # Essay-collection bare-numeral sub-section guard.
