@@ -339,32 +339,32 @@ def _parse_toc_sections(
         if _REFINEMENT_STOP_HEADING_RE.match(section.heading_text):
             apparatus_rank = section.heading_rank
             has_higher_rank_after = False
+            is_peer_conclusion = False
             if apparatus_rank is not None:
                 remaining = sections[trim_idx + 1 :]
                 has_higher_rank_after = any(
                     s.heading_rank is not None and s.heading_rank < apparatus_rank
                     for s in remaining
                 )
-            # "Conclusion" is commonly a regular chapter title (e.g. PG 205
-            # Walden) rather than an apparatus boundary.  Skip truncation
-            # when it shares its heading rank with the majority of preceding
-            # sections, indicating it is a peer chapter.  Do not apply this
-            # exemption to APPENDIX / NOTES ON which are almost always
-            # genuine apparatus headings.  Require at least 3 preceding
-            # sections so that very short books where "Conclusion" truly is
-            # terminal are not incorrectly exempted.
-            is_peer_conclusion = False
-            if (
-                apparatus_rank is not None
-                and trim_idx >= 3
-                and _CONCLUSION_HEADING_RE.match(section.heading_text)
-            ):
-                peer_count = sum(
-                    1
-                    for s in sections[:trim_idx]
-                    if s.heading_rank == apparatus_rank
-                )
-                is_peer_conclusion = peer_count >= trim_idx // 2
+                # "Conclusion" is commonly a regular chapter title (e.g.
+                # PG 205 Walden) rather than an apparatus boundary.  Skip
+                # truncation when it shares its heading rank with the
+                # majority of preceding sections, indicating it is a peer
+                # chapter.  Do not apply this exemption to APPENDIX /
+                # NOTES ON which are almost always genuine apparatus
+                # headings.  Require at least 3 preceding sections so
+                # that very short books where "Conclusion" truly is
+                # terminal are not incorrectly exempted.
+                if (
+                    trim_idx >= 3
+                    and _CONCLUSION_HEADING_RE.match(section.heading_text)
+                ):
+                    peer_count = sum(
+                        1
+                        for s in sections[:trim_idx]
+                        if s.heading_rank == apparatus_rank
+                    )
+                    is_peer_conclusion = peer_count >= trim_idx // 2
             if not has_higher_rank_after and not is_peer_conclusion:
                 sections = sections[: trim_idx + 1]
             break
@@ -2326,6 +2326,18 @@ def _parse_toc_paragraph_sections(
     This function resolves the missing targets with ``soup.find(id=...)``
     and creates sections from the TOC link text.  It is called only when
     all other parsing strategies have failed.
+
+    Unlike :func:`_parse_toc_sections`, this function does not handle the
+    numeric-link-text / enumerated-TOC-entry fallback — books that reach
+    this path have no resolved heading anchors at all, so the simpler
+    structural-link filter is sufficient.
+
+    .. note::
+
+       Synthetic positions are written into ``doc_index.tag_positions``
+       for newly-resolved targets.  This is safe because the function
+       only runs as the last fallback, after all other passes have
+       completed.
     """
     tag_positions = doc_index.tag_positions
     bounds = doc_index.bounds
@@ -2363,11 +2375,11 @@ def _parse_toc_paragraph_sections(
         if not bounds.contains(tag_positions[id(target)]):
             continue
         used_ids.add(anchor_id)
-        heading_text = _clean_heading_text(link_text)
-        if not heading_text or _is_non_structural_heading_text(heading_text):
+        # link_text is already cleaned above; skip non-structural labels.
+        if _is_non_structural_heading_text(link_text):
             continue
-        level = _classify_level(heading_text, _is_emphasized_toc_link(link))
-        sections.append(_Section(anchor_id, heading_text, level, target, 2))
+        level = _classify_level(link_text, _is_emphasized_toc_link(link))
+        sections.append(_Section(anchor_id, link_text, level, target, 2))
 
     sections.sort(
         key=lambda s: tag_positions.get(id(s.body_anchor), float("inf"))
