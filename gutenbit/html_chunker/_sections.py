@@ -7,7 +7,7 @@ from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 
-from bs4 import Tag
+from bs4 import BeautifulSoup, Tag
 
 from gutenbit.html_chunker._common import (
     _BARE_HEADING_NUMBER_RE,
@@ -127,6 +127,15 @@ _TAIL_SECTION_HEADING_RE = re.compile(
 # match bare "Conclusion" or "Conclusion " without requiring a word after it.
 _REFINEMENT_STOP_HEADING_RE = re.compile(
     r"^(?:appendix|notes\s+on\b|(?:a\s+)?review\s*[,;]?\s*(?:and\s+)?conclusion\b|conclusion\s*$)",
+    re.IGNORECASE,
+)
+
+# Subset of the stop-heading pattern that matches only "Conclusion"-family
+# headings (bare "Conclusion", "Review, and Conclusion", etc.).  Used by
+# the peer-chapter exemption to distinguish chapter-title "Conclusion" from
+# genuine apparatus boundaries like APPENDIX.
+_CONCLUSION_HEADING_RE = re.compile(
+    r"^(?:(?:a\s+)?review\s*[,;]?\s*(?:and\s+)?)?conclusion\s*$",
     re.IGNORECASE,
 )
 
@@ -251,9 +260,7 @@ def _parse_toc_sections(
         heading_el = body_anchor.find_parent(_HEADING_TAGS)
         if heading_el and not _tag_within_bounds(heading_el, tag_positions, bounds):
             heading_el = None
-        used_fallback_heading = False
         if not heading_el:
-            used_fallback_heading = True
             # The anchor may precede an intervening heading (e.g. a repeated
             # book title) that doesn't correspond to this TOC entry.  Search
             # forward through a few candidates to find one that matches.
@@ -331,14 +338,34 @@ def _parse_toc_sections(
     for trim_idx, section in enumerate(sections):
         if _REFINEMENT_STOP_HEADING_RE.match(section.heading_text):
             apparatus_rank = section.heading_rank
+            has_higher_rank_after = False
+            is_peer_conclusion = False
             if apparatus_rank is not None:
+                remaining = sections[trim_idx + 1 :]
                 has_higher_rank_after = any(
                     s.heading_rank is not None and s.heading_rank < apparatus_rank
-                    for s in sections[trim_idx + 1 :]
+                    for s in remaining
                 )
-            else:
-                has_higher_rank_after = False
-            if not has_higher_rank_after:
+                # "Conclusion" is commonly a regular chapter title (e.g.
+                # PG 205 Walden) rather than an apparatus boundary.  Skip
+                # truncation when it shares its heading rank with the
+                # majority of preceding sections, indicating it is a peer
+                # chapter.  Do not apply this exemption to APPENDIX /
+                # NOTES ON which are almost always genuine apparatus
+                # headings.  Require at least 3 preceding sections so
+                # that very short books where "Conclusion" truly is
+                # terminal are not incorrectly exempted.
+                if (
+                    trim_idx >= 3
+                    and _CONCLUSION_HEADING_RE.match(section.heading_text)
+                ):
+                    peer_count = sum(
+                        1
+                        for s in sections[:trim_idx]
+                        if s.heading_rank == apparatus_rank
+                    )
+                    is_peer_conclusion = peer_count >= trim_idx // 2
+            if not has_higher_rank_after and not is_peer_conclusion:
                 sections = sections[: trim_idx + 1]
             break
 
@@ -2281,4 +2308,80 @@ def _parse_paragraph_sections(
         if anchor:
             anchor_id = str(anchor.get("id", ""))
         sections.append(_Section(anchor_id, heading_text, level, ip.tag, None))
+    return sections
+
+
+def _parse_toc_paragraph_sections(
+    soup: BeautifulSoup,
+    *,
+    doc_index: _DocumentIndex,
+) -> list[_Section]:
+    """Build sections from TOC links whose targets are non-<a> elements.
+
+    Some Gutenberg editions set ``id`` directly on ``<p>`` or ``<div>``
+    elements instead of child ``<a>`` anchors (e.g. PG 39827 uses
+    ``<p id="fate">``).  The normal scanner only collects ``<a>`` IDs, so
+    these targets are invisible to :func:`_parse_toc_sections`.
+
+    This function resolves the missing targets with ``soup.find(id=...)``
+    and creates sections from the TOC link text.  It is called only when
+    all other parsing strategies have failed.
+
+    Unlike :func:`_parse_toc_sections`, this function does not handle the
+    numeric-link-text / enumerated-TOC-entry fallback — books that reach
+    this path have no resolved heading anchors at all, so the simpler
+    structural-link filter is sufficient.
+
+    .. note::
+
+       Synthetic positions are written into ``doc_index.tag_positions``
+       for newly-resolved targets.  This is safe because the function
+       only runs as the last fallback, after all other passes have
+       completed.
+    """
+    tag_positions = doc_index.tag_positions
+    bounds = doc_index.bounds
+    sections: list[_Section] = []
+    used_ids: set[str] = set()
+    # Monotonic counter for synthetic positions assigned to newly-resolved
+    # targets.  Starts above the existing maximum so new entries sort after
+    # all scanner-assigned positions without an O(n) max() per iteration.
+    _next_pos = max(tag_positions.values(), default=0) + 1
+
+    for link in doc_index.toc_links:
+        if not _tag_within_bounds(link, tag_positions, bounds):
+            continue
+        link_text = _clean_heading_text(" ".join(link.get_text().split()))
+        if not link_text:
+            continue
+        if not _is_structural_toc_link(link, link_text, doc_index=doc_index):
+            continue
+        href = str(link.get("href", ""))
+        if not href.startswith("#"):
+            continue
+        anchor_id = href[1:]
+        if anchor_id in used_ids:
+            continue
+        # Already resolved by the normal scanner — skip.
+        if anchor_id in doc_index.anchor_map:
+            continue
+        target = soup.find(id=anchor_id)
+        if target is None or not isinstance(target, Tag):
+            continue
+        # Assign a synthetic position for downstream processing.
+        if id(target) not in tag_positions:
+            tag_positions[id(target)] = _next_pos
+            _next_pos += 1
+        if not bounds.contains(tag_positions[id(target)]):
+            continue
+        used_ids.add(anchor_id)
+        # link_text is already cleaned above; skip non-structural labels.
+        if _is_non_structural_heading_text(link_text):
+            continue
+        level = _classify_level(link_text, _is_emphasized_toc_link(link))
+        sections.append(_Section(anchor_id, link_text, level, target, 2))
+
+    sections.sort(
+        key=lambda s: tag_positions.get(id(s.body_anchor), float("inf"))
+    )
     return sections
