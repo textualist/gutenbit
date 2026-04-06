@@ -87,6 +87,29 @@ _NON_STRUCTURAL_HEADING_RE = re.compile(
     r"editor'?s?\s+notes?)\b",
     re.IGNORECASE,
 )
+# Page-break continuation markers: "(Continued)", "[Continued]", "—Continued—".
+# These are print-edition artefacts that signal a structural division (BOOK,
+# CHAPTER, etc.) resumes after a physical page break.  They should never
+# surface as standalone sections.  Matches the whole heading text.
+_CONTINUATION_MARKER_RE = re.compile(
+    r"^[\s\(\[\-\u2013\u2014]*continued[\s\)\]\-\u2013\u2014.]*$",
+    re.IGNORECASE,
+)
+# Geographic colophon address lines from printers (e.g. Riverside Press):
+#   "CAMBRIDGE . MASSACHUSETTS", "U . S . A", "U.S.A."
+# Two patterns:
+#   1. Dot-separated single-letter abbreviation: "U . S . A"
+#   2. Two-word geographic pair with dot separator: "CAMBRIDGE . MASSACHUSETTS"
+# Both anchored to full heading text to avoid matching prose fragments.
+# Intentionally case-sensitive (no IGNORECASE): colophon address lines
+# are always ALL-CAPS in print editions.  Mixed-case headings like
+# "Cambridge . Massachusetts" are not colophon lines.
+_GEOGRAPHIC_COLOPHON_RE = re.compile(
+    r"^(?:"
+    r"(?:[A-Z]\s*\.\s*){2,}[A-Z]?\s*\.?\s*$"  # U . S . A
+    r"|[A-Z]{3,}\s+[.·]\s+[A-Z]{3,}\s*$"  # CAMBRIDGE . MASSACHUSETTS
+    r")",
+)
 # Bare date headings: standalone years ("1882.", "1917") or month+year
 # ("August 1892.") that are composition-date annotations, not structure.
 _DATE_ONLY_HEADING_RE = re.compile(
@@ -140,6 +163,17 @@ _FRONT_MATTER_PREFIX_RE = re.compile(
     rf"^(?:{_FRONT_MATTER_KEYWORD_ALT})\b",
     re.IGNORECASE,
 )
+# Same keywords as whole-word matches anywhere in a heading.  Used to catch
+# front-matter headings where a scope prefix (e.g. "VOLUME I") precedes the
+# keyword ("VOLUME I PREFACE") so the ``^`` anchor of the prefix regex fails.
+_FRONT_MATTER_WORD_RE = re.compile(
+    rf"\b(?:{_FRONT_MATTER_KEYWORD_ALT})\b",
+    re.IGNORECASE,
+)
+# Word cap for the "keyword anywhere" match.  Keeps the check off long
+# narrative titles that happen to contain a front-matter word (e.g.
+# "A Preface to the Notes on the Text of ...").
+_FRONT_MATTER_WORD_MAX_WORDS = 5
 _STANDALONE_FRONT_MATTER_RE = re.compile(
     rf"^(?:{_FRONT_MATTER_KEYWORD_ALT}|AUTHOR'?S?\s*NOTE|"
     r"BIOGRAPHICAL\s+NOTICE|NOTE\s+ON\s+THE\s+TEXT)\.?\s*$",
@@ -250,6 +284,10 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
     if _DATE_ONLY_HEADING_RE.fullmatch(text):
         return True
     if _is_business_entity_heading(text):
+        return True
+    if _CONTINUATION_MARKER_RE.match(text):
+        return True
+    if _GEOGRAPHIC_COLOPHON_RE.match(text):
         return True
     return _NON_STRUCTURAL_HEADING_RE.match(text) is not None
 
@@ -549,14 +587,23 @@ def _is_standalone_front_matter_heading(heading_text: str) -> bool:
 def _is_front_matter_heading(heading_text: str) -> bool:
     """Return True for any front/back-matter heading, standalone or with trailer.
 
-    Matches both bare ``PREFACE`` and ``PREFACE TO THE FIRST VOLUME``.
+    Matches bare ``PREFACE``, ``PREFACE TO THE FIRST VOLUME``, and scope-
+    prefixed forms like ``VOLUME I PREFACE`` where a BROAD-keyword scope
+    precedes the front-matter keyword.  The scope-prefixed form is only
+    recognised for short headings (≤ :data:`_FRONT_MATTER_WORD_MAX_WORDS`
+    words) to avoid matching long narrative titles that happen to contain
+    a front-matter word.
+
     Use this when the heading should be excluded from structural container
     roles (e.g. nesting chapters under it).
     """
-    return (
-        _STANDALONE_FRONT_MATTER_RE.match(heading_text) is not None
-        or _FRONT_MATTER_PREFIX_RE.match(heading_text) is not None
-    )
+    if _STANDALONE_FRONT_MATTER_RE.match(heading_text) is not None:
+        return True
+    if _FRONT_MATTER_PREFIX_RE.match(heading_text) is not None:
+        return True
+    if len(heading_text.split()) <= _FRONT_MATTER_WORD_MAX_WORDS:
+        return _FRONT_MATTER_WORD_RE.search(heading_text) is not None
+    return False
 
 
 def _is_bare_keyword_heading(heading_text: str, keyword: str | None = None) -> bool:

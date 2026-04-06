@@ -28,6 +28,9 @@ from gutenbit.html_chunker._scanning import (
 )
 from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (keyed by id())
 from gutenbit.html_chunker._sections import (
+    _broad_keywords_at_modal_rank,
+    _demote_same_rank_broad_keywords,
+    _drop_empty_interior_title_repeats,
     _equalize_orphan_level_gap,
     _find_non_structural_boundary_after,
     _flatten_single_work_title_wrapper,
@@ -45,6 +48,7 @@ from gutenbit.html_chunker._sections import (
     _refine_toc_sections,
     _respect_heading_rank_nesting,
     _strip_leading_title_page_sections,
+    _strip_printed_toc_page_runs,
 )
 
 # ---------------------------------------------------------------------------
@@ -52,7 +56,7 @@ from gutenbit.html_chunker._sections import (
 # ---------------------------------------------------------------------------
 
 HTML_PARSER_BACKEND = "lxml"
-CHUNKER_VERSION = 36
+CHUNKER_VERSION = 40
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +120,11 @@ def chunk_html(html: str) -> list[Chunk]:
         # (e.g. Dante's Inferno: 2 TOC links vs 37 heading-scan sections).
         # Prefer the richer heading scan in that case.
         if len(heading_sections) > 3 * len(toc_sections) and len(toc_sections) <= 5:
-            sections = heading_sections
+            # Rank normalization runs on heading-scan sections too (not
+            # just TOC sections) so the single-instance container
+            # heuristic can fix inverted BOOK/PART ranks in books like
+            # the Golden Bowl (PG 4262) that lack a pginternal TOC.
+            sections = _normalize_toc_heading_ranks(heading_sections)
         else:
             toc_sections = _normalize_toc_heading_ranks(toc_sections)
             sections = _refine_toc_sections(
@@ -125,7 +133,10 @@ def chunk_html(html: str) -> list[Chunk]:
                 doc_index=doc_index,
             )
     else:
-        sections = heading_sections
+        # Heading-scan fallback: normalise ranks here so the
+        # single-instance container heuristic fires before any
+        # hierarchy pass.  See _normalize_toc_heading_ranks docstring.
+        sections = _normalize_toc_heading_ranks(heading_sections)
     if not sections:
         # Try paragraph-text section scan: some editions encode chapter
         # headings as plain <p> elements instead of <h1>–<h6>.
@@ -139,9 +150,21 @@ def chunk_html(html: str) -> list[Chunk]:
             chunks.append(Chunk(pos_idx, "", "", "", "", ip.text, "text"))
         return chunks
 
+    # Strip printed-TOC runs (heading tags whose text ends with a trailing
+    # page number) before any hierarchy-normalisation pass runs: those
+    # entries are source-HTML artefacts, not real sections, and they skew
+    # the rank and level statistics used by the nesting passes below.
+    sections = _strip_printed_toc_page_runs(sections)
     sections = _normalize_collection_titles(sections)
     sections = _nest_broad_subdivisions(sections)
-    sections = _nest_chapters_under_broad_containers(sections)
+    # Detect broad keywords that share the overall modal heading rank
+    # (single-tag documents like all-h4).  These are peers, not parents.
+    # _broad_keywords_at_modal_rank runs first (detection) so that
+    # _nest_chapters_under_broad_containers can skip demoted keywords,
+    # then _demote_same_rank_broad_keywords applies the level change.
+    _skip_broad = _broad_keywords_at_modal_rank(sections)
+    sections = _nest_chapters_under_broad_containers(sections, skip_keywords=_skip_broad)
+    sections = _demote_same_rank_broad_keywords(sections, demote_keywords=_skip_broad)
     sections = _promote_more_prominent_heading_runs(sections)
     # Use heading rank (h1→h2→h3) to nest sections under non-keyword
     # parents when the rank gap is exactly 1.  Runs before flatten/orphan
@@ -160,7 +183,7 @@ def chunk_html(html: str) -> list[Chunk]:
     # rank, rank nesting pushes both under the title, then flattening
     # promotes them back to the same level.  This second pass restores the
     # BOOK → CHAPTER hierarchy that was lost in the flatten step.
-    sections = _nest_chapters_under_broad_containers(sections)
+    sections = _nest_chapters_under_broad_containers(sections, skip_keywords=_skip_broad)
     sections = _equalize_orphan_level_gap(sections)
     sections = _merge_chapter_subtitle_sections(sections, toc_anchor_ids=toc_anchor_ids)
     # Merge ALL-CAPS description paragraphs into bare chapter headings so
@@ -172,6 +195,10 @@ def chunk_html(html: str) -> list[Chunk]:
     sections, skip_paragraph_ids = _merge_chapter_description_paragraphs(sections)
     _skip_tag_ids = frozenset(skip_paragraph_ids) if skip_paragraph_ids else None
     sections = _merge_adjacent_duplicate_sections(sections, doc_index=doc_index)
+    # Drop interior title-like headings that repeat an earlier title and
+    # own no content (decorative "ghost" headings that reappear after the
+    # front matter or nest as empty siblings inside a book container).
+    sections = _drop_empty_interior_title_repeats(sections, doc_index=doc_index)
 
     # Compact levels so the shallowest level maps to div1.
     # e.g. chapter-only books (min_level=2) shift chapters to div1.
