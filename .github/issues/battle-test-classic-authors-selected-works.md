@@ -51,26 +51,27 @@ Post this as a comment on the issue after creation.
 | 17 | Journal 01, 1837-1846 (Writings, Vol. 7) | 57393 | Journal; tests date-entry structure within series volume |
 | 18 | Journal 02, 1850-1851 (Writings, Vol. 8) | 59031 | Journal; date-entry structure, companion to Vol. 7 |
 
-### Herman Melville (16 works)
+### Herman Melville (17 works)
 
 | # | Work | PG ID | Parser-coverage value |
 |---|------|-------|----------------------|
-| 1 | Typee: A Romance of the South Seas | 1900 | Adventure novel; chapter structure with possible part divisions |
-| 2 | Omoo: Adventures in the South Seas | 4045 | Adventure novel; sequel to Typee |
-| 3 | Mardi, and a Voyage Thither, Vol. 1 | 13720 | Multi-volume novel; tests volume split handling |
-| 4 | Mardi, and a Voyage Thither, Vol. 2 | 13721 | Multi-volume novel; companion to Vol. 1 |
-| 5 | Redburn: His First Voyage | 8118 | Novel with very long subtitle; tests title truncation |
-| 6 | White-Jacket; Or, The World on a Man-of-War | 10712 | Long novel; many short chapters |
-| 7 | Pierre; or The Ambiguities | 34970 | Complex novel; deep Book→Chapter nesting |
-| 8 | Israel Potter: His Fifty Years of Exile | 15422 | Historical novel; numbered chapters |
-| 9 | The Confidence-Man: His Masquerade | 21816 | Novel; numbered chapters with possible front matter |
-| 10 | Billy Budd | 76513 | Novella plus additional prose pieces; tests anthology format |
-| 11 | The Piazza Tales | 15859 | Story collection; tests per-story TOC entries |
-| 12 | Battle-Pieces and Aspects of the War | 12384 | Poetry collection; tests verse structure with possible sections |
-| 13 | John Marr and Other Poems | 12841 | Poetry collection |
-| 14 | The Apple-Tree Table, and Other Sketches | 53861 | Sketch/essay collection |
-| 15 | I and My Chimney | 2694 | Standalone short story |
-| 16 | Bartleby, the Scrivener | 11231 | Standalone short story; title-block structure |
+| 1 | ⭐ Moby-Dick; or, The Whale | 15 | HIGH VALUE — canonical novel; ETYMOLOGY + EXTRACTS opening matter, 135 chapters, epilogue; existing test coverage but re-test end-to-end |
+| 2 | Typee: A Romance of the South Seas | 1900 | Adventure novel; chapter structure with possible part divisions |
+| 3 | Omoo: Adventures in the South Seas | 4045 | Adventure novel; sequel to Typee |
+| 4 | Mardi, and a Voyage Thither, Vol. 1 | 13720 | Multi-volume novel; tests volume split handling |
+| 5 | Mardi, and a Voyage Thither, Vol. 2 | 13721 | Multi-volume novel; companion to Vol. 1 |
+| 6 | Redburn: His First Voyage | 8118 | Novel with very long subtitle; tests title truncation |
+| 7 | White-Jacket; Or, The World on a Man-of-War | 10712 | Long novel; many short chapters |
+| 8 | Pierre; or The Ambiguities | 34970 | Complex novel; deep Book→Chapter nesting |
+| 9 | Israel Potter: His Fifty Years of Exile | 15422 | Historical novel; numbered chapters |
+| 10 | The Confidence-Man: His Masquerade | 21816 | Novel; numbered chapters with possible front matter |
+| 11 | Billy Budd | 76513 | Novella plus additional prose pieces; tests anthology format |
+| 12 | The Piazza Tales | 15859 | Story collection; tests per-story TOC entries |
+| 13 | Battle-Pieces and Aspects of the War | 12384 | Poetry collection; tests verse structure with possible sections |
+| 14 | John Marr and Other Poems | 12841 | Poetry collection |
+| 15 | The Apple-Tree Table, and Other Sketches | 53861 | Sketch/essay collection |
+| 16 | I and My Chimney | 2694 | Standalone short story |
+| 17 | Bartleby, the Scrivener | 11231 | Standalone short story; title-block structure |
 
 ### Robert Louis Stevenson (49 works)
 
@@ -128,13 +129,16 @@ Post this as a comment on the issue after creation.
 
 ## Deduplication
 
-All 100 works confirmed absent from:
+100 of 101 works confirmed absent from:
 - GitHub Issues with `test` label on `textualist/gutenbit` (#162, #164, #166, #168)
 - `tests/test_battle.py` (86 distinct PG IDs)
 - `.claude/skills/gutenbit-live-battle-test/references/kei-17-corpus.md` (28 entries)
 - Combined exclusion set: 304+ unique PG IDs from issues + 86 from tests + corpus (with overlaps)
 
-Three works by these authors were already in the exclusion set and are noted but not included:
-- PG 15 — Moby-Dick (Melville) — in test_battle.py, kei-17 corpus
+One work is deliberately re-included despite existing coverage:
+- ⭐ PG 15 — Moby-Dick (Melville) — in test_battle.py and kei-17 corpus, but included as a
+  high-value canonical work that must parse perfectly; re-test end-to-end
+
+Two works by these authors were in the exclusion set and are not included:
 - PG 42 — Jekyll and Hyde (Stevenson) — in test_battle.py
 - PG 120 — Treasure Island (Stevenson) — in test_battle.py

@@ -17,11 +17,14 @@ Run a full live battle test of the CLI and parsing functionality for each work b
 
 ## Already-excluded works (in existing battle tests)
 
-* **Moby-Dick; or, The Whale** — PG 15 (in `test_battle.py` and kei-17 corpus)
 * **Treasure Island** — PG 120 (in `test_battle.py`)
 * **The Strange Case of Dr. Jekyll and Mr. Hyde** — PG 42 (in `test_battle.py`)
 
-## Works (100 total)
+> **Note:** Moby-Dick (PG 15) has existing coverage in `test_battle.py` and the kei-17 corpus,
+> but is deliberately included in this issue as a high-value canonical work that must parse
+> perfectly. Re-test it end-to-end with the full battle-test procedure.
+
+## Works (101 total)
 
 ### Ralph Waldo Emerson (17 works)
 
@@ -64,8 +67,9 @@ Run a full live battle test of the CLI and parsing functionality for each work b
 - [ ] Journal 01, 1837-1846 (Writings, Vol. 7 of 20) — PG 57393
 - [ ] Journal 02, 1850-September 15, 1851 (Writings, Vol. 8 of 20) — PG 59031
 
-### Herman Melville (16 works)
+### Herman Melville (17 works)
 
+- [ ] Moby-Dick; or, The Whale — PG 15 ⭐ HIGH VALUE — existing test coverage, re-test end-to-end
 - [ ] Typee: A Romance of the South Seas — PG 1900
 - [ ] Omoo: Adventures in the South Seas — PG 4045
 - [ ] Mardi, and a Voyage Thither, Vol. 1 (of 2) — PG 13720
@@ -173,7 +177,7 @@ redirect to canonical editions:
 | 43 | 42 | Jekyll and Hyde (already excluded) |
 | 32954 | 848 | The Black Arrow |
 | 25609 | 136 | A Child's Garden of Verses |
-| 2701 | 15 | Moby-Dick (already excluded) |
+| 2701 | 15 | Moby-Dick (redirect; use PG 15 directly) |
 | 71812 | 71683 | Miscellanies (Emerson) |
 
 ### Potential edition overlaps to investigate
@@ -236,20 +240,20 @@ Before closing each work, run `uv run pytest` and `uv run pytest -m network`.
 
 ### Recommended testing order
 
-Given the scale (100 works), work through authors one at a time. Within each author, start
+Given the scale (101 works), work through authors one at a time. Within each author, start
 with the most structurally complex works (novels, collections, multi-volume) before moving to
 simpler ones (standalone essays, short poems). This surfaces parser issues early when they're
 most likely to affect multiple works.
 
 **Suggested order:**
-1. **Melville** (16 works) — complex novels, multi-volume, story collections
+1. **Melville** (17 works) — complex novels, multi-volume, story collections; start with Moby-Dick
 2. **Stevenson** (49 works) — most diverse; novels → collections → essays → poetry → letters → misc
 3. **Emerson** (17 works) — essay collections, lectures, correspondence
 4. **Thoreau** (18 works) — travel narratives, journals, essays
 
 ### Batching strategy
 
-With 100 works, batch by author and fix one issue family at a time. Record all results in a
+With 101 works, batch by author and fix one issue family at a time. Record all results in a
 structured table before beginning fixes (per kei-17-corpus guidance). This prevents redundant
 work on issues that share a common family.
 
