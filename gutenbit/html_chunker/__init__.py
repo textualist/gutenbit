@@ -120,7 +120,10 @@ def chunk_html(html: str) -> list[Chunk]:
         # the TOC links are navigational but not structurally representative
         # (e.g. Dante's Inferno: 2 TOC links vs 37 heading-scan sections).
         # Prefer the richer heading scan in that case.
-        if len(heading_sections) > 3 * len(toc_sections) and len(toc_sections) <= 5:
+        if len(heading_sections) > 3 * len(toc_sections) and (
+            len(toc_sections) <= 5
+            or len(heading_sections) > 10 * len(toc_sections)
+        ):
             # Rank normalization runs on heading-scan sections too (not
             # just TOC sections) so the single-instance container
             # heuristic can fix inverted BOOK/PART ranks in books like

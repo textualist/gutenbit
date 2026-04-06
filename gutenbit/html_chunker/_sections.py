@@ -329,14 +329,34 @@ def _parse_toc_sections(
     for trim_idx, section in enumerate(sections):
         if _REFINEMENT_STOP_HEADING_RE.match(section.heading_text):
             apparatus_rank = section.heading_rank
+            remaining = sections[trim_idx + 1 :]
             if apparatus_rank is not None:
                 has_higher_rank_after = any(
                     s.heading_rank is not None and s.heading_rank < apparatus_rank
-                    for s in sections[trim_idx + 1 :]
+                    for s in remaining
                 )
             else:
                 has_higher_rank_after = False
-            if not has_higher_rank_after:
+            # "Conclusion" is commonly a regular chapter title (e.g. PG 205
+            # Walden) rather than an apparatus boundary.  Skip truncation
+            # when it shares its heading rank with the majority of preceding
+            # sections, indicating it is a peer chapter.  Do not apply this
+            # exemption to APPENDIX / NOTES ON which are almost always
+            # genuine apparatus headings.
+            is_peer_conclusion = False
+            if (
+                apparatus_rank is not None
+                and trim_idx >= 2
+                and re.match(r"(?i)^(?:(?:a\s+)?review\s*[,;]?\s*(?:and\s+)?)?conclusion\s*$",
+                             section.heading_text)
+            ):
+                peer_count = sum(
+                    1
+                    for s in sections[:trim_idx]
+                    if s.heading_rank == apparatus_rank
+                )
+                is_peer_conclusion = peer_count >= trim_idx // 2
+            if not has_higher_rank_after and not is_peer_conclusion:
                 sections = sections[: trim_idx + 1]
             break
 

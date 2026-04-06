@@ -1690,13 +1690,15 @@ def test_emerson_english_traits_keeps_nineteen_chapters():
 # ---------------------------------------------------------------------------
 
 
-def test_thoreau_walden_keeps_title_and_eighteen_chapters():
+def test_thoreau_walden_keeps_title_chapters_and_civil_disobedience():
+    """PG 205: 'Conclusion' must not truncate the companion essay."""
     headings = _headings(205)
     heading_texts = [h.content for h in headings]
-    assert len(headings) == 19
+    assert len(headings) == 20
     assert heading_texts[0] == "WALDEN"
     assert heading_texts[1] == "Economy"
-    assert heading_texts[-1] == "Conclusion"
+    assert heading_texts[18] == "Conclusion"
+    assert heading_texts[19] == "ON THE DUTY OF CIVIL DISOBEDIENCE"
 
 
 def test_thoreau_week_on_concord_keeps_eight_days():
