@@ -1939,3 +1939,97 @@ def test_stevenson_new_poems_sparse_toc_override():
     assert h[0].content == "PREFACE"
 
 
+def test_pluralistic_universe_lectures_visible_index_suppressed():
+    """PG 11984 — 8 LECTURE headings must be top-level; index entries suppressed.
+
+    Root cause: "LECTURE" was not recognised as a structural keyword, so the
+    heading-scan start index skipped to APPENDIX B and the entire lecture body
+    was invisible.  Index entries (ALL-CAPS names with page references) were
+    promoted as structural headings.
+    """
+    h = _headings(11984)
+
+    # All 8 distinct body lectures should appear as div1 entries.
+    lecture_div1s = sorted(
+        {c.div1 for c in h if c.div1.startswith("LECTURE") and c.div1 == c.content}
+    )
+    assert len(lecture_div1s) == 8
+    assert lecture_div1s[0] == "LECTURE I"
+    assert lecture_div1s[-1] == "LECTURE VIII"
+
+    # Lecture subtitles should nest as div2 under their lecture.
+    types_heading = next(c for c in h if c.content == "THE TYPES OF PHILOSOPHIC THINKING")
+    assert types_heading.div1 == "LECTURE I"
+
+    conclusions = next(c for c in h if c.content == "CONCLUSIONS" and c.div1 == "LECTURE VIII")
+    assert conclusions.div2 == "CONCLUSIONS"
+
+    # Index entries must NOT appear as headings.
+    all_text = " ".join(c.content for c in h)
+    assert "ARISTIDES" not in all_text
+    assert "BAILEY" not in all_text
+    assert "SOCRATES" not in all_text
+
+
+def test_memories_and_studies_editor_credit_not_promoted():
+    """PG 20768 — editor credit 'HENRY JAMES, JR.' must not be div1 parent.
+
+    h5 author/editor name headings on the title page (WILLIAM JAMES,
+    HENRY JAMES, JR.) must be stripped as title-page subtitles, not
+    promoted to structural containers that nest every essay beneath them.
+    """
+    h = _headings(20768)
+    all_div1 = {c.div1 for c in h}
+    # Editor/author names must NOT be structural parents.
+    assert "HENRY JAMES, JR." not in all_div1
+    assert "WILLIAM JAMES" not in all_div1
+    assert "MEMORIES AND STUDIES" not in all_div1
+    # First real section should be PREFATORY NOTE.
+    assert h[0].content == "PREFATORY NOTE"
+    # Essay headings visible at div1 level.
+    assert any(c.content == "I" and c.div1 == "I" for c in h)
+
+
+def test_will_to_believe_edition_history_not_structural():
+    """PG 26659 — copyright and edition-history headings must not be sections.
+
+    'Copyright, 1896 BY WILLIAM JAMES' and 'First Edition. February, 1897...'
+    are publication metadata and must be suppressed.  The printed TOC entries
+    (essay titles with trailing page numbers) must also be stripped.
+    """
+    h = _headings(26659)
+    all_text = " ".join(c.content for c in h)
+    # Publication metadata must not appear.
+    assert "Copyright" not in all_text
+    assert "First Edition" not in all_text
+    # Real essay headings must survive.
+    assert any("THE WILL TO BELIEVE" in c.content and "1" not in c.content for c in h)
+    assert any("IS LIFE WORTH LIVING" in c.content for c in h)
+
+
+def test_thackeray_collected_edition_work_titles_equalized():
+    """PG 29363 — all three h1 work titles must be at div1 depth.
+
+    Root cause: 'Henry Esmond' was at div2 while 'English Humourists' and
+    'The Georges' were at div1.  The collection-title promotion wasn't
+    firing because front-matter headings (Dedication, Preface) at the same
+    level were blocking the broad-keyword-child scan.
+    """
+    h = _headings(29363)
+    all_div1 = {c.div1 for c in h if c.div1}
+
+    # All three work titles must be at div1.
+    assert "The History Of Henry Esmond, Esq." in all_div1
+    assert "The English Humourists Of The Eighteenth Century" in all_div1
+    assert "The Georges" in all_div1
+
+    # Books must nest under Henry Esmond at div2.
+    book1 = next(c for c in h if c.content.startswith("Book I."))
+    assert book1.div1 == "The History Of Henry Esmond, Esq."
+
+    # Chapters must nest under a Book at div3.
+    ch1 = next(c for c in h if c.content.startswith("Chapter I."))
+    assert ch1.div1 == "The History Of Henry Esmond, Esq."
+    assert ch1.div3.startswith("Chapter I.")
+
+

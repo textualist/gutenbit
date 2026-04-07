@@ -1736,6 +1736,8 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
         return sections
 
     def _is_collection_title(section: _Section) -> bool:
+        if _is_front_matter_heading(section.heading_text):
+            return False
         return _is_title_like_heading(section.heading_text) and (
             section.heading_rank is None or section.heading_rank <= 2
         )
@@ -1764,16 +1766,48 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
             next_depth = _broad_nesting_depth(next_section.heading_text)
             if next_depth is None:
                 continue
-            if _has_same_level_collection_title_since_lower_level(idx, level=section.level):
-                break
             if _heading_keyword(next_section.heading_text) in _BROAD_KEYWORDS:
+                # Guard: when the broad keyword immediately follows this
+                # title (no non-collection sections between) and another
+                # collection title at the same level preceded us, skip.
+                # This prevents poetry collections (PG 1322 Leaves of
+                # Grass) from being falsely promoted.  When intermediate
+                # non-collection sections exist (e.g. front-matter like
+                # Dedication/Preface in PG 29363), the guard is bypassed
+                # so the work title can still be detected as a container.
+                non_collection_between = sum(
+                    1
+                    for j in range(idx + 1, next_idx)
+                    if not _is_collection_title(sections[j])
+                )
+                if (
+                    non_collection_between == 0
+                    and _has_same_level_collection_title_since_lower_level(
+                        idx, level=section.level
+                    )
+                ):
+                    break
                 container_title_indices_by_level[section.level].append(idx)
                 break
 
+    # Two-tier threshold: ≥2 containers always qualifies; a single
+    # container qualifies only when the title count is small (≤10),
+    # indicating a real collected edition rather than a chapter-rich
+    # book (e.g. PG 1998 Zarathustra has 82 discourse titles at the
+    # same level as INTRODUCTION, but only 1 container — that's not a
+    # collected edition).
+    _MAX_TITLES_FOR_SINGLE_CONTAINER = 10
     promoted_levels = {
         level
         for level, container_indices in container_title_indices_by_level.items()
-        if len(container_indices) >= 2 and len(title_indices_by_level[level]) >= 3
+        if len(title_indices_by_level[level]) >= 3
+        and (
+            len(container_indices) >= 2
+            or (
+                len(container_indices) >= 1
+                and len(title_indices_by_level[level]) <= _MAX_TITLES_FOR_SINGLE_CONTAINER
+            )
+        )
     }
     if not promoted_levels:
         return sections

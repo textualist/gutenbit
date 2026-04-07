@@ -87,6 +87,13 @@ _NON_STRUCTURAL_HEADING_RE = re.compile(
     r"editor'?s?\s+notes?)\b",
     re.IGNORECASE,
 )
+# Index entry: a short ALL-CAPS name (possibly with initials) followed by
+# comma-separated page numbers — e.g. "ARISTIDES, 304.", "BAILEY, S., 5.",
+# "BRADLEY, F.H., 46, 69, 79, 211, 220, 296."  These appear inside INDEX
+# sections in some Gutenberg editions and must not become structural headings.
+_INDEX_ENTRY_HEADING_RE = re.compile(
+    r"^[A-Z][A-Z .,']+,\s*(?:\d+[\s,.\-–;fpassim]*)+\.?\s*$",
+)
 # Page-break continuation markers: "(Continued)", "[Continued]", "—Continued—".
 # These are print-edition artefacts that signal a structural division (BOOK,
 # CHAPTER, etc.) resumes after a physical page break.  They should never
@@ -124,7 +131,8 @@ _FRONT_MATTER_ATTRIBUTION_RE = re.compile(
     re.IGNORECASE,
 )
 _PUBLICATION_METADATA_RE = re.compile(
-    r"^(?:printed|published|reprinted|first\s+published|originally\s+published)\b",
+    r"^(?:printed|published|reprinted|first\s+published|originally\s+published|"
+    r"copyright\b|first\s+edition\b|new\s+impression\b)\b",
     re.IGNORECASE,
 )
 # Publisher advertisement headings: "WORKS BY HENRY JAMES", "Henry James's
@@ -284,6 +292,8 @@ def _is_non_structural_heading_text(heading_text: str) -> bool:
     if _DATE_ONLY_HEADING_RE.fullmatch(text):
         return True
     if _is_business_entity_heading(text):
+        return True
+    if _INDEX_ENTRY_HEADING_RE.match(text):
         return True
     if _CONTINUATION_MARKER_RE.match(text):
         return True
@@ -871,7 +881,18 @@ def _is_title_page_subtitle(
 
     words = [word for word in row.heading_text.split() if any(char.isalpha() for char in word)]
     letters = "".join(char for char in row.heading_text if char.isalpha())
-    return len(words) >= 5 and bool(letters) and letters == letters.upper()
+    if not letters:
+        return False
+    all_upper = letters == letters.upper()
+    # Long all-caps subtitles (≥5 words): publisher descriptions, etc.
+    if len(words) >= 5 and all_upper:
+        return True
+    # Short all-caps personal-name headings at very deep rank (h5/h6)
+    # following a title-like heading are author/editor credits on the
+    # title page (e.g. h5 "WILLIAM JAMES" after h1 "MEMORIES AND STUDIES").
+    if row.rank >= 5 and 1 <= len(words) <= 4 and all_upper:
+        return True
+    return False
 
 
 def _is_shorter_adjacent_title_repeat(
