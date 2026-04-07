@@ -4477,6 +4477,7 @@ def test_inline_footnote_citations_stripped_from_heading():
     html = _make_html("""
     <p class="toc"><a href="#c1" class="pginternal">SHAKSPEARE; OR, THE POET</a></p>
     <p class="toc"><a href="#c2" class="pginternal">PRUDENCE</a></p>
+    <p class="toc"><a href="#c3" class="pginternal">THE MORALITY OF LETTERS</a></p>
 
     <h2><a id="c1"></a>SHAKSPEARE;[525]OR, THE POET</h2>
     <p>Great literature is at once the cause and effect of great knowledge.</p>
@@ -4485,13 +4486,19 @@ def test_inline_footnote_citations_stripped_from_heading():
     <h2><a id="c2"></a>PRUDENCE.[660]</h2>
     <p>What right have I to write on Prudence?</p>
     <p>The word Prudence is hateful to me.</p>
+
+    <h2><a id="c3"></a>THE MORALITY OF LETTERS [47a]</h2>
+    <p>The profession of letters has been lately debated.</p>
+    <p>We must ask ourselves what we mean by morality.</p>
     """)
     chunks = chunk_html(html)
     headings = [c for c in chunks if c.kind == "heading"]
 
-    assert len(headings) == 2
+    assert len(headings) == 3
     assert headings[0].content == "SHAKSPEARE; OR, THE POET"
     assert headings[1].content == "PRUDENCE."
+    # Alpha-suffixed trailing citation [47a] stripped by suffix regex
+    assert headings[2].content == "THE MORALITY OF LETTERS"
 
 
 # ---------------------------------------------------------------------------

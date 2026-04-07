@@ -97,6 +97,9 @@ _MIN_UPPERCASE_RATIO = 0.9
 # epigraph/introductory poem rather than a full section body.  When the
 # content between two same-text headings is at most this many words, the
 # first heading is treated as an epigraph wrapper and merged with the second.
+# Observed ceiling: PG 75942 MARY MOODY EMERSON at 353 words.  Cannot
+# raise above 400 without false-positiving on PG 2302 (Poor Folk), an
+# epistolary novel with short same-date letters that hit the ≥ 3 pairs guard.
 _MAX_EPIGRAPH_WORDS = 400
 # Maximum number of sections at min_level before _equalize_orphan_level_gap
 # treats them as the primary structure rather than orphan outliers.
@@ -241,13 +244,14 @@ def _parse_toc_sections(
 
     anchor_map = doc_index.anchor_map
 
-    # Pre-scan: count page-anchor links that resolve to headings vs total
-    # page-anchor links.  Only enable page-anchor resolution when most
-    # links resolve to headings (e.g. PG 492: 7/7 = 100%).  When only
-    # a fraction resolve (e.g. PG 786: 14/40 = 35%), the TOC is a printed
-    # page-number list and the heading matches are coincidental.
+    # Pre-scan: identify page-anchor links that resolve to headings.
+    # Only enable page-anchor resolution when most such links resolve
+    # (e.g. PG 492: 7/7 = 100%).  When only a fraction resolve (e.g.
+    # PG 786: 14/40 = 35%), the TOC is a printed page-number list and
+    # the heading matches are coincidental.  Cache the resolvable set
+    # so the main loop avoids repeating regex/DOM checks.
+    resolvable_page_anchors: set[str] = set()
     page_anchor_total = 0
-    page_anchor_heading = 0
     for link in toc_links:
         href = str(link.get("href", ""))
         if not href.startswith("#"):
@@ -258,10 +262,10 @@ def _parse_toc_sections(
             page_anchor_total += 1
             ba = anchor_map.get(str(aid))
             if ba and ba.find_parent(_HEADING_TAGS):
-                page_anchor_heading += 1
+                resolvable_page_anchors.add(aid)
     enable_page_anchor_resolution = (
         page_anchor_total > 0
-        and page_anchor_heading / page_anchor_total >= 0.5
+        and len(resolvable_page_anchors) / page_anchor_total >= 0.5
     )
 
     for link in toc_links:
@@ -278,12 +282,7 @@ def _parse_toc_sections(
         href = str(link.get("href", ""))
         anchor_id = href[1:] if href.startswith("#") else ""
         resolved_via_page_anchor = False
-        if (
-            enable_page_anchor_resolution
-            and anchor_id
-            and _PAGE_ANCHOR_ID_RE.match(anchor_id)
-            and _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text)
-        ):
+        if enable_page_anchor_resolution and anchor_id in resolvable_page_anchors:
             body_anchor_early = anchor_map.get(str(anchor_id))
             if body_anchor_early:
                 heading_parent = body_anchor_early.find_parent(_HEADING_TAGS)
@@ -623,6 +622,10 @@ def _merge_adjacent_duplicate_sections(
 
     # Pre-compute same-text run lengths so we can distinguish genuine
     # structural runs (≥3) from HTML-duplicate pairs (exactly 2).
+    # NOTE: The threshold of 2 can false-positive on genuine 2-item
+    # anthologies where both entries share the same series title.  This is
+    # acceptable because true HTML duplicates (same heading emitted twice
+    # by the source) are far more common than 2-item anthology runs.
     n = len(sections)
     run_length = [1] * n
     i = 0
