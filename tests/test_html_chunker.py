@@ -4587,3 +4587,297 @@ def test_sparse_toc_prefers_heading_scan_at_5x_ratio():
 
     # Should have all 34 poems, not just the 6 from TOC
     assert len(h) >= 30
+
+
+# ---------------------------------------------------------------------------
+# Regression guards for battle-tested structural patterns
+# (non-network synthetic tests covering high-value code paths)
+# ---------------------------------------------------------------------------
+
+
+def test_tail_boundary_stops_refinement_at_notes_heading():
+    """Sub-headings inside a NOTES apparatus section must not leak into
+    the structural section list during tail refinement (PG 16643 pattern).
+
+    When the last TOC section is followed by a NOTES heading, the refinement
+    pass should stop before the NOTES sub-headings."""
+    html = _make_html("""
+    <p class="toc"><a href="#c1" class="pginternal">ESSAY ONE</a></p>
+    <p class="toc"><a href="#c2" class="pginternal">ESSAY TWO</a></p>
+    <p class="toc"><a href="#c3" class="pginternal">ESSAY THREE</a></p>
+
+    <h2><a id="c1"></a>ESSAY ONE</h2>
+    <p>Body of essay one with enough text to be a real section.</p>
+    <p>More text for essay one.</p>
+
+    <h2><a id="c2"></a>ESSAY TWO</h2>
+    <p>Body of essay two with enough text to be a real section.</p>
+    <p>More text for essay two.</p>
+
+    <h2><a id="c3"></a>ESSAY THREE</h2>
+    <p>Body of essay three with enough text to be a real section.</p>
+    <p>More text for essay three.</p>
+
+    <h2>NOTES</h2>
+    <h3>ESSAY ONE</h3>
+    <p>[1] A scholarly annotation on essay one.</p>
+    <h3>ESSAY TWO</h3>
+    <p>[5] A scholarly annotation on essay two.</p>
+    <h3>ESSAY THREE</h3>
+    <p>[12] A scholarly annotation on essay three.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    # Only the 3 real essays — NOTES sub-headings must not appear
+    assert len(headings) == 3
+    assert [h.content for h in headings] == ["ESSAY ONE", "ESSAY TWO", "ESSAY THREE"]
+
+
+def test_page_anchor_toc_ignored_when_minority_resolve_to_headings():
+    """When most page-anchor TOC links target <p> elements (not headings),
+    page-anchor resolution is disabled to avoid creating a sparse pseudo-TOC
+    that displaces the richer heading-scan (PG 786 pattern).
+
+    Only 2 of 6 page anchors resolve to headings (33%) — below the 50%
+    threshold.  The heading-scan should produce all 6 chapters."""
+    html = _make_html("""
+    <p class="toc"><a href="#page1" class="pginternal">1</a> Chapter One</p>
+    <p class="toc"><a href="#page10" class="pginternal">10</a> Chapter Two</p>
+    <p class="toc"><a href="#page20" class="pginternal">20</a> Chapter Three</p>
+    <p class="toc"><a href="#page30" class="pginternal">30</a> Chapter Four</p>
+    <p class="toc"><a href="#page40" class="pginternal">40</a> Chapter Five</p>
+    <p class="toc"><a href="#page50" class="pginternal">50</a> Chapter Six</p>
+
+    <h2><a id="page1"></a>CHAPTER I</h2>
+    <p>Text of chapter one.</p>
+    <p>More text.</p>
+
+    <p><a id="page10"></a></p>
+    <h2>CHAPTER II</h2>
+    <p>Text of chapter two.</p>
+    <p>More text.</p>
+
+    <p><a id="page20"></a></p>
+    <h2>CHAPTER III</h2>
+    <p>Text of chapter three.</p>
+    <p>More text.</p>
+
+    <p><a id="page30"></a></p>
+    <h2>CHAPTER IV</h2>
+    <p>Text of chapter four.</p>
+    <p>More text.</p>
+
+    <p><a id="page40"></a></p>
+    <h2>CHAPTER V</h2>
+    <p>Text of chapter five.</p>
+    <p>More text.</p>
+
+    <h2><a id="page50"></a>CHAPTER VI</h2>
+    <p>Text of chapter six.</p>
+    <p>More text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    # All 6 chapters found via heading-scan, not limited to the 2
+    # page anchors that happen to be inside headings
+    assert len(headings) == 6
+    assert headings[0].content == "CHAPTER I"
+    assert headings[-1].content == "CHAPTER VI"
+
+
+def test_pagenum_span_anchor_traverses_to_containing_heading():
+    """When a TOC link targets a page-number anchor inside a
+    <span class="pagenum"> inside a heading, the parser should traverse
+    up to the heading element rather than discarding the link."""
+    html = _make_html("""
+    <p class="toc"><a href="#page5" class="pginternal">5</a>
+       First Essay</p>
+    <p class="toc"><a href="#page25" class="pginternal">25</a>
+       Second Essay</p>
+
+    <h2><span class="pagenum"><a id="page5">p. 5</a></span>FIRST ESSAY</h2>
+    <p>Body of the first essay.</p>
+    <p>More body text.</p>
+
+    <h2><span class="pagenum"><a id="page25">p. 25</a></span>SECOND ESSAY</h2>
+    <p>Body of the second essay.</p>
+    <p>More body text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 2
+    assert headings[0].content == "FIRST ESSAY"
+    assert headings[1].content == "SECOND ESSAY"
+
+
+def test_story_collection_with_prefatory_note_and_named_titles():
+    """A story collection with a NOTE section followed by named story
+    titles, each with numbered sub-chapters (PG 2715 pattern).
+
+    The NOTE should be a peer section, not swallow the stories."""
+    html = _make_html("""
+    <p class="toc"><a href="#n" class="pginternal">NOTE</a></p>
+    <p class="toc"><a href="#s1" class="pginternal">THE REAL THING</a></p>
+    <p class="toc"><a href="#s2" class="pginternal">THE LIAR</a></p>
+    <p class="toc"><a href="#s3" class="pginternal">GREVILLE FANE</a></p>
+
+    <h2><a id="n"></a>NOTE.</h2>
+    <p>These tales were collected in the year 1893.</p>
+
+    <h2><a id="s1"></a>THE REAL THING</h2>
+    <p>When the porter's wife, who used to answer the house-bell.</p>
+    <p>She was a large, pleasant woman.</p>
+
+    <h2><a id="s2"></a>THE LIAR</h2>
+    <p>The train was half an hour late.</p>
+    <p>Oliver Lyon was impatient.</p>
+
+    <h2><a id="s3"></a>GREVILLE FANE</h2>
+    <p>Coming in to dress for dinner I found a telegram.</p>
+    <p>It was about poor Greville Fane.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 4
+    assert heading_texts == ["NOTE.", "THE REAL THING", "THE LIAR", "GREVILLE FANE"]
+    # All at the same level — NOTE is a peer, not a parent
+    assert all(h.div1 for h in headings)
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_many_flat_roman_numeral_sections():
+    """A book with 30+ flat Roman numeral sections and no structural
+    keywords (PG 7118 pattern — What Maisie Knew).
+
+    The heading-scan should treat all title-like headings as peers."""
+    sections = []
+    numerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+                "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII",
+                "XIX", "XX", "XXI", "XXII", "XXIII", "XXIV", "XXV",
+                "XXVI", "XXVII", "XXVIII", "XXIX", "XXX", "XXXI"]
+    for num in numerals:
+        sections.append(f"""
+        <h3><a id="s{num}"></a>{num}</h3>
+        <p>The narrative of section {num} begins here with some text.</p>
+        <p>More text for section {num} to make it substantial enough.</p>
+        """)
+    html = _make_html("\n".join(sections))
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 31
+    assert headings[0].content == "I"
+    assert headings[-1].content == "XXXI"
+    # All flat — no nesting
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_split_volume_starts_at_high_chapter_number():
+    """A split-volume book that starts at a high chapter number
+    (PG 2834 pattern — Portrait of a Lady Vol 2 starts at CHAPTER XXVIII).
+
+    The heading-scan should accept the starting chapter without
+    requiring a reset to CHAPTER I."""
+    html = _make_html("""
+    <h2><a id="c28"></a>CHAPTER XXVIII</h2>
+    <p>The opening of the second volume.</p>
+    <p>Isabel found herself wondering.</p>
+
+    <h2><a id="c29"></a>CHAPTER XXIX</h2>
+    <p>She had been alone at the time.</p>
+    <p>More text for chapter 29.</p>
+
+    <h2><a id="c30"></a>CHAPTER XXX</h2>
+    <p>The last few weeks had been eventful.</p>
+    <p>More text for chapter 30.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 3
+    assert headings[0].content == "CHAPTER XXVIII"
+    assert headings[-1].content == "CHAPTER XXX"
+
+
+def test_title_zone_with_publisher_colophon_stripped():
+    """Title-page headings mixed with publisher/colophon metadata should
+    be stripped, preserving only the body sections (PG 62979 pattern).
+
+    The title zone includes book title, author, publisher name, and
+    year — all filtered before the real preface/chapters."""
+    html = _make_html("""
+    <h1>THE IVORY TOWER</h1>
+    <h3>BY</h3>
+    <h2>HENRY JAMES</h2>
+    <h3>NEW YORK</h3>
+    <h3>CHARLES SCRIBNER'S SONS</h3>
+    <h3>1917</h3>
+
+    <h2><a id="pref"></a>PREFACE</h2>
+    <p>The preface discusses the genesis of the work.</p>
+    <p>More preface text.</p>
+
+    <h2><a id="c1"></a>BOOK FIRST</h2>
+    <p>The first chapter of the narrative.</p>
+    <p>More chapter text.</p>
+
+    <h2><a id="c2"></a>BOOK SECOND</h2>
+    <p>The second part continues.</p>
+    <p>More chapter text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    # Title zone noise filtered; only real sections remain
+    assert "BY" not in heading_texts
+    assert "HENRY JAMES" not in heading_texts
+    assert "NEW YORK" not in heading_texts
+    assert "1917" not in heading_texts
+    assert "PREFACE" in heading_texts
+    assert "BOOK FIRST" in heading_texts
+    assert "BOOK SECOND" in heading_texts
+
+
+def test_mixed_filters_colophon_date_publisher_in_one_book():
+    """A book with multiple filter-worthy heading types that should all
+    be suppressed: dates, publisher names, geographic colophon, and
+    terminal markers (composite of PG 6354, 62979, 68961 patterns)."""
+    html = _make_html("""
+    <h1>COLLECTED ESSAYS</h1>
+    <h3>MACMILLAN AND CO., LONDON.</h3>
+    <h3>1893</h3>
+
+    <h2><a id="c1"></a>CHAPTER I THE FIRST ESSAY</h2>
+    <p>The body of the first essay.</p>
+    <p>More text.</p>
+
+    <h2><a id="c2"></a>CHAPTER II THE SECOND ESSAY</h2>
+    <p>The body of the second essay.</p>
+    <p>More text.</p>
+
+    <h2><a id="c3"></a>CHAPTER III THE THIRD ESSAY</h2>
+    <p>The body of the third essay.</p>
+    <p>More text.</p>
+
+    <h2>THE END</h2>
+    <h3>CAMBRIDGE . MASSACHUSETTS</h3>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    # All noise filtered
+    assert "MACMILLAN AND CO., LONDON." not in heading_texts
+    assert "1893" not in heading_texts
+    assert "THE END" not in heading_texts
+    assert "CAMBRIDGE . MASSACHUSETTS" not in heading_texts
+
+    # Real structure preserved
+    assert len(headings) == 3
+    assert all("CHAPTER" in h.content for h in headings)
