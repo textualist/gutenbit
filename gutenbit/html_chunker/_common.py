@@ -225,10 +225,10 @@ def _collect_text_parts(node: Tag, parts: list[str]) -> None:
 @lru_cache(maxsize=4096)
 def _clean_heading_text(heading_text: str) -> str:
     """Normalize heading text while preserving source terminal punctuation."""
-    text = " ".join(heading_text.split()).strip()
+    text = " ".join(heading_text.split())
     text = _HEADING_CITATION_SUFFIX_RE.sub("", text)
     text = _HEADING_CITATION_INLINE_RE.sub(" ", text)
-    text = " ".join(text.split())  # collapse any double spaces from citation removal
+    text = " ".join(text.split())  # collapse double spaces from citation removal
     text = _STRUCTURAL_HEADING_SPACING_RE.sub(r"\1\2 \3", text)
     if _BRACKETED_NUMERIC_HEADING_RE.fullmatch(text):
         return text

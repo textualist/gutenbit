@@ -59,24 +59,20 @@ from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (
 HTML_PARSER_BACKEND = "lxml"
 CHUNKER_VERSION = 41
 
-# ---------------------------------------------------------------------------
-# Sparse-TOC override thresholds
-# ---------------------------------------------------------------------------
-# When the heading scan finds far more structure than the TOC, the TOC is
-# navigational but not structurally representative.  Three tiers control
-# when to prefer the heading scan over TOC-based refinement.
 
-# Minimum heading-to-TOC ratio for any override to fire.
-_SPARSE_TOC_MIN_RATIO = 3
-# Maximum TOC entry count for the low-ratio (3:1) tier.
-_SPARSE_TOC_MAX_LOW_TIER = 5
-# Maximum TOC entry count for the mid-ratio (5:1) tier.
-# Handles poetry collections (e.g. PG 438: 10 TOC, 58 headings at 5.8:1).
-_SPARSE_TOC_MAX_MID_TIER = 10
-# Minimum heading-to-TOC ratio for the mid tier to fire.
-_SPARSE_TOC_MID_RATIO = 5
-# Minimum heading-to-TOC ratio for the extreme override (any TOC count).
-_SPARSE_TOC_EXTREME_RATIO = 10
+def _should_prefer_heading_scan(n_toc: int, n_head: int) -> bool:
+    """Return True when the heading scan should replace a sparse TOC.
+
+    Three tiers, each requiring heading_count > 3 × toc_count:
+      - ≤ 5 TOC entries: always prefer heading scan (e.g. Dante's Inferno)
+      - 6–10 TOC entries AND heading > 5× TOC: poetry collections
+        (e.g. PG 438: 10 TOC, 58 headings at 5.8:1)
+      - Any count AND heading > 10× TOC: extreme sparseness
+        (e.g. PG 441: 20 TOC, 144 headings)
+    """
+    if n_head <= 3 * n_toc:
+        return False
+    return n_toc <= 5 or (n_toc <= 10 and n_head > 5 * n_toc) or n_head > 10 * n_toc
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,16 +131,7 @@ def chunk_html(html: str) -> list[Chunk]:
     )
     heading_sections = _parse_heading_sections(doc_index=doc_index)
     if toc_sections:
-        # Prefer the richer heading scan when the TOC is navigational
-        # but not structurally representative.  See constants above for
-        # tier definitions and the PG IDs that motivated each threshold.
-        n_toc = len(toc_sections)
-        n_head = len(heading_sections)
-        if n_head > _SPARSE_TOC_MIN_RATIO * n_toc and (
-            n_toc <= _SPARSE_TOC_MAX_LOW_TIER
-            or (n_toc <= _SPARSE_TOC_MAX_MID_TIER and n_head > _SPARSE_TOC_MID_RATIO * n_toc)
-            or n_head > _SPARSE_TOC_EXTREME_RATIO * n_toc
-        ):
+        if _should_prefer_heading_scan(len(toc_sections), len(heading_sections)):
             # Rank normalization runs on heading-scan sections too (not
             # just TOC sections) so the single-instance container
             # heuristic can fix inverted BOOK/PART ranks in books like

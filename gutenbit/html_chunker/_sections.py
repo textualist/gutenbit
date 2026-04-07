@@ -244,14 +244,11 @@ def _parse_toc_sections(
 
     anchor_map = doc_index.anchor_map
 
-    # Pre-scan: identify page-anchor links that resolve to headings.
-    # Only enable page-anchor resolution when most such links resolve
-    # (e.g. PG 492: 7/7 = 100%).  When only a fraction resolve (e.g.
-    # PG 786: 14/40 = 35%), the TOC is a printed page-number list and
-    # the heading matches are coincidental.  Cache the resolvable set
-    # so the main loop avoids repeating regex/DOM checks.
-    resolvable_page_anchors: set[str] = set()
-    page_anchor_total = 0
+    # Pre-scan: identify page-anchor links that resolve to headings and
+    # cache the heading parent.  Only enable resolution when ≥ 50% of
+    # page-anchor links resolve (PG 492: 7/7 = 100%; PG 786: 14/40 = 35%).
+    _page_anchor_headings: dict[str, Tag] = {}  # anchor_id → heading element
+    _page_anchor_total = 0
     for link in toc_links:
         href = str(link.get("href", ""))
         if not href.startswith("#"):
@@ -259,13 +256,15 @@ def _parse_toc_sections(
         aid = href[1:]
         raw = _clean_heading_text(" ".join(link.get_text().split()))
         if _PAGE_ANCHOR_ID_RE.match(aid) and _NUMERIC_LINK_TEXT_RE.fullmatch(raw):
-            page_anchor_total += 1
+            _page_anchor_total += 1
             ba = anchor_map.get(str(aid))
-            if ba and ba.find_parent(_HEADING_TAGS):
-                resolvable_page_anchors.add(aid)
-    enable_page_anchor_resolution = (
-        page_anchor_total > 0
-        and len(resolvable_page_anchors) / page_anchor_total >= 0.5
+            if ba:
+                hp = ba.find_parent(_HEADING_TAGS)
+                if hp:
+                    _page_anchor_headings[aid] = hp
+    _enable_page_anchors = (
+        _page_anchor_total > 0
+        and len(_page_anchor_headings) / _page_anchor_total >= 0.5
     )
 
     for link in toc_links:
@@ -274,33 +273,31 @@ def _parse_toc_sections(
         raw_link_text = _clean_heading_text(" ".join(link.get_text().split()))
         link_text = raw_link_text
 
-        # Early resolution: when a numeric TOC link targets a page-number
-        # anchor inside a heading (e.g. PG 492: <a href="#page3">3</a>
-        # → <h2><a id="page3"></a>..HEADING..</h2>), resolve through
-        # the heading and use its text.  This must run before the
-        # structural-link filter, which would otherwise discard the link.
         href = str(link.get("href", ""))
         anchor_id = href[1:] if href.startswith("#") else ""
-        resolved_via_page_anchor = False
-        if enable_page_anchor_resolution and anchor_id in resolvable_page_anchors:
-            body_anchor_early = anchor_map.get(str(anchor_id))
-            if body_anchor_early:
-                heading_parent = body_anchor_early.find_parent(_HEADING_TAGS)
-                if heading_parent and _tag_within_bounds(heading_parent, tag_positions, bounds):
-                    heading_text = _clean_heading_text(_extract_heading_text(heading_parent))
-                    if heading_text:
-                        link_text = heading_text
-                        resolved_via_page_anchor = True
 
-        if not resolved_via_page_anchor:
-            if not _is_structural_toc_link(link, raw_link_text, doc_index=doc_index):
-                context_text = _toc_context_text(link)
-                if _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text) and _looks_enumerated_toc_entry(
-                    context_text
-                ):
-                    link_text = context_text
-                else:
-                    continue
+        # Early resolution: when a numeric TOC link targets a page-number
+        # anchor inside a heading, resolve through the cached heading
+        # parent and use its text.  Runs before the structural-link filter
+        # which would otherwise discard the numeric link.
+        cached_heading = (
+            _page_anchor_headings.get(anchor_id) if _enable_page_anchors else None
+        )
+        if cached_heading is not None and _tag_within_bounds(
+            cached_heading, tag_positions, bounds
+        ):
+            heading_text = _clean_heading_text(_extract_heading_text(cached_heading))
+            if heading_text:
+                link_text = heading_text
+        elif not _is_structural_toc_link(link, raw_link_text, doc_index=doc_index):
+            context_text = _toc_context_text(link)
+            if _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text) and _looks_enumerated_toc_entry(
+                context_text
+            ):
+                link_text = context_text
+            else:
+                continue
+
         if not anchor_id:
             continue
         body_anchor = anchor_map.get(str(anchor_id))
@@ -645,17 +642,13 @@ def _merge_adjacent_duplicate_sections(
 
     # Pass 1: identify epigraph pairs — same-text heading pairs (run of 2)
     # with a large-enough positional gap but short content between them.
+    # The run_length invariant already guarantees that consecutive entries
+    # with run_length == 2 share the same level, rank, and heading text.
     epigraph_pair_indices: set[int] = set()  # indices of the *first* section in a pair
     for idx in range(n - 1):
         if run_length[idx] != 2 or run_length[idx + 1] != 2:
             continue
         a, b = sections[idx], sections[idx + 1]
-        if not (
-            a.level == b.level
-            and a.heading_rank == b.heading_rank
-            and _same_heading_text(a.heading_text, b.heading_text)
-        ):
-            continue
         a_pos = _tag_position(a.body_anchor, tag_positions)
         b_pos = _tag_position(b.body_anchor, tag_positions)
         if a_pos is None or b_pos is None or b_pos - a_pos <= 8:
