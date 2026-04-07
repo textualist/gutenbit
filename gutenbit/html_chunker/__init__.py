@@ -57,7 +57,7 @@ from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (
 # ---------------------------------------------------------------------------
 
 HTML_PARSER_BACKEND = "lxml"
-CHUNKER_VERSION = 40
+CHUNKER_VERSION = 41
 
 # ---------------------------------------------------------------------------
 # Sparse-TOC override thresholds

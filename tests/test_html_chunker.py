@@ -4687,10 +4687,10 @@ def test_page_anchor_toc_ignored_when_minority_resolve_to_headings():
     assert headings[-1].content == "CHAPTER VI"
 
 
-def test_pagenum_span_anchor_traverses_to_containing_heading():
-    """When a TOC link targets a page-number anchor inside a
-    <span class="pagenum"> inside a heading, the parser should traverse
-    up to the heading element rather than discarding the link."""
+def test_page_anchor_inside_pagenum_span_resolves_to_heading():
+    """When a page-number anchor sits inside a <span class="pagenum">
+    inside a heading, the page-anchor pre-scan detects the containing
+    heading and resolves the TOC link to the heading text."""
     html = _make_html("""
     <p class="toc"><a href="#page5" class="pginternal">5</a>
        First Essay</p>
@@ -4881,3 +4881,405 @@ def test_mixed_filters_colophon_date_publisher_in_one_book():
     # Real structure preserved
     assert len(headings) == 3
     assert all("CHAPTER" in h.content for h in headings)
+
+
+# ---------------------------------------------------------------------------
+# Author-specific structural patterns: Emerson
+# ---------------------------------------------------------------------------
+
+
+def test_emerson_numbered_essay_titles():
+    """Roman-numeral-prefixed essay titles with standalone titles
+    (PG 2944 pattern — Essays: First Series, 12 essays like
+    'I. HISTORY', 'XII. ART')."""
+    essays = [
+        ("I", "HISTORY"), ("II", "SELF-RELIANCE"), ("III", "COMPENSATION"),
+        ("IV", "SPIRITUAL LAWS"), ("V", "LOVE"), ("VI", "FRIENDSHIP"),
+        ("VII", "PRUDENCE"), ("VIII", "HEROISM"), ("IX", "THE OVER-SOUL"),
+        ("X", "CIRCLES"), ("XI", "INTELLECT"), ("XII", "ART"),
+    ]
+    toc = "\n".join(
+        f'<p class="toc"><a href="#e{i}" class="pginternal">'
+        f'{num}. {title}</a></p>'
+        for i, (num, title) in enumerate(essays, 1)
+    )
+    body = "\n".join(
+        f'<h2><a id="e{i}"></a>{num}. {title}</h2>\n'
+        f'<p>The body of the essay on {title.lower()} begins here.</p>\n'
+        f'<p>More text for {title.lower()}.</p>'
+        for i, (num, title) in enumerate(essays, 1)
+    )
+    html = _make_html(toc + "\n" + body)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 12
+    assert headings[0].content == "I. HISTORY"
+    assert headings[-1].content == "XII. ART"
+    # All flat — no nesting
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_emerson_semicolon_subtitle_essays():
+    """Essays with semicolon-separated subtitles
+    (PG 6312 pattern — Representative Men, e.g.
+    'VII. GOETHE; OR, THE WRITER')."""
+    html = _make_html("""
+    <p class="toc"><a href="#e1" class="pginternal">I. USES OF GREAT MEN.</a></p>
+    <p class="toc"><a href="#e2" class="pginternal">II. PLATO; OR, THE PHILOSOPHER.</a></p>
+    <p class="toc"><a href="#e3" class="pginternal">III. SWEDENBORG; OR, THE MYSTIC.</a></p>
+    <p class="toc"><a href="#e4" class="pginternal">IV. MONTAIGNE; OR, THE SKEPTIC.</a></p>
+
+    <h2><a id="e1"></a>I. USES OF GREAT MEN.</h2>
+    <p>It is natural to believe in great men.</p>
+    <p>Nature seems to exist for the excellent.</p>
+
+    <h2><a id="e2"></a>II. PLATO; OR, THE PHILOSOPHER.</h2>
+    <p>Among secular books, Plato only is entitled to Omar's fanatical compliment.</p>
+    <p>More on Plato.</p>
+
+    <h2><a id="e3"></a>III. SWEDENBORG; OR, THE MYSTIC.</h2>
+    <p>Among eminent persons, those who are most dear to men.</p>
+    <p>More on Swedenborg.</p>
+
+    <h2><a id="e4"></a>IV. MONTAIGNE; OR, THE SKEPTIC.</h2>
+    <p>Every fact is related on one side to sensation.</p>
+    <p>More on Montaigne.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 4
+    # Semicolons preserved in heading text
+    assert "PLATO; OR, THE PHILOSOPHER." in headings[1].content
+    assert "MONTAIGNE; OR, THE SKEPTIC." in headings[3].content
+
+
+def test_emerson_chapter_em_dash_subtitles():
+    """Chapters with em-dash-separated subtitles
+    (PG 39862 pattern — English Traits, e.g.
+    'CHAPTER I.--FIRST VISIT TO ENGLAND.')."""
+    html = _make_html("""
+    <h2><a id="c1"></a>CHAPTER I.--FIRST VISIT TO ENGLAND.</h2>
+    <p>I have been twice in England.</p>
+    <p>More text on England.</p>
+
+    <h2><a id="c2"></a>CHAPTER II.--VOYAGE TO ENGLAND.</h2>
+    <p>The voyage from Illinois is long.</p>
+    <p>More text on the voyage.</p>
+
+    <h2><a id="c3"></a>CHAPTER III.--LAND.</h2>
+    <p>Everybody says there is but one England.</p>
+    <p>More text on the land.</p>
+
+    <h2><a id="c4"></a>CHAPTER IV.--RACE.</h2>
+    <p>An ingenious anatomist has written a book.</p>
+    <p>More text on race.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 4
+    assert headings[0].content.startswith("CHAPTER I")
+    assert headings[-1].content.startswith("CHAPTER IV")
+
+
+# ---------------------------------------------------------------------------
+# Author-specific structural patterns: Thoreau
+# ---------------------------------------------------------------------------
+
+
+def test_thoreau_day_name_headings():
+    """Non-keyword day-name headings as flat peer sections
+    (PG 4232 pattern — A Week on the Concord, with headings like
+    'CONCORD RIVER', 'SATURDAY', 'SUNDAY', 'FRIDAY')."""
+    html = _make_html("""
+    <p class="toc"><a href="#d0" class="pginternal">CONCORD RIVER</a></p>
+    <p class="toc"><a href="#d1" class="pginternal">SATURDAY</a></p>
+    <p class="toc"><a href="#d2" class="pginternal">SUNDAY</a></p>
+    <p class="toc"><a href="#d3" class="pginternal">MONDAY</a></p>
+    <p class="toc"><a href="#d4" class="pginternal">TUESDAY</a></p>
+    <p class="toc"><a href="#d5" class="pginternal">WEDNESDAY</a></p>
+    <p class="toc"><a href="#d6" class="pginternal">THURSDAY</a></p>
+    <p class="toc"><a href="#d7" class="pginternal">FRIDAY</a></p>
+
+    <h2><a id="d0"></a>CONCORD RIVER</h2>
+    <p>The Musketaquid, or Grass-ground River, is a river.</p>
+    <p>More on the river.</p>
+
+    <h2><a id="d1"></a>SATURDAY</h2>
+    <p>At length, on Saturday, the last day of August.</p>
+    <p>More on Saturday.</p>
+
+    <h2><a id="d2"></a>SUNDAY</h2>
+    <p>The river this morning was very still.</p>
+    <p>More on Sunday.</p>
+
+    <h2><a id="d3"></a>MONDAY</h2>
+    <p>When the first light dawned on the earth.</p>
+    <p>More on Monday.</p>
+
+    <h2><a id="d4"></a>TUESDAY</h2>
+    <p>Long before daylight we ranged abroad.</p>
+    <p>More on Tuesday.</p>
+
+    <h2><a id="d5"></a>WEDNESDAY</h2>
+    <p>Early this morning we reached the junction.</p>
+    <p>More on Wednesday.</p>
+
+    <h2><a id="d6"></a>THURSDAY</h2>
+    <p>The wind blows east today.</p>
+    <p>More on Thursday.</p>
+
+    <h2><a id="d7"></a>FRIDAY</h2>
+    <p>We now return to the Concord.</p>
+    <p>More on Friday.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 8
+    assert headings[0].content == "CONCORD RIVER"
+    assert headings[-1].content == "FRIDAY"
+    # All flat — day names are peers, not nested
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_thoreau_introduction_plus_numbered_chapters():
+    """Introduction followed by numbered chapters with inline titles
+    (PG 34392 pattern — Cape Cod, e.g. 'I THE SHIPWRECK')."""
+    html = _make_html("""
+    <p class="toc"><a href="#intro" class="pginternal">INTRODUCTION</a></p>
+    <p class="toc"><a href="#c1" class="pginternal">I THE SHIPWRECK</a></p>
+    <p class="toc"><a href="#c2" class="pginternal">II STAGE-COACH VIEWS</a></p>
+    <p class="toc"><a href="#c3" class="pginternal">III THE PLAINS OF NAUSET</a></p>
+    <p class="toc"><a href="#c4" class="pginternal">IV THE BEACH</a></p>
+
+    <h2><a id="intro"></a>INTRODUCTION</h2>
+    <p>By the editor, concerning the text.</p>
+    <p>More introduction.</p>
+
+    <h2><a id="c1"></a>I THE SHIPWRECK</h2>
+    <p>Wishing to get a better view than I had yet had of the ocean.</p>
+    <p>More on the shipwreck.</p>
+
+    <h2><a id="c2"></a>II STAGE-COACH VIEWS</h2>
+    <p>We left Concord on the morning of the 9th of October.</p>
+    <p>More stage-coach text.</p>
+
+    <h2><a id="c3"></a>III THE PLAINS OF NAUSET</h2>
+    <p>We found ourselves at once on the surprisingly sandy plains.</p>
+    <p>More plains text.</p>
+
+    <h2><a id="c4"></a>IV THE BEACH</h2>
+    <p>The beach was completely covered with kelp.</p>
+    <p>More beach text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 5
+    assert headings[0].content == "INTRODUCTION"
+    assert headings[1].content == "I THE SHIPWRECK"
+    # INTRODUCTION is a peer, not a parent
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_thoreau_journal_year_range_sections():
+    """Year-range section headings for journal volumes
+    (PG 57393 pattern — Journal Vol 01, with headings like
+    'IX 1837-1847 (ÆT. 20-30)')."""
+    html = _make_html("""
+    <p class="toc"><a href="#intro" class="pginternal">INTRODUCTION</a></p>
+    <p class="toc"><a href="#s1" class="pginternal">I 1837 (ÆT. 20)</a></p>
+    <p class="toc"><a href="#s2" class="pginternal">II 1838 (ÆT. 20-21)</a></p>
+    <p class="toc"><a href="#s3" class="pginternal">III 1839 (ÆT. 21-22)</a></p>
+    <p class="toc"><a href="#s4" class="pginternal">IV 1840-1841 (ÆT. 22-24)</a></p>
+
+    <h2><a id="intro"></a>INTRODUCTION</h2>
+    <p>The journal of Henry David Thoreau begins in October 1837.</p>
+    <p>More introduction.</p>
+
+    <h2><a id="s1"></a>I 1837 (ÆT. 20)</h2>
+    <p>"What are you doing now?" he asked.</p>
+    <p>More journal text.</p>
+
+    <h2><a id="s2"></a>II 1838 (ÆT. 20-21)</h2>
+    <p>As the least drop of wine tinges the whole goblet.</p>
+    <p>More journal text.</p>
+
+    <h2><a id="s3"></a>III 1839 (ÆT. 21-22)</h2>
+    <p>We should offer up our perfect thoughts to the gods.</p>
+    <p>More journal text.</p>
+
+    <h2><a id="s4"></a>IV 1840-1841 (ÆT. 22-24)</h2>
+    <p>Not by constraint or severity shall you have access to true wisdom.</p>
+    <p>More journal text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 5
+    assert headings[0].content == "INTRODUCTION"
+    assert "1837" in headings[1].content
+    assert "1840-1841" in headings[4].content
+
+
+# ---------------------------------------------------------------------------
+# Author-specific structural patterns: Melville
+# ---------------------------------------------------------------------------
+
+
+def test_melville_preface_chapters_appendix_note():
+    """Preface + many chapters + appendix + note structure
+    (PG 1900 pattern — Typee, with 36 chapters plus front/back matter).
+
+    The preface and note are peers of the chapters, not parents."""
+    toc = ['<p class="toc"><a href="#pref" class="pginternal">PREFACE</a></p>']
+    body = [
+        '<h2><a id="pref"></a>PREFACE</h2>',
+        '<p>More than three years have elapsed since the author left the society.</p>',
+        '<p>More preface text.</p>',
+    ]
+    for i in range(1, 11):
+        toc.append(
+            f'<p class="toc"><a href="#ch{i}" class="pginternal">CHAPTER {i}</a></p>'
+        )
+        body.append(f'<h2><a id="ch{i}"></a>CHAPTER {i}</h2>')
+        body.append(f'<p>The narrative of chapter {i} unfolds.</p>')
+        body.append(f'<p>More text for chapter {i}.</p>')
+    toc.append('<p class="toc"><a href="#app" class="pginternal">APPENDIX</a></p>')
+    toc.append('<p class="toc"><a href="#note" class="pginternal">NOTE.</a></p>')
+    body.append('<h2><a id="app"></a>APPENDIX</h2>')
+    body.append('<p>Appendix material about Polynesian customs.</p>')
+    body.append('<h2><a id="note"></a>NOTE.</h2>')
+    body.append('<p>Since the above was written, events have occurred.</p>')
+
+    html = _make_html("\n".join(toc) + "\n" + "\n".join(body))
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 12  # PREFACE + 10 chapters + APPENDIX
+    assert headings[0].content == "PREFACE"
+    # APPENDIX is an apparatus heading — kept as a section but
+    # NOTE after it is absorbed into APPENDIX content (not a peer)
+    assert headings[-1].content == "APPENDIX"
+
+
+def test_melville_book_with_long_subtitle():
+    """BOOK headings with long inline subtitles
+    (PG 34970 pattern — Pierre, e.g.
+    'BOOK I. PIERRE JUST EMERGING FROM HIS TEENS')."""
+    html = _make_html("""
+    <p class="toc"><a href="#b1" class="pginternal">BOOK I.</a></p>
+    <p class="toc"><a href="#b2" class="pginternal">BOOK II.</a></p>
+    <p class="toc"><a href="#b3" class="pginternal">BOOK III.</a></p>
+    <p class="toc"><a href="#b4" class="pginternal">BOOK IV.</a></p>
+
+    <h2><a id="b1"></a>BOOK I. PIERRE JUST EMERGING FROM HIS TEENS</h2>
+    <p>There are some strange summer mornings in the country.</p>
+    <p>More Pierre text.</p>
+
+    <h2><a id="b2"></a>BOOK II. LOVE, DELIGHT, AND ALARM</h2>
+    <p>On the previous evening, Pierre had been at a large party.</p>
+    <p>More text.</p>
+
+    <h2><a id="b3"></a>BOOK III. THE PRESENTIMENT AND THE VERIFICATION</h2>
+    <p>Pierre was now this bridegroom-making morning.</p>
+    <p>More text.</p>
+
+    <h2><a id="b4"></a>BOOK IV. RETROSPECTIVE</h2>
+    <p>In their decease, both father and mother had bequeathed.</p>
+    <p>More text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 4
+    assert "PIERRE JUST EMERGING" in headings[0].content
+    assert "RETROSPECTIVE" in headings[3].content
+
+
+def test_melville_named_story_collection():
+    """Named story titles as flat peer sections
+    (PG 15859 pattern — The Piazza Tales, with titles like
+    'THE PIAZZA', 'BARTLEBY', 'BENITO CERENO')."""
+    html = _make_html("""
+    <p class="toc"><a href="#s1" class="pginternal">THE PIAZZA.</a></p>
+    <p class="toc"><a href="#s2" class="pginternal">BARTLEBY.</a></p>
+    <p class="toc"><a href="#s3" class="pginternal">BENITO CERENO.</a></p>
+    <p class="toc"><a href="#s4" class="pginternal">THE LIGHTNING-ROD MAN.</a></p>
+    <p class="toc"><a href="#s5" class="pginternal">THE ENCANTADAS.</a></p>
+    <p class="toc"><a href="#s6" class="pginternal">THE BELL-TOWER.</a></p>
+
+    <h2><a id="s1"></a>THE PIAZZA.</h2>
+    <p>When I removed into the country, it was to occupy an old-fashioned house.</p>
+    <p>More text.</p>
+
+    <h2><a id="s2"></a>BARTLEBY.</h2>
+    <p>I am a rather elderly man.</p>
+    <p>More text.</p>
+
+    <h2><a id="s3"></a>BENITO CERENO.</h2>
+    <p>In the year 1799, Captain Amasa Delano.</p>
+    <p>More text.</p>
+
+    <h2><a id="s4"></a>THE LIGHTNING-ROD MAN.</h2>
+    <p>What grand irregular thunder.</p>
+    <p>More text.</p>
+
+    <h2><a id="s5"></a>THE ENCANTADAS.</h2>
+    <p>Take five-and-twenty heaps of cinders.</p>
+    <p>More text.</p>
+
+    <h2><a id="s6"></a>THE BELL-TOWER.</h2>
+    <p>In the south of Europe, nigh a once frescoed capital.</p>
+    <p>More text.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 6
+    assert headings[0].content == "THE PIAZZA."
+    assert headings[1].content == "BARTLEBY."
+    assert headings[-1].content == "THE BELL-TOWER."
+    # All flat — story titles are peers
+    assert all(h.div2 == "" for h in headings)
+
+
+def test_melville_chapters_with_inline_titles():
+    """Many chapters with inline titles after the chapter number
+    (PG 21816 pattern — The Confidence-Man, e.g.
+    'CHAPTER I. A MUTE GOES ABOARD A BOAT ON THE MISSISSIPPI')."""
+    chapters = []
+    titles = [
+        "A MUTE GOES ABOARD A BOAT",
+        "SHOWING THAT MANY MEN HAVE MANY MINDS",
+        "IN WHICH A VARIETY OF CHARACTERS APPEAR",
+        "RENEWAL OF OLD ACQUAINTANCE",
+        "THE MAN WITH THE WEED MAKES IT AN EVEN QUESTION",
+        "AT THE OUTSET OF WHICH CERTAIN PASSENGERS PROVE",
+    ]
+    for i, title in enumerate(titles, 1):
+        chapters.append(f"""
+        <h2><a id="c{i}"></a>CHAPTER {_roman(i)}. {title}</h2>
+        <p>The narrative continues with chapter {i}.</p>
+        <p>More text for this chapter of the story.</p>
+        """)
+    html = _make_html("\n".join(chapters))
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 6
+    assert "A MUTE GOES ABOARD" in headings[0].content
+    assert headings[0].content.startswith("CHAPTER I")
+
+
+def _roman(n: int) -> str:
+    """Minimal Roman numeral converter for test fixtures."""
+    result = ""
+    for value, numeral in [(10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]:
+        while n >= value:
+            result += numeral
+            n -= value
+    return result
