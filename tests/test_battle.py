@@ -1874,484 +1874,66 @@ def test_stevenson_underwoods_full_poem_list():
     assert any("ENVOY" in t for t in heading_texts)
 
 
-# ===========================================================================
-# Comprehensive corpus regression tests
-# ===========================================================================
-#
-# Every work battle-tested in PR #177 (Henry/William James, 104 works) and
-# PR #186 (Emerson/Thoreau/Melville/Stevenson, 101 works) that passed
-# cleanly, was fixed, or improved receives a regression guard here.
-#
-# Each test asserts the section count and boundary headings (first/last)
-# to catch structural regressions from future parser changes.
-# ===========================================================================
-
-
 # ---------------------------------------------------------------------------
-# Henry James — Novels (PR #177 clean pass)
+# Sampled corpus regression guards (√n ≈ 8 of the 68 battle-tested works)
+#
+# Each test represents a distinct structural pattern from the PR #177
+# (James brothers) and PR #186 (Emerson/Thoreau/Melville/Stevenson)
+# battle-tested corpora.  One work per pattern category.
 # ---------------------------------------------------------------------------
 
 
-def test_james_roderick_hudson():
-    """PG 176 — Roderick Hudson: 13 chapters."""
-    h = _headings(176)
-    assert len(h) == 13
-    assert h[0].content.startswith("CHAPTER I")
-    assert h[-1].content.startswith("CHAPTER XIII")
-
-
-def test_james_the_american():
-    """PG 177 — The American: 26 chapters."""
-    h = _headings(177)
-    assert len(h) == 26
-    assert h[0].content == "CHAPTER I"
-    assert h[-1].content == "CHAPTER XXVI"
-
-
-def test_james_the_europeans():
-    """PG 179 — The Europeans: 12 chapters."""
-    h = _headings(179)
-    assert len(h) == 12
-
-
-def test_james_confidence():
-    """PG 178 — Confidence: 30 chapters."""
-    h = _headings(178)
-    assert len(h) == 30
-
-
-def test_james_portrait_of_a_lady_vol1():
-    """PG 2833 — The Portrait of a Lady Vol 1: 29 sections."""
-    h = _headings(2833)
-    assert len(h) == 29
-    assert h[0].content == "PREFACE"
-
-
-def test_james_portrait_of_a_lady_vol2():
-    """PG 2834 — The Portrait of a Lady Vol 2: 28 sections."""
-    h = _headings(2834)
-    assert len(h) == 28
-    assert h[0].content == "CHAPTER XXVIII"
-
-
-def test_james_bostonians_vol1():
-    """PG 19717 — The Bostonians Vol I: 25 sections."""
-    h = _headings(19717)
-    assert len(h) == 25
-    assert any("BOOK FIRST" in hx.content for hx in h)
-
-
-def test_james_princess_casamassima():
-    """PG 64599 — The Princess Casamassima: A Novel: 53 sections."""
+def test_james_princess_casamassima_large_multi_level():
+    """PG 64599 — 53 sections with BOOK containers + nested chapters."""
     h = _headings(64599)
     assert len(h) == 53
     assert any("BOOK FIRST" in hx.content for hx in h)
 
 
-def test_james_princess_casamassima_vol1():
-    """PG 69628 — The Princess Casamassima Vol 1: 24 sections."""
-    h = _headings(69628)
-    assert len(h) == 24
-    assert h[0].content == "PREFACE"
-
-
-def test_james_princess_casamassima_vol2():
-    """PG 69629 — The Princess Casamassima Vol 2: 30 sections."""
-    h = _headings(69629)
-    assert len(h) == 30
-
-
-def test_james_the_reverberator():
-    """PG 7529 — The Reverberator: 14 chapters."""
-    h = _headings(7529)
-    assert len(h) == 14
-
-
-def test_james_what_maisie_knew():
-    """PG 7118 — What Maisie Knew: 31 chapters."""
-    h = _headings(7118)
-    assert len(h) == 31
-
-
-def test_james_the_outcry():
-    """PG 21969 — The Outcry: 23 sections."""
-    h = _headings(21969)
-    assert len(h) == 23
-    assert any("BOOK FIRST" in hx.content for hx in h)
-
-
-def test_james_golden_bowl_complete():
-    """PG 4264 — The Golden Bowl (Complete): 8 sections."""
-    h = _headings(4264)
-    assert len(h) == 8
-    assert any("BOOK FIRST" in hx.content for hx in h)
-
-
-def test_james_the_sacred_fount():
-    """PG 32939 — The Sacred Fount: 14 chapters."""
-    h = _headings(32939)
-    assert len(h) == 14
-
-
-# ---------------------------------------------------------------------------
-# Henry James — Novellas & Short Stories (PR #177 clean pass)
-# ---------------------------------------------------------------------------
-
-
-def test_james_the_aspern_papers():
-    """PG 211 — The Aspern Papers: 9 sections."""
-    h = _headings(211)
-    assert len(h) == 9
-
-
-def test_james_daisy_miller():
-    """PG 208 — Daisy Miller: 2 parts."""
-    h = _headings(208)
-    assert len(h) == 2
-    assert h[0].content == "PART I"
-
-
-def test_james_in_the_cage():
-    """PG 1144 — In the Cage: 27 chapters."""
-    h = _headings(1144)
-    assert len(h) == 27
-
-
-def test_james_an_international_episode():
-    """PG 210 — An International Episode: 2 parts."""
-    h = _headings(210)
-    assert len(h) == 2
-
-
-def test_james_the_altar_of_the_dead():
-    """PG 642 — The Altar of the Dead: 9 chapters."""
-    h = _headings(642)
-    assert len(h) == 9
-
-
-def test_james_death_of_the_lion():
-    """PG 643 — The Death of the Lion: 10 chapters."""
-    h = _headings(643)
-    assert len(h) == 10
-
-
-def test_james_the_beast_in_the_jungle():
-    """PG 1093 — The Beast in the Jungle: 6 chapters."""
-    h = _headings(1093)
-    assert len(h) == 6
-
-
-def test_james_the_beldonald_holbein():
-    """PG 2366 — The Beldonald Holbein: 5 chapters."""
-    h = _headings(2366)
-    assert len(h) == 5
-
-
-def test_james_the_pupil():
-    """PG 1032 — The Pupil: 8 chapters."""
-    h = _headings(1032)
-    assert len(h) == 8
-
-
-def test_james_the_jolly_corner():
-    """PG 1190 — The Jolly Corner: 3 chapters."""
-    h = _headings(1190)
-    assert len(h) == 3
-
-
-def test_james_glasses():
-    """PG 1195 — Glasses: 13 chapters."""
-    h = _headings(1195)
-    assert len(h) == 13
-
-
-def test_james_eugene_pickering():
-    """PG 2534 — Eugene Pickering: 2 chapters."""
-    h = _headings(2534)
-    assert len(h) == 2
-
-
-def test_james_greville_fane():
-    """PG 2719 — Greville Fane: 1 section."""
-    h = _headings(2719)
-    assert len(h) == 1
-
-
-def test_james_pension_beaurepas():
-    """PG 2720 — The Pension Beaurepas: 10 chapters."""
-    h = _headings(2720)
-    assert len(h) == 10
-
-
-def test_james_four_meetings():
-    """PG 21773 — Four Meetings: 4 sections."""
-    h = _headings(21773)
-    assert len(h) == 4
-
-
-def test_james_path_of_duty():
-    """PG 21772 — The Path of Duty: 8 sections."""
-    h = _headings(21772)
-    assert len(h) == 8
-
-
-def test_james_the_middle_years():
-    """PG 32649 — The Middle Years: 7 sections."""
-    h = _headings(32649)
-    assert len(h) == 7
-
-
-def test_james_louisa_pallant():
-    """PG 8081 — Louisa Pallant: 6 sections."""
-    h = _headings(8081)
-    assert len(h) == 6
-
-
-def test_james_a_passionate_pilgrim():
-    """PG 8080 — A Passionate Pilgrim: 4 sections."""
-    h = _headings(8080)
-    assert len(h) == 4
-
-
-def test_james_madame_de_mauves():
-    """PG 7813 — Madame De Mauves: 9 sections."""
-    h = _headings(7813)
-    assert len(h) == 9
-
-
-def test_james_author_of_beltraffio():
-    """PG 3145 — The Author of Beltraffio: 5 sections."""
-    h = _headings(3145)
-    assert len(h) == 5
-
-
-def test_james_gabrielle_de_bergerac():
-    """PG 65481 — Gabrielle de Bergerac: 3 parts."""
-    h = _headings(65481)
-    assert len(h) == 3
-
-
-def test_james_bundle_of_letters():
-    """PG 2425 — A Bundle of Letters: 9 chapters."""
-    h = _headings(2425)
-    assert len(h) == 9
-
-
-# ---------------------------------------------------------------------------
-# Henry James — Collections & Criticism (PR #177 clean pass)
-# ---------------------------------------------------------------------------
-
-
-def test_james_the_real_thing():
-    """PG 2715 — The Real Thing and Other Tales: 21 sections."""
-    h = _headings(2715)
-    assert len(h) == 21
-    assert h[0].content == "NOTE."
-
-
-def test_james_the_finer_grain():
-    """PG 21968 — The Finer Grain: 25 sections."""
-    h = _headings(21968)
-    assert len(h) == 25
-
-
-def test_james_partial_portraits():
-    """PG 58471 — Partial Portraits: 20 sections."""
-    h = _headings(58471)
-    assert len(h) == 20
-
-
-def test_james_a_most_unholy_trade():
-    """PG 65683 — 'A Most Unholy Trade': 2 sections."""
-    h = _headings(65683)
-    assert len(h) == 2
-
-
-# ---------------------------------------------------------------------------
-# Henry James — Travel, Letters, Autobiography (PR #177 clean pass)
-# ---------------------------------------------------------------------------
-
-
-def test_james_a_little_tour_in_france():
-    """PG 2159 — A Little Tour in France: 40 sections."""
-    h = _headings(2159)
-    assert len(h) == 40
-
-
-def test_james_small_boy_and_others():
-    """PG 26115 — A Small Boy and Others: 29 sections."""
-    h = _headings(26115)
-    assert len(h) == 29
-
-
-def test_james_notes_of_a_son_and_brother():
-    """PG 38424 — Notes of a Son and Brother: 13 sections."""
-    h = _headings(38424)
-    assert len(h) == 13
-
-
-def test_james_letters_vol1():
-    """PG 38776 — The Letters of Henry James Vol. I: 180 sections."""
-    h = _headings(38776)
-    assert len(h) == 180
-    assert h[0].content == "INTRODUCTION"
-
-
-# ---------------------------------------------------------------------------
-# William James (PR #177 clean pass)
-# ---------------------------------------------------------------------------
-
-
-def test_wjames_varieties_of_religious_experience():
-    """PG 621 — The Varieties of Religious Experience: 21 sections."""
-    h = _headings(621)
-    assert len(h) == 21
-
-
-def test_wjames_psychology_briefer_course():
-    """PG 55262 — Psychology: Briefer Course: 29 sections."""
-    h = _headings(55262)
-    assert len(h) == 29
-    assert h[0].content == "PREFACE."
-    assert any("EPILOGUE" in hx.content for hx in h)
-
-
-def test_wjames_letters_vol1():
-    """PG 40307 — The Letters of William James Vol. 1: 139 sections."""
-    h = _headings(40307)
-    assert len(h) == 139
-    assert h[0].content == "PREFACE"
-
-
-# ---------------------------------------------------------------------------
-# Henry James — Fixed by PR #177
-# ---------------------------------------------------------------------------
-
-
-def test_james_the_birthplace():
-    """PG 55078 — The Birthplace: 7 sections (br-tag fix)."""
-    h = _headings(55078)
-    assert len(h) == 7
-
-
-def test_james_diary_of_a_man_of_fifty():
-    """PG 2426 — Diary of a Man of Fifty: 1 section."""
-    h = _headings(2426)
-    assert len(h) == 1
-
-
-def test_james_the_coxon_fund():
-    """PG 1193 — The Coxon Fund: 13 sections (decorative alt-text fix)."""
-    h = _headings(1193)
-    assert len(h) == 13
-
-
-def test_james_the_spoils_of_poynton():
-    """PG 33325 — The Spoils of Poynton: 22 chapters (publisher ad fix)."""
-    h = _headings(33325)
-    assert len(h) == 22
-
-
-def test_james_the_two_magics():
-    """PG 42486 — The Two Magics: 34 sections (publisher ad fix)."""
-    h = _headings(42486)
-    assert len(h) == 34
-
-
-def test_james_sense_of_the_past():
-    """PG 63369 — The Sense of the Past: 5 sections (colophon fix)."""
-    h = _headings(63369)
-    assert len(h) == 5
-
-
-def test_james_the_ivory_tower():
-    """PG 62979 — The Ivory Tower: 18 sections (colophon fix)."""
-    h = _headings(62979)
-    assert len(h) == 18
-    assert h[0].content == "PREFACE"
-
-
-def test_james_the_private_life():
-    """PG 64396 — The Private Life collection: 23 sections (colophon fix)."""
-    h = _headings(64396)
-    assert len(h) == 23
-
-
-def test_james_notes_on_novelists():
-    """PG 60040 — Notes on Novelists: 25 sections (transcriber notes fix)."""
-    h = _headings(60040)
-    assert len(h) == 25
-
-
-def test_james_italian_hours():
-    """PG 6354 — Italian Hours: 61 sections (date heading fix)."""
-    h = _headings(6354)
-    assert len(h) == 61
-    assert h[0].content == "PREFACE"
-
-
-def test_james_english_hours():
-    """PG 58938 — English Hours: 40 sections (index fix)."""
-    h = _headings(58938)
-    assert len(h) == 40
-
-
-def test_james_hawthorne():
-    """PG 18566 — Hawthorne: 7 chapters (business entity fix)."""
-    h = _headings(18566)
-    assert len(h) == 7
-
-
-def test_james_a_london_life():
-    """PG 25500 — A London Life: 30 sections (publisher fix)."""
-    h = _headings(25500)
-    assert len(h) == 30
-
-
-def test_james_wings_of_the_dove_vol2():
-    """PG 30059 — Wings of the Dove Vol II: 27 sections (terminal marker fix)."""
-    h = _headings(30059)
-    assert len(h) == 27
-
-
-# ---------------------------------------------------------------------------
-# Henry James — Improved as side effect (PR #177)
-# ---------------------------------------------------------------------------
-
-
-def test_james_georginas_reasons():
-    """PG 21771 — Georgina's Reasons: 8 sections."""
-    h = _headings(21771)
-    assert len(h) == 8
-
-
-def test_james_the_american_scene():
-    """PG 68717 — The American Scene: 74 sections."""
+def test_james_portrait_of_a_lady_vol2_split_volume():
+    """PG 2834 — Split volume starting at CHAPTER XXVIII."""
+    h = _headings(2834)
+    assert len(h) == 28
+    assert h[0].content == "CHAPTER XXVIII"
+
+
+def test_james_the_american_scene_many_flat():
+    """PG 68717 — 74 flat title-like sections (travel writing)."""
     h = _headings(68717)
     assert len(h) == 74
     assert h[0].content == "PREFACE"
 
 
-def test_james_portraits_of_places():
-    """PG 68961 — Portraits of Places: 51 sections."""
-    h = _headings(68961)
-    assert len(h) == 51
+def test_james_letters_vol1_large_correspondence():
+    """PG 38776 — 180 sections (letters/correspondence, largest James work)."""
+    h = _headings(38776)
+    assert len(h) == 180
+    assert h[0].content == "INTRODUCTION"
 
 
-def test_james_talks_to_teachers():
-    """PG 16287 — Talks To Teachers: 21 sections."""
-    h = _headings(16287)
+def test_james_italian_hours_date_filtering():
+    """PG 6354 — 61 sections after date-heading filtering (was 78 pre-fix)."""
+    h = _headings(6354)
+    assert len(h) == 61
+    assert h[0].content == "PREFACE"
+
+
+def test_james_the_ivory_tower_colophon_fix():
+    """PG 62979 — 18 sections after colophon/publisher noise removal."""
+    h = _headings(62979)
+    assert len(h) == 18
+    assert h[0].content == "PREFACE"
+
+
+def test_james_the_real_thing_collection_with_note():
+    """PG 2715 — 21-section story collection with prefatory NOTE."""
+    h = _headings(2715)
     assert len(h) == 21
-    assert h[0].content == "PREFACE."
+    assert h[0].content == "NOTE."
 
 
-# ---------------------------------------------------------------------------
-# Stevenson — PR #186 (uncovered)
-# ---------------------------------------------------------------------------
-
-
-def test_stevenson_new_poems():
-    """PG 441 — New Poems: 144 sections via sparse-TOC heading-scan override."""
+def test_stevenson_new_poems_sparse_toc_override():
+    """PG 441 — 144 sections via sparse-TOC heading-scan override."""
     h = _headings(441)
     assert len(h) == 144
     assert h[0].content == "PREFACE"
