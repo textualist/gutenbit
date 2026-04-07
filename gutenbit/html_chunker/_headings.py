@@ -91,6 +91,8 @@ _NON_STRUCTURAL_HEADING_RE = re.compile(
 # comma-separated page numbers — e.g. "ARISTIDES, 304.", "BAILEY, S., 5.",
 # "BRADLEY, F.H., 46, 69, 79, 211, 220, 296."  These appear inside INDEX
 # sections in some Gutenberg editions and must not become structural headings.
+# The inner character class lists individual letters (f, p, a, s, i, m) that
+# cover the word "passim" and "ff." commonly found in index references.
 _INDEX_ENTRY_HEADING_RE = re.compile(
     r"^[A-Z][A-Z .,']+,\s*(?:\d+[\s,.\-–;fpassim]*)+\.?\s*$",
 )
@@ -132,7 +134,7 @@ _FRONT_MATTER_ATTRIBUTION_RE = re.compile(
 )
 _PUBLICATION_METADATA_RE = re.compile(
     r"^(?:printed|published|reprinted|first\s+published|originally\s+published|"
-    r"copyright\b|first\s+edition\b|new\s+impression\b)\b",
+    r"copyright\b|first\s+edition\b|new\s+impression\b)",
     re.IGNORECASE,
 )
 # Publisher advertisement headings: "WORKS BY HENRY JAMES", "Henry James's

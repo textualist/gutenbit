@@ -170,6 +170,13 @@ _PRINTED_TOC_RUN_MIN = 3
 # are bare enumeration labels that must not be suppressed.
 _PRINTED_TOC_MIN_BODY_WORDS = 3
 
+# Maximum number of title-like headings at one level for which a single
+# container (one title with a broad-keyword child) triggers promotion.
+# Collected editions rarely have more than ~10 work titles; chapter-rich
+# books (e.g. PG 1998 Zarathustra with 82 discourse headings) must not
+# be falsely promoted.
+_MAX_TITLES_FOR_SINGLE_CONTAINER = 10
+
 # Publisher/copyright metadata paragraph patterns used by title-page
 # stripping to determine whether the paragraphs between a leading title
 # heading and the first real section are imprint noise rather than prose.
@@ -1790,13 +1797,6 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
                 container_title_indices_by_level[section.level].append(idx)
                 break
 
-    # Two-tier threshold: ≥2 containers always qualifies; a single
-    # container qualifies only when the title count is small (≤10),
-    # indicating a real collected edition rather than a chapter-rich
-    # book (e.g. PG 1998 Zarathustra has 82 discourse titles at the
-    # same level as INTRODUCTION, but only 1 container — that's not a
-    # collected edition).
-    _MAX_TITLES_FOR_SINGLE_CONTAINER = 10
     promoted_levels = {
         level
         for level, container_indices in container_title_indices_by_level.items()

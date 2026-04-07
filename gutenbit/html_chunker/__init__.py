@@ -57,7 +57,7 @@ from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (
 # ---------------------------------------------------------------------------
 
 HTML_PARSER_BACKEND = "lxml"
-CHUNKER_VERSION = 41
+CHUNKER_VERSION = 42
 
 
 def _should_prefer_heading_scan(n_toc: int, n_head: int) -> bool:
