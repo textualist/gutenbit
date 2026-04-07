@@ -74,7 +74,14 @@ _END_DELIMITER_RE = re.compile(
     r"\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG EBOOK\b",
     re.IGNORECASE,
 )
-_HEADING_CITATION_SUFFIX_RE = re.compile(r"\s*\[\d+\]\s*$")
+_HEADING_CITATION_SUFFIX_RE = re.compile(r"\s*\[\d+[a-z]?\]\s*$")
+# Mid-heading footnote citations: "[525]" appearing between words in a heading.
+# Requires at least one non-whitespace character before the bracket and text
+# (possibly after whitespace) continuing after so standalone bracketed headings
+# like "[1]" are preserved.
+# "SHAKSPEARE;[525]OR, THE POET" → "SHAKSPEARE; OR, THE POET"
+# "COMPENSATION.[93]" is handled by _HEADING_CITATION_SUFFIX_RE (trailing).
+_HEADING_CITATION_INLINE_RE = re.compile(r"(?<=\S)\[\d+[a-z]?\](?=\s*\S)")
 _STRUCTURAL_HEADING_SPACING_RE = re.compile(
     r"\b(BOOK|PART|ACT|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SECTION|ADVENTURE)(\.?)\s*([IVXLCDM0-9]+)\b",
     re.IGNORECASE,
@@ -218,8 +225,10 @@ def _collect_text_parts(node: Tag, parts: list[str]) -> None:
 @lru_cache(maxsize=4096)
 def _clean_heading_text(heading_text: str) -> str:
     """Normalize heading text while preserving source terminal punctuation."""
-    text = " ".join(heading_text.split()).strip()
+    text = " ".join(heading_text.split())
     text = _HEADING_CITATION_SUFFIX_RE.sub("", text)
+    text = _HEADING_CITATION_INLINE_RE.sub(" ", text)
+    text = " ".join(text.split())  # collapse double spaces from citation removal
     text = _STRUCTURAL_HEADING_SPACING_RE.sub(r"\1\2 \3", text)
     if _BRACKETED_NUMERIC_HEADING_RE.fullmatch(text):
         return text

@@ -1801,3 +1801,141 @@ def test_stevenson_childs_garden_of_verses_keeps_two_collections():
     assert heading_texts[1] == "ENVOYS"
 
 
+# ---------------------------------------------------------------------------
+# Issue #185: PG 16643 — Mid-heading footnote citations stripped;
+# NOTES sub-headings not promoted as sections.
+# ---------------------------------------------------------------------------
+
+
+def test_emerson_essays_merrill_no_notes_sections():
+    """PG 16643: inline citations like [525] stripped from headings;
+    scholarly NOTES sub-headings do not leak into sections."""
+    headings = _headings(16643)
+    heading_texts = [h.content for h in headings]
+
+    assert "SHAKSPEARE; OR, THE POET" in heading_texts
+    # No duplicate essay titles from the NOTES section
+    assert heading_texts.count("THE AMERICAN SCHOLAR") <= 1
+    assert heading_texts.count("COMPENSATION") <= 1
+    assert len(headings) == 14
+
+
+# ---------------------------------------------------------------------------
+# Issue #184: PG 492 — Page-number anchor TOC links resolved to headings.
+# ---------------------------------------------------------------------------
+
+
+def test_stevenson_art_of_writing_page_anchor_toc():
+    """PG 492: TOC links target page-number anchors inside headings.
+    All 7 essays should be parsed as sections."""
+    headings = _headings(492)
+    heading_texts = [h.content for h in headings]
+
+    assert len(headings) == 7
+    assert heading_texts[0] == "ON SOME TECHNICAL ELEMENTS OF STYLE IN LITERATURE"
+    assert "THE MORALITY OF THE PROFESSION OF LETTERS" in heading_texts
+    assert any("PREFACE TO" in t and "MASTER OF BALLANTRAE" in t for t in heading_texts)
+
+
+# ---------------------------------------------------------------------------
+# Issue #181: PG 75942 — Epigraph/body heading duplication merged.
+# ---------------------------------------------------------------------------
+
+
+def test_emerson_lectures_epigraph_merge():
+    """PG 75942: duplicate heading pairs bracketing epigraphs collapsed
+    into single sections."""
+    headings = _headings(75942)
+    heading_texts = [h.content for h in headings]
+
+    # Each essay appears exactly once (not twice)
+    assert heading_texts.count("DEMONOLOGY.") == 1
+    assert heading_texts.count("ARISTOCRACY.") == 1
+    assert heading_texts.count("PLUTARCH.") == 1
+    assert heading_texts.count("THOREAU.") == 1
+    assert len(headings) == 19
+
+
+# ---------------------------------------------------------------------------
+# Issue #182: PG 438 — Poetry collection headings preserved.
+# ---------------------------------------------------------------------------
+
+
+def test_stevenson_underwoods_full_poem_list():
+    """PG 438: all 58 poem headings preserved via heading-scan when
+    TOC is sparse (10 vs 58 sections, 5.8:1 ratio)."""
+    headings = _headings(438)
+    heading_texts = [h.content for h in headings]
+
+    # Should have all poems, not just the 10 from the sparse TOC
+    assert len(headings) >= 55
+    assert "NOTE" in heading_texts
+    assert "BOOK I.\u2014In English" in heading_texts or any("BOOK I" in t for t in heading_texts)
+    assert any("ENVOY" in t for t in heading_texts)
+
+
+# ---------------------------------------------------------------------------
+# Sampled corpus regression guards (√n ≈ 8 of the 68 battle-tested works)
+#
+# Each test represents a distinct structural pattern from the PR #177
+# (James brothers) and PR #186 (Emerson/Thoreau/Melville/Stevenson)
+# battle-tested corpora.  One work per pattern category.
+# ---------------------------------------------------------------------------
+
+
+def test_james_princess_casamassima_large_multi_level():
+    """PG 64599 — 53 sections with BOOK containers + nested chapters."""
+    h = _headings(64599)
+    assert len(h) == 53
+    assert any("BOOK FIRST" in hx.content for hx in h)
+
+
+def test_james_portrait_of_a_lady_vol2_split_volume():
+    """PG 2834 — Split volume starting at CHAPTER XXVIII."""
+    h = _headings(2834)
+    assert len(h) == 28
+    assert h[0].content == "CHAPTER XXVIII"
+
+
+def test_james_the_american_scene_many_flat():
+    """PG 68717 — 74 flat title-like sections (travel writing)."""
+    h = _headings(68717)
+    assert len(h) == 74
+    assert h[0].content == "PREFACE"
+
+
+def test_james_letters_vol1_large_correspondence():
+    """PG 38776 — 180 sections (letters/correspondence, largest James work)."""
+    h = _headings(38776)
+    assert len(h) == 180
+    assert h[0].content == "INTRODUCTION"
+
+
+def test_james_italian_hours_date_filtering():
+    """PG 6354 — 61 sections after date-heading filtering (was 78 pre-fix)."""
+    h = _headings(6354)
+    assert len(h) == 61
+    assert h[0].content == "PREFACE"
+
+
+def test_james_the_ivory_tower_colophon_fix():
+    """PG 62979 — 18 sections after colophon/publisher noise removal."""
+    h = _headings(62979)
+    assert len(h) == 18
+    assert h[0].content == "PREFACE"
+
+
+def test_james_the_real_thing_collection_with_note():
+    """PG 2715 — 21-section story collection with prefatory NOTE."""
+    h = _headings(2715)
+    assert len(h) == 21
+    assert h[0].content == "NOTE."
+
+
+def test_stevenson_new_poems_sparse_toc_override():
+    """PG 441 — 144 sections via sparse-TOC heading-scan override."""
+    h = _headings(441)
+    assert len(h) == 144
+    assert h[0].content == "PREFACE"
+
+

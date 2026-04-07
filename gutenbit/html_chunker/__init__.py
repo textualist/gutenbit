@@ -57,7 +57,22 @@ from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (
 # ---------------------------------------------------------------------------
 
 HTML_PARSER_BACKEND = "lxml"
-CHUNKER_VERSION = 40
+CHUNKER_VERSION = 41
+
+
+def _should_prefer_heading_scan(n_toc: int, n_head: int) -> bool:
+    """Return True when the heading scan should replace a sparse TOC.
+
+    Three tiers, each requiring heading_count > 3 × toc_count:
+      - ≤ 5 TOC entries: always prefer heading scan (e.g. Dante's Inferno)
+      - 6–10 TOC entries AND heading > 5× TOC: poetry collections
+        (e.g. PG 438: 10 TOC, 58 headings at 5.8:1)
+      - Any count AND heading > 10× TOC: extreme sparseness
+        (e.g. PG 441: 20 TOC, 144 headings)
+    """
+    if n_head <= 3 * n_toc:
+        return False
+    return n_toc <= 5 or (n_toc <= 10 and n_head > 5 * n_toc) or n_head > 10 * n_toc
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,14 +131,7 @@ def chunk_html(html: str) -> list[Chunk]:
     )
     heading_sections = _parse_heading_sections(doc_index=doc_index)
     if toc_sections:
-        # When the heading scan finds far more structure than the sparse TOC,
-        # the TOC links are navigational but not structurally representative
-        # (e.g. Dante's Inferno: 2 TOC links vs 37 heading-scan sections).
-        # Prefer the richer heading scan in that case.
-        if len(heading_sections) > 3 * len(toc_sections) and (
-            len(toc_sections) <= 5
-            or len(heading_sections) > 10 * len(toc_sections)
-        ):
+        if _should_prefer_heading_scan(len(toc_sections), len(heading_sections)):
             # Rank normalization runs on heading-scan sections too (not
             # just TOC sections) so the single-instance container
             # heuristic can fix inverted BOOK/PART ranks in books like
