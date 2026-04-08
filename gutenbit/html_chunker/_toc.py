@@ -1,4 +1,11 @@
-"""TOC link classification and matching helpers."""
+"""TOC link classification and matching helpers.
+
+Layer 2 — depends on ``_common``, ``_headings``, and ``_scanning``.
+
+Determines whether an ``<a class="pginternal">`` link sits in a TOC-like
+context and whether a TOC entry text matches a body heading.  Uses O(log n)
+heading lookups via ``bisect`` on the precomputed heading index.
+"""
 
 from __future__ import annotations
 

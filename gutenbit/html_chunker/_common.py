@@ -1,4 +1,12 @@
-"""Shared data structures, compiled regex patterns, and pure text helpers."""
+"""Shared data structures, compiled regex patterns, and pure text helpers.
+
+Layer 0 in the dependency DAG — no internal imports.  Every other module
+in the chunker package imports from here.
+
+Data classes: ``_Section``, ``_ContentBounds``, ``_HeadingRow``
+Key helpers: ``_extract_heading_text``, ``_clean_heading_text`` (cached),
+             ``_heading_tag_rank``, ``_front_matter_heading_key``
+"""
 
 from __future__ import annotations
 
@@ -21,6 +29,11 @@ _BROAD_NESTING_DEPTHS = {
     "act": 3,
     "induction": 3,
 }
+
+# Broad keywords that are dramatic (plays) and should NOT participate in
+# the single-instance container heuristic.  ACT/INDUCTION are peer
+# keywords in plays, not structural containers.
+_DRAMATIC_BROAD_KEYWORDS = frozenset({"act", "induction"})
 
 _FRONT_MATTER_HEADINGS = frozenset(
     {
@@ -107,6 +120,13 @@ _STANDALONE_STRUCTURAL_RE = re.compile(
     r"\bEPILOGUE\b|\bPROLOGUE\b|\bAPPENDIX\b|\bINDUCTION\b",
     re.IGNORECASE,
 )
+# Apparatus headings that mark the end of the body and start of trailing
+# commentary (APPENDIX, NOTES ON ..., CONCLUSION, etc.).  Used by both
+# the core TOC parser and the hierarchy nesting pass.
+_REFINEMENT_STOP_HEADING_RE = re.compile(
+    r"^(?:appendix|notes\s+on\b|(?:a\s+)?review\s*[,;]?\s*(?:and\s+)?conclusion\b|conclusion\s*$)",
+    re.IGNORECASE,
+)
 _FALLBACK_START_HEADING_RE = re.compile(
     r"^(?:preface|prefatory\b|introduction|introductory note|prelude|prologue\b|"
     r"note\b|note to\b|letter\b|a letter from\b|the publisher to the reader\b|"
@@ -158,6 +178,11 @@ class _HeadingRow:
     anchor: Tag
     heading_text: str
     rank: int
+
+
+def _heading_element_or_anchor(anchor: Tag) -> Tag:
+    """Return the parent heading tag, or the anchor itself if not inside one."""
+    return anchor.find_parent(_HEADING_TAGS) or anchor
 
 
 # ---------------------------------------------------------------------------

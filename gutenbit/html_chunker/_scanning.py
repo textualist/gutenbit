@@ -1,4 +1,12 @@
-"""Document scanning, paragraph extraction, and position helpers."""
+"""Document scanning, paragraph extraction, and position helpers.
+
+Layer 1 — depends on ``_common`` only.
+
+Provides ``_scan_document`` (single-pass DFS building all indices) and
+O(log n) paragraph/position queries via ``bisect``.  Per-parse caches
+(``_container_residue_cache``, ``_is_toc_paragraph_cache``) are cleared
+in ``chunk_html`` before each run.
+"""
 
 from __future__ import annotations
 
