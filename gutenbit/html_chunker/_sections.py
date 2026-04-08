@@ -714,6 +714,7 @@ def _strip_printed_toc_page_runs(sections: list[_Section]) -> list[_Section]:
         return sections
 
     def _looks_printed_toc(section: _Section) -> bool:
+        """Return True when section heading has a trailing page number."""
         if _heading_keyword(section.heading_text):
             return False
         if _TRAILING_PAGE_NUMBER_RE.search(section.heading_text) is None:
@@ -1445,6 +1446,7 @@ def _strip_leading_title_page_sections(
         return sections
 
     def _first_non_candidate(*, skip_children_guard: bool = False) -> int | None:
+        """Return index of the first section that is not a title-page candidate."""
         return next(
             (
                 idx
@@ -1685,6 +1687,7 @@ def _refined_candidate_section(
     *,
     allow_tail_title_like: bool,
 ) -> _Section | None:
+    """Return a level-adjusted section if *candidate* refines *toc_section*, else None."""
     if _is_title_like_heading(candidate.heading_text):
         # Structural titles always start with an uppercase letter; a lowercase
         # opener or quotation mark signals descriptive content or dialogue.
@@ -1733,6 +1736,7 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
         return sections
 
     def _is_collection_title(section: _Section) -> bool:
+        """Return True for title-like headings at rank h1–h2 (collection wrappers)."""
         if _is_front_matter_heading(section.heading_text):
             return False
         return _is_title_like_heading(section.heading_text) and (
@@ -1748,11 +1752,13 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
     _ct_cache: dict[int, bool] = {}
 
     def _ct(idx: int) -> bool:
+        """Cached wrapper around ``_is_collection_title`` by section index."""
         if idx not in _ct_cache:
             _ct_cache[idx] = _is_collection_title(sections[idx])
         return _ct_cache[idx]
 
     def _has_same_level_collection_title_since_lower_level(title_idx: int, *, level: int) -> bool:
+        """Return True if a same-level collection title exists before the next lower level."""
         for previous_idx in range(title_idx - 1, -1, -1):
             previous_section = sections[previous_idx]
             if previous_section.level < level:
@@ -2190,6 +2196,7 @@ def _leading_title_cluster_start_index(
     *,
     first_front_matter_idx: int,
 ) -> int:
+    """Return the start index of the title-like cluster preceding front matter."""
     start_idx = first_front_matter_idx
     while start_idx > 0 and _is_title_like_heading(items[start_idx - 1].heading_text):
         start_idx -= 1
