@@ -490,15 +490,6 @@ def _is_ignorable_fallback_heading(
     return len(_LIST_ITEM_MARKER_RE.findall(heading_text)) >= 2
 
 
-def _is_fallback_start_heading_text(heading_text: str) -> bool:
-    """Return True when a heading is strong enough to start fallback scanning."""
-    if _heading_keyword(heading_text):
-        return True
-    if _STANDALONE_STRUCTURAL_RE.search(heading_text):
-        return True
-    return _FALLBACK_START_HEADING_RE.match(heading_text) is not None
-
-
 # ---------------------------------------------------------------------------
 # Dialogue and speaker predicates
 # ---------------------------------------------------------------------------
@@ -606,11 +597,6 @@ def _is_front_matter_attribution_heading(row: _HeadingRow) -> bool:
     if row.rank < 4:
         return False
     return _FRONT_MATTER_ATTRIBUTION_HEADING_RE.match(row.heading_text) is not None
-
-
-def _is_standalone_front_matter_heading(heading_text: str) -> bool:
-    """Return True for standalone front/back-matter headings like PREFACE."""
-    return _STANDALONE_FRONT_MATTER_RE.match(heading_text) is not None
 
 
 def _is_front_matter_heading(heading_text: str) -> bool:
