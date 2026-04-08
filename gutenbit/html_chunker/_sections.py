@@ -242,6 +242,22 @@ _MAX_METADATA_PARA_WORDS = 12
 # ACT/INDUCTION are peer keywords in plays, not structural containers.
 _DRAMATIC_BROAD_KEYWORDS = frozenset({"act", "induction"})
 
+# Matches paragraph text that starts with a structural keyword followed by
+# a number or Roman numeral — indicating a chapter/section heading encoded
+# as a plain <p>, not an <h1>–<h6>.
+_PARAGRAPH_SECTION_RE = re.compile(
+    r"^(?:CHAPTER|SECTION|BOOK|PART|VOLUME|LECTURE)\s+[IVXLCDM0-9]+\b",
+    re.IGNORECASE,
+)
+
+# Maximum length (chars) for paragraph-text headings.  Truncated at a word
+# boundary to keep div labels reasonable.
+_MAX_PARAGRAPH_HEADING_LEN = 120
+
+# Minimum heading-tag rank (h4+) for title-page metadata rows after a "BY"
+# byline.  Shallow-rank headings (h2/h3) may be real structural content.
+_TITLE_PAGE_METADATA_MIN_RANK = 4
+
 # ---------------------------------------------------------------------------
 # TOC parsing
 # ---------------------------------------------------------------------------
@@ -2359,7 +2375,7 @@ def _filter_fallback_heading_rows(heading_rows: list[_HeadingRow]) -> list[_Head
                     break
                 # First row after "BY" is the author name (any rank);
                 # subsequent rows must be deep-rank (h4+) to be metadata.
-                if j > idx + 1 and nxt.rank < 4:
+                if j > idx + 1 and nxt.rank < _TITLE_PAGE_METADATA_MIN_RANK:
                     break
                 byline_indices.add(j)
 
@@ -2422,14 +2438,6 @@ def _should_scan_paragraph_heading_rows(
 # Paragraph-text section fallback
 # ---------------------------------------------------------------------------
 
-# Matches paragraph text that starts with a structural keyword followed by
-# a number or Roman numeral — indicating a chapter/section heading encoded
-# as a plain <p>, not an <h1>–<h6>.
-_PARAGRAPH_SECTION_RE = re.compile(
-    r"^(?:CHAPTER|SECTION|BOOK|PART|VOLUME|LECTURE)\s+[IVXLCDM0-9]+\b",
-    re.IGNORECASE,
-)
-
 
 def _parse_paragraph_sections(
     *,
@@ -2452,9 +2460,13 @@ def _parse_paragraph_sections(
             continue
         # Paragraph text can be much longer than a real heading tag;
         # truncate at a word boundary to keep div labels reasonable.
-        if len(heading_text) > 120:
-            last_space = heading_text.rfind(" ", 0, 120)
-            heading_text = heading_text[:last_space] if last_space > 0 else heading_text[:120]
+        if len(heading_text) > _MAX_PARAGRAPH_HEADING_LEN:
+            last_space = heading_text.rfind(" ", 0, _MAX_PARAGRAPH_HEADING_LEN)
+            heading_text = (
+                heading_text[:last_space]
+                if last_space > 0
+                else heading_text[:_MAX_PARAGRAPH_HEADING_LEN]
+            )
         level = _classify_level(heading_text, False)
         anchor_id = ""
         anchor = ip.tag.find("a", id=True)
