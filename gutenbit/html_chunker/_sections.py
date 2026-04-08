@@ -1752,23 +1752,33 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
     title_indices_by_level: dict[int, list[int]] = defaultdict(list)
     container_title_indices_by_level: dict[int, list[int]] = defaultdict(list)
 
+    # Cache _is_collection_title per section index to avoid repeated
+    # calls through _is_title_like_heading → _is_non_structural_heading_text
+    # (12+ regex operations each).
+    _ct_cache: dict[int, bool] = {}
+
+    def _ct(idx: int) -> bool:
+        if idx not in _ct_cache:
+            _ct_cache[idx] = _is_collection_title(sections[idx])
+        return _ct_cache[idx]
+
     def _has_same_level_collection_title_since_lower_level(title_idx: int, *, level: int) -> bool:
         for previous_idx in range(title_idx - 1, -1, -1):
             previous_section = sections[previous_idx]
             if previous_section.level < level:
                 return False
-            if previous_section.level == level and _is_collection_title(previous_section):
+            if previous_section.level == level and _ct(previous_idx):
                 return True
         return False
 
     for idx, section in enumerate(sections):
-        if not _is_collection_title(section):
+        if not _ct(idx):
             continue
         title_indices_by_level[section.level].append(idx)
 
         for next_idx in range(idx + 1, len(sections)):
             next_section = sections[next_idx]
-            if _is_collection_title(next_section) and next_section.level == section.level:
+            if _ct(next_idx) and next_section.level == section.level:
                 break
             next_depth = _broad_nesting_depth(next_section.heading_text)
             if next_depth is None:
@@ -1785,7 +1795,7 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
                 non_collection_between = sum(
                     1
                     for j in range(idx + 1, next_idx)
-                    if not _is_collection_title(sections[j])
+                    if not _ct(j)
                 )
                 if (
                     non_collection_between == 0
