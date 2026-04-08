@@ -20,6 +20,25 @@ from bs4 import BeautifulSoup, Tag
 from gutenbit.html_chunker._common import (
     _HEADING_TAGS,
 )
+from gutenbit.html_chunker._hierarchy import (
+    _broad_keywords_at_modal_rank,
+    _demote_same_rank_broad_keywords,
+    _equalize_orphan_level_gap,
+    _flatten_single_work_title_wrapper,
+    _nest_broad_subdivisions,
+    _nest_chapters_under_broad_containers,
+    _normalize_collection_titles,
+    _promote_more_prominent_heading_runs,
+    _respect_heading_rank_nesting,
+    _strip_leading_title_page_sections,
+)
+from gutenbit.html_chunker._merging import (
+    _drop_empty_interior_title_repeats,
+    _merge_adjacent_duplicate_sections,
+    _merge_chapter_description_paragraphs,
+    _merge_chapter_subtitle_sections,
+    _strip_printed_toc_page_runs,
+)
 from gutenbit.html_chunker._scanning import (
     _container_residue_cache,  # cleared per-parse (keyed by id())
     _is_toc_paragraph_cache,  # cleared per-parse (keyed by id())
@@ -27,28 +46,13 @@ from gutenbit.html_chunker._scanning import (
     _scan_document,
 )
 from gutenbit.html_chunker._sections import (
-    _broad_keywords_at_modal_rank,
-    _demote_same_rank_broad_keywords,
-    _drop_empty_interior_title_repeats,
-    _equalize_orphan_level_gap,
     _find_non_structural_boundary_after,
-    _flatten_single_work_title_wrapper,
-    _merge_adjacent_duplicate_sections,
-    _merge_chapter_description_paragraphs,
-    _merge_chapter_subtitle_sections,
-    _nest_broad_subdivisions,
-    _nest_chapters_under_broad_containers,
-    _normalize_collection_titles,
     _normalize_toc_heading_ranks,
     _parse_heading_sections,
     _parse_paragraph_sections,
     _parse_toc_paragraph_sections,
     _parse_toc_sections,
-    _promote_more_prominent_heading_runs,
     _refine_toc_sections,
-    _respect_heading_rank_nesting,
-    _strip_leading_title_page_sections,
-    _strip_printed_toc_page_runs,
 )
 from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (keyed by id())
 

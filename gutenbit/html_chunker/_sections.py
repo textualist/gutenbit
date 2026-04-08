@@ -67,25 +67,11 @@ from gutenbit.html_chunker._headings import (
     _update_dramatic_context_state,
 )
 from gutenbit.html_chunker._hierarchy import (
-    _broad_keywords_at_modal_rank,  # noqa: F401 (re-exported)
     _collapse_degenerate_title_block,
-    _demote_same_rank_broad_keywords,  # noqa: F401 (re-exported)
-    _equalize_orphan_level_gap,  # noqa: F401 (re-exported)
-    _flatten_single_work_title_wrapper,  # noqa: F401 (re-exported)
-    _nest_broad_subdivisions,  # noqa: F401 (re-exported)
-    _nest_chapters_under_broad_containers,  # noqa: F401 (re-exported)
-    _normalize_collection_titles,  # noqa: F401 (re-exported)
-    _promote_more_prominent_heading_runs,  # noqa: F401 (re-exported)
     _respect_heading_rank_nesting,
-    _strip_leading_title_page_sections,  # noqa: F401 (re-exported)
 )
 from gutenbit.html_chunker._merging import (
-    _drop_empty_interior_title_repeats,  # noqa: F401 (re-exported)
-    _merge_adjacent_duplicate_sections,  # noqa: F401 (re-exported)
     _merge_bare_heading_pairs,
-    _merge_chapter_description_paragraphs,  # noqa: F401 (re-exported)
-    _merge_chapter_subtitle_sections,  # noqa: F401 (re-exported)
-    _strip_printed_toc_page_runs,  # noqa: F401 (re-exported)
 )
 from gutenbit.html_chunker._scanning import (
     _DocumentIndex,
