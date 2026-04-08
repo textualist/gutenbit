@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from bisect import bisect_left, bisect_right
 from collections.abc import Callable
+from functools import lru_cache
 
 from bs4 import Tag
 
@@ -236,6 +237,7 @@ _STRONG_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
 # ---------------------------------------------------------------------------
 
 
+@lru_cache(maxsize=4096)
 def _heading_keyword(heading_text: str) -> str:
     """Return the canonical structural keyword (e.g. ``'chapter'``, ``'book'``) or ``''``."""
     match = _HEADING_KEYWORD_RE.match(heading_text)
