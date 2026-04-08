@@ -21,10 +21,12 @@ from bs4 import BeautifulSoup, Tag
 from gutenbit.html_chunker._common import (
     _BARE_HEADING_NUMBER_RE,
     _BROAD_KEYWORDS,
+    _DRAMATIC_BROAD_KEYWORDS,
     _FALLBACK_START_HEADING_RE,
     _HEADING_TAGS,
     _NUMERIC_LINK_TEXT_RE,
     _PLAY_HEADING_PARAGRAPH_RE,
+    _REFINEMENT_STOP_HEADING_RE,
     _STANDALONE_STRUCTURAL_RE,
     _TERMINAL_MARKER_RE,
     _clean_heading_text,
@@ -139,20 +141,6 @@ _TAIL_SECTION_HEADING_RE = re.compile(
     r"author'?s?\s+endnotes?\b|(?:the\s+)?afterthought\b)",
     re.IGNORECASE,
 )
-# Headings after the last TOC entry that mark apparatus (appendices,
-# notes on the text).  Once one of these is added during refinement,
-# further body headings are not promoted to standalone sections.
-# NOTE: This is intentionally broad — it may match non-apparatus headings
-# like "Notes on the Author" in edge cases.  If that causes mis-truncation,
-# add a position-relative guard (e.g. only trigger past the last TOC entry).
-# The third alternative uses \b after "conclusion" to allow trailing text
-# (e.g. "A Review, and Conclusion of the Whole"); the fourth uses $ to
-# match bare "Conclusion" or "Conclusion " without requiring a word after it.
-_REFINEMENT_STOP_HEADING_RE = re.compile(
-    r"^(?:appendix|notes\s+on\b|(?:a\s+)?review\s*[,;]?\s*(?:and\s+)?conclusion\b|conclusion\s*$)",
-    re.IGNORECASE,
-)
-
 # Subset of the stop-heading pattern that matches only "Conclusion"-family
 # headings (bare "Conclusion", "Review, and Conclusion", etc.).  Used by
 # the peer-chapter exemption to distinguish chapter-title "Conclusion" from
@@ -236,11 +224,6 @@ _MAX_TITLE_ZONE_METADATA_PARAS = 8
 # Maximum word count per paragraph for the publisher-metadata check.
 # Real prose paragraphs routinely exceed this; imprint lines are short.
 _MAX_METADATA_PARA_WORDS = 12
-
-# Broad keywords that are dramatic (plays) and should NOT participate in
-# the single-instance container heuristic in _normalize_toc_heading_ranks.
-# ACT/INDUCTION are peer keywords in plays, not structural containers.
-_DRAMATIC_BROAD_KEYWORDS = frozenset({"act", "induction"})
 
 # Matches paragraph text that starts with a structural keyword followed by
 # a number or Roman numeral — indicating a chapter/section heading encoded

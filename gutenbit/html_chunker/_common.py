@@ -30,6 +30,11 @@ _BROAD_NESTING_DEPTHS = {
     "induction": 3,
 }
 
+# Broad keywords that are dramatic (plays) and should NOT participate in
+# the single-instance container heuristic.  ACT/INDUCTION are peer
+# keywords in plays, not structural containers.
+_DRAMATIC_BROAD_KEYWORDS = frozenset({"act", "induction"})
+
 _FRONT_MATTER_HEADINGS = frozenset(
     {
         "contents",
@@ -113,6 +118,13 @@ _NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]+")
 # Keywords that are almost exclusively structural even without a trailing number.
 _STANDALONE_STRUCTURAL_RE = re.compile(
     r"\bEPILOGUE\b|\bPROLOGUE\b|\bAPPENDIX\b|\bINDUCTION\b",
+    re.IGNORECASE,
+)
+# Apparatus headings that mark the end of the body and start of trailing
+# commentary (APPENDIX, NOTES ON ..., CONCLUSION, etc.).  Used by both
+# the core TOC parser and the hierarchy nesting pass.
+_REFINEMENT_STOP_HEADING_RE = re.compile(
+    r"^(?:appendix|notes\s+on\b|(?:a\s+)?review\s*[,;]?\s*(?:and\s+)?conclusion\b|conclusion\s*$)",
     re.IGNORECASE,
 )
 _FALLBACK_START_HEADING_RE = re.compile(
