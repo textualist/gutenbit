@@ -145,6 +145,65 @@ _TITLE_PAGE_METADATA_MIN_RANK = 4
 # ---------------------------------------------------------------------------
 
 
+def _prescan_page_anchor_headings(
+    *,
+    doc_index: _DocumentIndex,
+) -> tuple[dict[str, Tag], bool]:
+    """Pre-scan TOC links for page-anchor links that resolve to heading parents.
+
+    Returns ``(page_anchor_headings, enable)`` where *enable* is True when
+    ≥ 50% of page-anchor links successfully resolved to heading elements.
+    """
+    anchor_map = doc_index.anchor_map
+    page_anchor_headings: dict[str, Tag] = {}
+    page_anchor_total = 0
+    for link in doc_index.toc_links:
+        href = str(link.get("href", ""))
+        if not href.startswith("#"):
+            continue
+        aid = href[1:]
+        raw = _clean_heading_text(" ".join(link.get_text().split()))
+        if _PAGE_ANCHOR_ID_RE.match(aid) and _NUMERIC_LINK_TEXT_RE.fullmatch(raw):
+            page_anchor_total += 1
+            ba = anchor_map.get(str(aid))
+            if ba:
+                hp = ba.find_parent(_HEADING_TAGS)
+                if hp:
+                    page_anchor_headings[aid] = hp
+    enable = page_anchor_total > 0 and len(page_anchor_headings) / page_anchor_total >= 0.5
+    return page_anchor_headings, enable
+
+
+def _truncate_after_apparatus(sections: list[_Section]) -> list[_Section]:
+    """Truncate section list after an apparatus heading (APPENDIX, NOTES ON...).
+
+    Keeps the apparatus heading itself but drops everything after it so
+    commentary text stays flat under that one section.  Skips truncation
+    when a more prominent heading follows (collected edition) or when
+    "Conclusion" is a peer chapter title rather than an apparatus boundary.
+    """
+    for trim_idx, section in enumerate(sections):
+        if _REFINEMENT_STOP_HEADING_RE.match(section.heading_text):
+            apparatus_rank = section.heading_rank
+            has_higher_rank_after = False
+            is_peer_conclusion = False
+            if apparatus_rank is not None:
+                remaining = sections[trim_idx + 1 :]
+                has_higher_rank_after = any(
+                    s.heading_rank is not None and s.heading_rank < apparatus_rank
+                    for s in remaining
+                )
+                if trim_idx >= 3 and _CONCLUSION_HEADING_RE.match(section.heading_text):
+                    peer_count = sum(
+                        1 for s in sections[:trim_idx] if s.heading_rank == apparatus_rank
+                    )
+                    is_peer_conclusion = peer_count >= trim_idx // 2
+            if not has_higher_rank_after and not is_peer_conclusion:
+                return sections[: trim_idx + 1]
+            break
+    return sections
+
+
 def _parse_toc_sections(
     *,
     doc_index: _DocumentIndex,
@@ -158,26 +217,8 @@ def _parse_toc_sections(
 
     anchor_map = doc_index.anchor_map
 
-    # Pre-scan: identify page-anchor links that resolve to headings and
-    # cache the heading parent.  Only enable resolution when ≥ 50% of
-    # page-anchor links resolve (PG 492: 7/7 = 100%; PG 786: 14/40 = 35%).
-    _page_anchor_headings: dict[str, Tag] = {}  # anchor_id → heading element
-    _page_anchor_total = 0
-    for link in toc_links:
-        href = str(link.get("href", ""))
-        if not href.startswith("#"):
-            continue
-        aid = href[1:]
-        raw = _clean_heading_text(" ".join(link.get_text().split()))
-        if _PAGE_ANCHOR_ID_RE.match(aid) and _NUMERIC_LINK_TEXT_RE.fullmatch(raw):
-            _page_anchor_total += 1
-            ba = anchor_map.get(str(aid))
-            if ba:
-                hp = ba.find_parent(_HEADING_TAGS)
-                if hp:
-                    _page_anchor_headings[aid] = hp
-    _enable_page_anchors = (
-        _page_anchor_total > 0 and len(_page_anchor_headings) / _page_anchor_total >= 0.5
+    _page_anchor_headings, _enable_page_anchors = _prescan_page_anchor_headings(
+        doc_index=doc_index,
     )
 
     for link in toc_links:
@@ -296,41 +337,7 @@ def _parse_toc_sections(
 
     sections.sort(key=lambda section: tag_positions.get(id(section.body_anchor), float("inf")))
 
-    # Truncate after an apparatus heading (APPENDIX, NOTES ON...): keep the
-    # apparatus heading itself but drop everything after it so commentary
-    # text stays flat under that one section.  Skip the truncation when a
-    # more prominent heading follows the apparatus heading — this indicates
-    # additional top-level works in a collected edition rather than trailing
-    # commentary (e.g. Henry Esmond's Appendix followed by The English
-    # Humourists in PG 29363).
-    for trim_idx, section in enumerate(sections):
-        if _REFINEMENT_STOP_HEADING_RE.match(section.heading_text):
-            apparatus_rank = section.heading_rank
-            has_higher_rank_after = False
-            is_peer_conclusion = False
-            if apparatus_rank is not None:
-                remaining = sections[trim_idx + 1 :]
-                has_higher_rank_after = any(
-                    s.heading_rank is not None and s.heading_rank < apparatus_rank
-                    for s in remaining
-                )
-                # "Conclusion" is commonly a regular chapter title (e.g.
-                # PG 205 Walden) rather than an apparatus boundary.  Skip
-                # truncation when it shares its heading rank with the
-                # majority of preceding sections, indicating it is a peer
-                # chapter.  Do not apply this exemption to APPENDIX /
-                # NOTES ON which are almost always genuine apparatus
-                # headings.  Require at least 3 preceding sections so
-                # that very short books where "Conclusion" truly is
-                # terminal are not incorrectly exempted.
-                if trim_idx >= 3 and _CONCLUSION_HEADING_RE.match(section.heading_text):
-                    peer_count = sum(
-                        1 for s in sections[:trim_idx] if s.heading_rank == apparatus_rank
-                    )
-                    is_peer_conclusion = peer_count >= trim_idx // 2
-            if not has_higher_rank_after and not is_peer_conclusion:
-                sections = sections[: trim_idx + 1]
-            break
+    sections = _truncate_after_apparatus(sections)
 
     # Remove a leading title section whose heading is a prefix of the next section's
     # heading (e.g. "ADVENTURES OF SHERLOCK HOLMES" before "ADVENTURES OF SHERLOCK
