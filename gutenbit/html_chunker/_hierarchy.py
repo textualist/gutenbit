@@ -119,6 +119,62 @@ def _should_skip_same_keyword_nesting(
     return child.heading_rank <= parent.heading_rank
 
 
+def _should_reset_keyword_peer(
+    sections: list[_Section],
+    idx: int,
+    parent_idx: int,
+    new_levels: list[int],
+    keyword_rank_seen: set[tuple[str, int]],
+) -> bool:
+    """Return True when a keyword-peer reset should skip nesting under *parent*.
+
+    When a keyword child (e.g. CHAPTER XVIII at h5) finds a non-keyword parent
+    (e.g. "THE ECCENTRIC PROJECTION" at h4) but the same keyword already
+    appeared at the same rank earlier (CHAPTER XVII at h5), the child may be
+    a sibling of that peer — not a child of the intervening subsection heading.
+
+    Guard: only fire when the candidate parent is a subsection heading (deeper
+    rank than the peer's container), not a new top-level section.
+    """
+    section = sections[idx]
+    parent = sections[parent_idx]
+    child_kw = _heading_keyword(section.heading_text)
+    parent_kw = _heading_keyword(parent.heading_text)
+    if not child_kw or parent_kw or (child_kw, section.heading_rank) not in keyword_rank_seen:
+        return False
+
+    latest_peer_idx = -1
+    for i in range(idx - 1, -1, -1):
+        if (
+            _heading_keyword(sections[i].heading_text) == child_kw
+            and sections[i].heading_rank == section.heading_rank
+        ):
+            latest_peer_idx = i
+            break
+
+    if latest_peer_idx < 0:
+        return False
+
+    if parent_idx > latest_peer_idx:
+        # Parent sits between the peer and the child.  Check the container
+        # rank of the peer: only reset when the parent is deeper.
+        peer_container_rank: int | None = None
+        peer_rank = sections[latest_peer_idx].heading_rank
+        if peer_rank is not None:
+            for i in range(latest_peer_idx - 1, -1, -1):
+                r = sections[i].heading_rank
+                if r is not None and r < peer_rank:
+                    peer_container_rank = r
+                    break
+        return peer_container_rank is None or (
+            parent.heading_rank is not None and parent.heading_rank > peer_container_rank
+        )
+
+    # The peer comes after the parent but is at the same or shallower
+    # level — it already "reset" past the parent.
+    return new_levels[latest_peer_idx] <= new_levels[parent_idx]
+
+
 def _respect_heading_rank_nesting(
     sections: list[_Section],
     *,
@@ -163,54 +219,8 @@ def _respect_heading_rank_nesting(
 
         parent = sections[parent_idx]
 
-        # Keyword-peer reset: when a keyword child (e.g. CHAPTER XVIII
-        # at h5) finds a NON-keyword parent (e.g. "THE ECCENTRIC
-        # PROJECTION" at h4) but the same keyword already appeared at
-        # the same rank earlier (CHAPTER XVII at h5), the child may be
-        # a sibling of that peer — not a child of the intervening non-
-        # keyword subsection heading.
-        #
-        # Guard: only fire when the candidate parent is a subsection
-        # heading (deeper rank than the peer's container), not a new
-        # top-level section.  Find the container of the earlier peer
-        # (the first heading before it with a shallower rank); if the
-        # candidate parent's rank is at or shallower than that
-        # container, it signals a structural reset (e.g. "SCENES" at
-        # h2 replacing "OUR PARISH" at h2) and the nesting is correct.
-        child_kw = _heading_keyword(section.heading_text)
-        parent_kw = _heading_keyword(parent.heading_text)
-        if child_kw and not parent_kw and (child_kw, section.heading_rank) in keyword_rank_seen:
-            latest_peer_idx = -1
-            for i in range(idx - 1, -1, -1):
-                if (
-                    _heading_keyword(sections[i].heading_text) == child_kw
-                    and sections[i].heading_rank == section.heading_rank
-                ):
-                    latest_peer_idx = i
-                    break
-            if latest_peer_idx >= 0:
-                if parent_idx > latest_peer_idx:
-                    # Parent sits between the peer and the child.  Check
-                    # the container rank of the peer: only reset when the
-                    # parent is deeper (a subsection, not a new section).
-                    peer_container_rank: int | None = None
-                    peer_rank = sections[latest_peer_idx].heading_rank
-                    if peer_rank is not None:
-                        for i in range(latest_peer_idx - 1, -1, -1):
-                            r = sections[i].heading_rank
-                            if r is not None and r < peer_rank:
-                                peer_container_rank = r
-                                break
-                    if peer_container_rank is None or (
-                        parent.heading_rank is not None
-                        and parent.heading_rank > peer_container_rank
-                    ):
-                        continue
-                elif new_levels[latest_peer_idx] <= new_levels[parent_idx]:
-                    # The peer comes after the parent but is at the same
-                    # or shallower level — it already "reset" past the
-                    # parent.  The current child should follow suit.
-                    continue
+        if _should_reset_keyword_peer(sections, idx, parent_idx, new_levels, keyword_rank_seen):
+            continue
 
         # Use the (possibly updated) parent level so that multi-level
         # rank chains (e.g. h2 → h3 → h4) nest correctly.
