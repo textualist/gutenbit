@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 
 from gutenbit.html_chunker._common import (
-    _HEADING_TAGS,
+    _heading_element_or_anchor,
 )
 from gutenbit.html_chunker._hierarchy import (
     _broad_keywords_at_modal_rank,
@@ -250,10 +250,7 @@ def chunk_html(html: str) -> list[Chunk]:
 
     # Precompute the heading element (or anchor itself) for each section,
     # avoiding redundant find_parent calls in the loop below.
-    def _heading_or_anchor(anchor: Tag) -> Tag:
-        return anchor.find_parent(_HEADING_TAGS) or anchor
-
-    section_els = [_heading_or_anchor(s.body_anchor) for s in sections]
+    section_els = [_heading_element_or_anchor(s.body_anchor) for s in sections]
 
     # Opening paragraphs before first section remain unsectioned prose.
     heading_texts = {s.heading_text.lower() for s in sections}
@@ -279,7 +276,7 @@ def chunk_html(html: str) -> list[Chunk]:
     )
     tail_pos: int | None = None
     if tail_anchor is not None:
-        tail_pos = tag_positions.get(id(_heading_or_anchor(tail_anchor)))
+        tail_pos = tag_positions.get(id(_heading_element_or_anchor(tail_anchor)))
 
     # Body sections.
     for i, section in enumerate(sections):

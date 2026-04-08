@@ -21,6 +21,7 @@ from gutenbit.html_chunker._common import (
     _BROAD_KEYWORDS,
     _HEADING_TAGS,
     _TERMINAL_MARKER_RE,
+    _heading_element_or_anchor,
     _Section,
 )
 from gutenbit.html_chunker._headings import (
@@ -511,7 +512,7 @@ def _merge_chapter_description_paragraphs(
 
         # Find the heading element and then the next <p> sibling.
         anchor = sec.body_anchor
-        heading_el = anchor.find_parent(_HEADING_TAGS) or anchor
+        heading_el = _heading_element_or_anchor(anchor)
         next_p: Tag | None = None
         for sibling in heading_el.next_siblings:
             if isinstance(sibling, Tag):

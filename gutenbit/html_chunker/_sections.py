@@ -357,9 +357,14 @@ def _normalize_toc_heading_ranks(sections: list[_Section]) -> list[_Section]:
     if len(sections) < 3:
         return sections
 
+    # Pre-index keywords once to avoid repeated _heading_keyword() calls
+    # across the three passes below (rank counting, position building,
+    # and final correction).
+    section_keywords = [_heading_keyword(s.heading_text) for s in sections]
+
     rank_counts: dict[str, Counter[int]] = {}
-    for section in sections:
-        kw = _heading_keyword(section.heading_text)
+    for idx, section in enumerate(sections):
+        kw = section_keywords[idx]
         if not kw or section.heading_rank is None:
             continue
         if kw not in rank_counts:
@@ -383,7 +388,7 @@ def _normalize_toc_heading_ranks(sections: list[_Section]) -> list[_Section]:
     single_instance_headings: dict[str, str] = {}
     keyword_positions: dict[str, list[int]] = {}
     for idx, section in enumerate(sections):
-        kw = _heading_keyword(section.heading_text)
+        kw = section_keywords[idx]
         if not kw:
             continue
         keyword_positions.setdefault(kw, []).append(idx)
@@ -420,8 +425,8 @@ def _normalize_toc_heading_ranks(sections: list[_Section]) -> list[_Section]:
 
     changed = False
     new_sections = []
-    for section in sections:
-        kw = _heading_keyword(section.heading_text)
+    for idx, section in enumerate(sections):
+        kw = section_keywords[idx]
         if (
             kw
             and section.heading_rank is not None

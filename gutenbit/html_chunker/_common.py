@@ -180,6 +180,11 @@ class _HeadingRow:
     rank: int
 
 
+def _heading_element_or_anchor(anchor: Tag) -> Tag:
+    """Return the parent heading tag, or the anchor itself if not inside one."""
+    return anchor.find_parent(_HEADING_TAGS) or anchor
+
+
 # ---------------------------------------------------------------------------
 # Pure text helpers
 # ---------------------------------------------------------------------------
