@@ -270,8 +270,7 @@ def _parse_toc_sections(
                 if hp:
                     _page_anchor_headings[aid] = hp
     _enable_page_anchors = (
-        _page_anchor_total > 0
-        and len(_page_anchor_headings) / _page_anchor_total >= 0.5
+        _page_anchor_total > 0 and len(_page_anchor_headings) / _page_anchor_total >= 0.5
     )
 
     for link in toc_links:
@@ -287,9 +286,7 @@ def _parse_toc_sections(
         # anchor inside a heading, resolve through the cached heading
         # parent and use its text.  Runs before the structural-link filter
         # which would otherwise discard the numeric link.
-        cached_heading = (
-            _page_anchor_headings.get(anchor_id) if _enable_page_anchors else None
-        )
+        cached_heading = _page_anchor_headings.get(anchor_id) if _enable_page_anchors else None
         if cached_heading is not None and _tag_within_bounds(
             cached_heading, tag_positions, bounds
         ):
@@ -419,14 +416,9 @@ def _parse_toc_sections(
                 # headings.  Require at least 3 preceding sections so
                 # that very short books where "Conclusion" truly is
                 # terminal are not incorrectly exempted.
-                if (
-                    trim_idx >= 3
-                    and _CONCLUSION_HEADING_RE.match(section.heading_text)
-                ):
+                if trim_idx >= 3 and _CONCLUSION_HEADING_RE.match(section.heading_text):
                     peer_count = sum(
-                        1
-                        for s in sections[:trim_idx]
-                        if s.heading_rank == apparatus_rank
+                        1 for s in sections[:trim_idx] if s.heading_rank == apparatus_rank
                     )
                     is_peer_conclusion = peer_count >= trim_idx // 2
             if not has_higher_rank_after and not is_peer_conclusion:
@@ -1426,9 +1418,7 @@ def _is_title_page_candidate(
         return False
     # Title-like sections with children at a deeper level are structural
     # containers (e.g. "OUR PARISH" nesting chapters), not title pages.
-    if not skip_children_guard and next_section is not None and next_section.level > section.level:
-        return False
-    return True
+    return skip_children_guard or next_section is None or next_section.level <= section.level
 
 
 def _strip_leading_title_page_sections(
@@ -1792,11 +1782,7 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
                 # non-collection sections exist (e.g. front-matter like
                 # Dedication/Preface in PG 29363), the guard is bypassed
                 # so the work title can still be detected as a container.
-                non_collection_between = sum(
-                    1
-                    for j in range(idx + 1, next_idx)
-                    if not _ct(j)
-                )
+                non_collection_between = sum(1 for j in range(idx + 1, next_idx) if not _ct(j))
                 if (
                     non_collection_between == 0
                     and _has_same_level_collection_title_since_lower_level(
@@ -2532,7 +2518,5 @@ def _parse_toc_paragraph_sections(
         level = _classify_level(link_text, _is_emphasized_toc_link(link))
         sections.append(_Section(anchor_id, link_text, level, target, 2))
 
-    sections.sort(
-        key=lambda s: tag_positions.get(id(s.body_anchor), float("inf"))
-    )
+    sections.sort(key=lambda s: tag_positions.get(id(s.body_anchor), float("inf")))
     return sections

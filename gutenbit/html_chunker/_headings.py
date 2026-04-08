@@ -430,9 +430,7 @@ def _next_heading_is_subtitle(heading_text: str) -> bool:
     # apparatus, not chapter subtitles.
     if _NOTE_APPARATUS_HEADING_RE.match(heading_text):
         return False
-    if _is_business_entity_heading(heading_text):
-        return False
-    return True
+    return not _is_business_entity_heading(heading_text)
 
 
 def _normalize_heading_subtitle(heading_text: str) -> str:
@@ -892,9 +890,7 @@ def _is_title_page_subtitle(
     # Short all-caps personal-name headings at very deep rank (h5/h6)
     # following a title-like heading are author/editor credits on the
     # title page (e.g. h5 "WILLIAM JAMES" after h1 "MEMORIES AND STUDIES").
-    if row.rank >= 5 and 1 <= len(words) <= 4 and all_upper:
-        return True
-    return False
+    return row.rank >= 5 and 1 <= len(words) <= 4 and all_upper
 
 
 def _is_shorter_adjacent_title_repeat(
