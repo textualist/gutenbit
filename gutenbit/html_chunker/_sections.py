@@ -170,6 +170,13 @@ _PRINTED_TOC_RUN_MIN = 3
 # are bare enumeration labels that must not be suppressed.
 _PRINTED_TOC_MIN_BODY_WORDS = 3
 
+# Maximum number of title-like headings at one level for which a single
+# container (one title with a broad-keyword child) triggers promotion.
+# Collected editions rarely have more than ~10 work titles; chapter-rich
+# books (e.g. PG 1998 Zarathustra with 82 discourse headings) must not
+# be falsely promoted.
+_MAX_TITLES_FOR_SINGLE_CONTAINER = 10
+
 # Publisher/copyright metadata paragraph patterns used by title-page
 # stripping to determine whether the paragraphs between a leading title
 # heading and the first real section are imprint noise rather than prose.
@@ -1736,6 +1743,8 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
         return sections
 
     def _is_collection_title(section: _Section) -> bool:
+        if _is_front_matter_heading(section.heading_text):
+            return False
         return _is_title_like_heading(section.heading_text) and (
             section.heading_rank is None or section.heading_rank <= 2
         )
@@ -1743,37 +1752,72 @@ def _normalize_collection_titles(sections: list[_Section]) -> list[_Section]:
     title_indices_by_level: dict[int, list[int]] = defaultdict(list)
     container_title_indices_by_level: dict[int, list[int]] = defaultdict(list)
 
+    # Cache _is_collection_title per section index to avoid repeated
+    # calls through _is_title_like_heading → _is_non_structural_heading_text
+    # (12+ regex operations each).
+    _ct_cache: dict[int, bool] = {}
+
+    def _ct(idx: int) -> bool:
+        if idx not in _ct_cache:
+            _ct_cache[idx] = _is_collection_title(sections[idx])
+        return _ct_cache[idx]
+
     def _has_same_level_collection_title_since_lower_level(title_idx: int, *, level: int) -> bool:
         for previous_idx in range(title_idx - 1, -1, -1):
             previous_section = sections[previous_idx]
             if previous_section.level < level:
                 return False
-            if previous_section.level == level and _is_collection_title(previous_section):
+            if previous_section.level == level and _ct(previous_idx):
                 return True
         return False
 
     for idx, section in enumerate(sections):
-        if not _is_collection_title(section):
+        if not _ct(idx):
             continue
         title_indices_by_level[section.level].append(idx)
 
         for next_idx in range(idx + 1, len(sections)):
             next_section = sections[next_idx]
-            if _is_collection_title(next_section) and next_section.level == section.level:
+            if _ct(next_idx) and next_section.level == section.level:
                 break
             next_depth = _broad_nesting_depth(next_section.heading_text)
             if next_depth is None:
                 continue
-            if _has_same_level_collection_title_since_lower_level(idx, level=section.level):
-                break
             if _heading_keyword(next_section.heading_text) in _BROAD_KEYWORDS:
+                # Guard: when the broad keyword immediately follows this
+                # title (no non-collection sections between) and another
+                # collection title at the same level preceded us, skip.
+                # This prevents poetry collections (PG 1322 Leaves of
+                # Grass) from being falsely promoted.  When intermediate
+                # non-collection sections exist (e.g. front-matter like
+                # Dedication/Preface in PG 29363), the guard is bypassed
+                # so the work title can still be detected as a container.
+                non_collection_between = sum(
+                    1
+                    for j in range(idx + 1, next_idx)
+                    if not _ct(j)
+                )
+                if (
+                    non_collection_between == 0
+                    and _has_same_level_collection_title_since_lower_level(
+                        idx, level=section.level
+                    )
+                ):
+                    break
                 container_title_indices_by_level[section.level].append(idx)
                 break
 
     promoted_levels = {
         level
         for level, container_indices in container_title_indices_by_level.items()
-        if len(container_indices) >= 2 and len(title_indices_by_level[level]) >= 3
+        if len(title_indices_by_level[level]) >= 3
+        and (
+            len(container_indices) >= 2
+            or (
+                len(container_indices) >= 1
+                and len(title_indices_by_level[level]) <= _MAX_TITLES_FOR_SINGLE_CONTAINER
+            )
+        )
     }
     if not promoted_levels:
         return sections

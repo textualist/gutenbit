@@ -63,7 +63,7 @@ _BARE_HEADING_NUMBER_RE = re.compile(
 )
 
 _HEADING_KEYWORD_RE = re.compile(
-    r"^(?:(?:BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|SCOENA|SECTION|ADVENTURE)\.?\s|EPILOGUE\b|INDUCTION\b)",
+    r"^(?:(?:BOOK|PART|ACT|ACTUS|EPILOGUE|VOLUME|CHAPTER|STAVE|SCENE|SCENA|SCOENA|SECTION|ADVENTURE|LECTURE)\.?\s|EPILOGUE\b|INDUCTION\b)",
     re.IGNORECASE,
 )
 _START_DELIMITER_RE = re.compile(
@@ -108,7 +108,7 @@ _STANDALONE_STRUCTURAL_RE = re.compile(
     re.IGNORECASE,
 )
 _FALLBACK_START_HEADING_RE = re.compile(
-    r"^(?:preface|introduction|introductory note|prelude|prologue\b|"
+    r"^(?:preface|prefatory\b|introduction|introductory note|prelude|prologue\b|"
     r"note\b|note to\b|letter\b|a letter from\b|the publisher to the reader\b|"
     r"before the curtain\b|etymology\b|extracts\b|some commendatory verses\b)",
     re.IGNORECASE,

@@ -5283,3 +5283,59 @@ def _roman(n: int) -> str:
             result += numeral
             n -= value
     return result
+
+
+# ------------------------------------------------------------------
+# LECTURE keyword recognition
+# ------------------------------------------------------------------
+
+
+def test_lecture_keyword_recognised_as_structural():
+    """LECTURE N headings should be structural keywords like CHAPTER."""
+    html = _make_html("""
+    <h2>LECTURE I</h2>
+    <h4>THE TYPES OF PHILOSOPHIC THINKING</h4>
+    <p>First lecture content.</p>
+    <h2>LECTURE II</h2>
+    <h4>MONISTIC IDEALISM</h4>
+    <p>Second lecture content.</p>
+    <h2>LECTURE III</h2>
+    <h4>HEGEL AND HIS METHOD</h4>
+    <p>Third lecture content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    div1_values = [h.div1 for h in headings if h.div1 == h.content]
+    assert "LECTURE I" in div1_values
+    assert "LECTURE II" in div1_values
+    assert "LECTURE III" in div1_values
+
+
+# ------------------------------------------------------------------
+# Index entry suppression
+# ------------------------------------------------------------------
+
+
+def test_index_entries_suppressed_as_non_structural():
+    """ALL-CAPS index entries with page numbers must not become sections."""
+    html = _make_html("""
+    <h2>CHAPTER I</h2>
+    <p>Chapter content.</p>
+    <h2>INDEX</h2>
+    <h4>INDEX TO THE CHAPTERS</h4>
+    <h5>ARISTIDES, 304.</h5>
+    <h4>BAILEY, S., 5.</h4>
+    <h5>BRADLEY, F.H., 46, 69, 79, 211, 220, 296.</h5>
+    <h4>CAIRD, E., 89, 95, 137.</h4>
+    <p>Absolute, the, 49, 108-109.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+    # Real headings survive
+    assert "CHAPTER I" in heading_texts
+    # Index entries must be suppressed
+    assert not any("ARISTIDES" in t for t in heading_texts)
+    assert not any("BAILEY" in t for t in heading_texts)
+    assert not any("BRADLEY" in t for t in heading_texts)
+    assert not any("CAIRD" in t for t in heading_texts)
