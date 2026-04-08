@@ -87,14 +87,12 @@ from gutenbit.html_chunker._toc import (
 )
 
 # ---------------------------------------------------------------------------
-# Heading-content patterns used by section merge/filter passes
-# ---------------------------------------------------------------------------
-
-_STANDALONE_BYLINE_RE = re.compile(r"^by\.?$", re.IGNORECASE)
-
-# ---------------------------------------------------------------------------
 # Compiled regex patterns (used only within this module)
 # ---------------------------------------------------------------------------
+
+# Standalone "BY" or "BY." heading on a title page, used by
+# _filter_fallback_heading_rows to detect byline + author-name pairs.
+_STANDALONE_BYLINE_RE = re.compile(r"^by\.?$", re.IGNORECASE)
 
 # Anchor IDs that look like page-number references: "page3", "page_47",
 # "Page111".  Used to detect TOC links that point at page markers inside

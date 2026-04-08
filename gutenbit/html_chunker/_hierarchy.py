@@ -1,6 +1,14 @@
 """Section hierarchy, nesting, and level normalisation passes.
 
 Layer 3 — depends on ``_common``, ``_headings``, ``_scanning``, and ``_merging``.
+
+Rank nesting: ``_respect_heading_rank_nesting``, ``_should_reset_keyword_peer``
+Broad-keyword nesting: ``_nest_broad_subdivisions``, ``_nest_chapters_under_broad_containers``
+Level normalisation: ``_normalize_collection_titles``, ``_promote_more_prominent_heading_runs``,
+``_flatten_single_work_title_wrapper``, ``_equalize_orphan_level_gap``
+Title-page stripping: ``_strip_leading_title_page_sections``, ``_is_title_page_candidate``,
+``_collapse_degenerate_title_block``
+Modal-rank detection: ``_broad_keywords_at_modal_rank``, ``_demote_same_rank_broad_keywords``
 """
 
 from __future__ import annotations

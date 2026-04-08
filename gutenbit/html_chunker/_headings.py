@@ -237,6 +237,8 @@ _STRONG_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
 # ---------------------------------------------------------------------------
 
 
+# Cached across chunk_html() calls (safe — pure function on immutable strings).
+# Contrast with the per-parse id()-keyed caches cleared in chunk_html().
 @lru_cache(maxsize=4096)
 def _heading_keyword(heading_text: str) -> str:
     """Return the canonical structural keyword (e.g. ``'chapter'``, ``'book'``) or ``''``."""

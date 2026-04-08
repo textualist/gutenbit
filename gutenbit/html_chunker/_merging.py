@@ -1,6 +1,12 @@
 """Section merging, deduplication, and paragraph-range utilities.
 
 Layer 3 — depends on ``_common``, ``_headings``, and ``_scanning``.
+
+Merge passes: ``_merge_bare_heading_pairs``, ``_merge_adjacent_duplicate_sections``,
+``_merge_chapter_subtitle_sections``, ``_merge_chapter_description_paragraphs``
+Filter passes: ``_strip_printed_toc_page_runs``, ``_drop_empty_interior_title_repeats``
+Paragraph utilities: ``_paragraph_range_between``, ``_has_paragraphs_between``,
+``_paragraphs_between_are_metadata_only``
 """
 
 from __future__ import annotations
