@@ -229,6 +229,7 @@ _STRONG_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
 
 
 def _heading_keyword(heading_text: str) -> str:
+    """Return the canonical structural keyword (e.g. ``'chapter'``, ``'book'``) or ``''``."""
     match = _HEADING_KEYWORD_RE.match(heading_text)
     if match:
         keyword = heading_text.split()[0].rstrip(".,:]").lower()
@@ -264,10 +265,12 @@ def _heading_keyword(heading_text: str) -> str:
 
 
 def _heading_key(heading_text: str) -> str:
+    """Return a normalised alphanumeric key for heading comparison."""
     return _NON_ALNUM_RE.sub("", heading_text.lower())
 
 
 def _same_heading_text(left: str, right: str) -> bool:
+    """Return True when two headings match after alphanumeric normalisation."""
     return _heading_key(left) == _heading_key(right)
 
 
@@ -321,6 +324,7 @@ def _is_business_entity_heading(text: str) -> bool:
 
 
 def _is_title_like_heading(heading_text: str) -> bool:
+    """Return True for narrative titles that are not structural keywords or apparatus."""
     if _heading_keyword(heading_text):
         return False
     if _STANDALONE_STRUCTURAL_RE.search(heading_text):
@@ -350,6 +354,7 @@ def _classify_level(heading_text: str, is_emphasized_in_toc: bool) -> int:
 
 
 def _rank_relative_level(candidate: _Section, toc_section: _Section) -> int:
+    """Adjust *candidate* level relative to *toc_section* using heading-tag ranks."""
     if candidate.heading_rank is None or toc_section.heading_rank is None:
         return candidate.level
     return max(1, min(4, toc_section.level + candidate.heading_rank - toc_section.heading_rank))
@@ -365,6 +370,7 @@ def _is_refinement_heading(heading_text: str) -> bool:
 
 
 def _toc_link_refines_body_heading(link_text: str, heading_text: str) -> bool:
+    """Return True when a TOC link provides finer structure than the body heading."""
     if not link_text or _same_heading_text(link_text, heading_text):
         return False
     if _NUMERIC_LINK_TEXT_RE.fullmatch(link_text):
@@ -401,6 +407,7 @@ def _is_toc_section_heading(
 
 
 def _broad_nesting_depth(heading_text: str) -> int | None:
+    """Return fixed nesting depth for broad keywords (VOLUME=1, PART=2, BOOK=3), or None."""
     return _BROAD_NESTING_DEPTHS.get(_heading_keyword(heading_text))
 
 
@@ -440,6 +447,7 @@ def _normalize_heading_subtitle(heading_text: str) -> str:
 
 
 def _starts_with_enumerated_heading_prefix(heading_text: str) -> bool:
+    """Return True for headings starting with a numeral prefix like ``I.`` or ``12)``."""
     return _ENUMERATED_HEADING_PREFIX_RE.match(heading_text) is not None
 
 
@@ -447,6 +455,7 @@ def _broad_heading_with_enumerated_child(
     current_heading_text: str,
     next_heading_text: str,
 ) -> bool:
+    """Return True when *current* is a bare broad keyword and *next* is enumerated."""
     if _heading_keyword(current_heading_text) not in _BROAD_KEYWORDS:
         return False
     if _starts_with_enumerated_heading_prefix(next_heading_text):
@@ -566,6 +575,7 @@ def _is_short_uppercase_stage_heading(
 
 
 def _is_short_uppercase_heading_candidate(row: _HeadingRow) -> bool:
+    """Return True for short all-caps headings at deep rank (h5+)."""
     if row.rank < 5:
         return False
     if _heading_keyword(row.heading_text):
@@ -584,6 +594,7 @@ def _is_short_uppercase_heading_candidate(row: _HeadingRow) -> bool:
 
 
 def _is_front_matter_attribution_heading(row: _HeadingRow) -> bool:
+    """Return True for deep-rank attribution headings like ``Introduction by X``."""
     if row.rank < 4:
         return False
     return _FRONT_MATTER_ATTRIBUTION_HEADING_RE.match(row.heading_text) is not None
@@ -684,6 +695,7 @@ def _is_single_letter_subheading(
 
 
 def _is_single_letter_heading_candidate(row: _HeadingRow) -> bool:
+    """Return True for single-letter headings at deep rank (h4+)."""
     if row.rank < 4:
         return False
     if _heading_keyword(row.heading_text):
@@ -718,6 +730,7 @@ def _is_deep_rank_bare_numeral_heading(
 
 
 def _is_deep_rank_bare_numeral_candidate(row: _HeadingRow) -> bool:
+    """Return True for bare numeral headings (``II.``, ``3``) at deep rank (h4+)."""
     if row.rank < 4:
         return False
     if _heading_keyword(row.heading_text):
@@ -726,6 +739,7 @@ def _is_deep_rank_bare_numeral_candidate(row: _HeadingRow) -> bool:
 
 
 def _looks_like_letter_series_heading(heading_text: str) -> bool:
+    """Return True when heading contains 3+ standalone uppercase letters (A, B, C series)."""
     return len(re.findall(r"\b[A-Z]\b", heading_text.upper())) >= 3
 
 
@@ -742,6 +756,7 @@ def _has_adjacent_heading_candidate(
     doc_index: _DocumentIndex,
     predicate: Callable[[_HeadingRow], bool],
 ) -> bool:
+    """Return True when an adjacent row matches *predicate* with no text between."""
     if (
         previous_row is not None
         and predicate(previous_row)
@@ -814,6 +829,7 @@ def _deep_rank_bare_numeral_run_indices(heading_rows: list[_HeadingRow]) -> set[
 
 
 def _heading_text_suggests_play_structure(heading_text: str) -> bool:
+    """Return True for headings containing dramatic keywords (ACT, SCENE, etc.)."""
     lowered = heading_text.lower()
     return _DRAMATIC_CONTEXT_HEADING_RE.search(heading_text) is not None or (
         "dramatis personae" in lowered
@@ -868,6 +884,7 @@ def _is_title_page_subtitle(
     *,
     previous_kept_row: _HeadingRow | None,
 ) -> bool:
+    """Return True for deep-rank title-page subtitles or author credits."""
     if previous_kept_row is None:
         return False
     if row.rank < 4 or row.rank <= previous_kept_row.rank:
@@ -899,6 +916,7 @@ def _is_shorter_adjacent_title_repeat(
     *,
     doc_index: _DocumentIndex,
 ) -> bool:
+    """Return True when *row* is a shorter prefix repeat of the previous title."""
     if not _is_title_like_heading(previous_row.heading_text):
         return False
     if not _is_title_like_heading(row.heading_text):
@@ -1008,6 +1026,7 @@ def _is_empty_front_matter_stub_heading(
 
 
 def _style_has_emphasized_font(style: str) -> bool:
+    """Return True when a CSS style string specifies a font size above the default."""
     match = _FONT_SIZE_STYLE_RE.search(style)
     if not match:
         return False
