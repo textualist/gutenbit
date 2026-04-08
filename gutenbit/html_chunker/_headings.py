@@ -1,4 +1,12 @@
-"""Heading text classification, predicates, and play structure detection."""
+"""Heading text classification, predicates, and play structure detection.
+
+Layer 2 — depends on ``_common`` and ``_scanning``.
+
+Contains 45 functions (mostly ``_is_*`` / ``_has_*`` predicates) that
+classify heading text by structural role: keyword extraction, front-matter
+detection, dialogue/speaker filtering, play structure, title-page subtitles,
+and bare-numeral run detection.  31 compiled regex patterns live here.
+"""
 
 from __future__ import annotations
 

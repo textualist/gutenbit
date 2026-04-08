@@ -1,4 +1,12 @@
-"""Shared data structures, compiled regex patterns, and pure text helpers."""
+"""Shared data structures, compiled regex patterns, and pure text helpers.
+
+Layer 0 in the dependency DAG — no internal imports.  Every other module
+in the chunker package imports from here.
+
+Data classes: ``_Section``, ``_ContentBounds``, ``_HeadingRow``
+Key helpers: ``_extract_heading_text``, ``_clean_heading_text`` (cached),
+             ``_heading_tag_rank``, ``_front_matter_heading_key``
+"""
 
 from __future__ import annotations
 

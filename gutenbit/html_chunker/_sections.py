@@ -1,4 +1,13 @@
-"""Section parsing, refinement, and normalization pipelines."""
+"""Section parsing, refinement, and normalization pipelines.
+
+Layer 3 — depends on ``_common``, ``_headings``, ``_scanning``, and ``_toc``.
+
+Orchestrates the multi-pass pipeline that converts raw heading/TOC data into
+a flat list of ``_Section`` objects with correct hierarchy levels.  Major
+function groups: TOC parsing, heading-scan fallback, section merging
+(subtitle/duplicate/description), hierarchy nesting (broad keywords, rank),
+title-page stripping, and collection normalisation.
+"""
 
 from __future__ import annotations
 
