@@ -248,7 +248,7 @@ def _heading_keyword(heading_text: str) -> str:
         canonical = _STRUCTURAL_KEYWORD_ALIASES.get(keyword, keyword)
 
         remainder = heading_text[len(heading_text.split()[0]) :].lstrip(" .,:;!?-\u2014\u2013")
-        tokens = [token.lower() for token in re.split(r"[^A-Za-z0-9]+", remainder) if token]
+        tokens = [token.lower() for token in _NON_ALNUM_RE.split(remainder) if token]
         if not tokens:
             return canonical
         index_token = tokens[1] if len(tokens) > 1 and tokens[0] == "the" else tokens[0]
