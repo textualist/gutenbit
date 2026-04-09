@@ -287,6 +287,7 @@ def _parse_toc_sections(
                     break
                 skip.add(id(candidate))
 
+        # Deduplicate: skip headings already claimed by an earlier TOC link.
         if not heading_el or id(heading_el) in used_headings:
             continue
         used_headings.add(id(heading_el))
@@ -294,6 +295,8 @@ def _parse_toc_sections(
         heading_text = _clean_heading_text(_extract_heading_text(heading_el))
         if not heading_text:
             continue
+        # Filter apparatus headings (CONTENTS, INDEX, etc.) that appear in
+        # some TOCs but do not represent narrative sections.
         if _is_non_structural_heading_text(heading_text):
             continue
 
@@ -301,6 +304,8 @@ def _parse_toc_sections(
         heading_rank = _heading_tag_rank(heading_el)
         if heading_rank is None:
             continue
+        # Validate that the heading text + rank + emphasis combination
+        # actually represents a structural section, not a decorative heading.
         if not _is_toc_section_heading(
             heading_text,
             link_text=link_text,
@@ -507,6 +512,8 @@ def _parse_heading_sections(
         following_row = heading_rows[i + 2] if i + 2 < len(heading_rows) else None
         previous_row = heading_rows[i - 1] if i > start_idx else None
 
+        # Skip immediate duplicate headings adjacent without intervening content
+        # (e.g. repeated "CHAPTER I" from decorative page headers).
         if (
             previous_row is not None
             and _same_heading_text(previous_row.heading_text, heading_text)
@@ -515,6 +522,8 @@ def _parse_heading_sections(
             i += 1
             continue
 
+        # Skip h5+ dramatic sub-headings under non-chapter sections (e.g.
+        # scene directions nested under ACT headings).
         if _is_rank5_subheading_under_nonchapter_section(
             row,
             previous_kept_heading=previous_kept_heading,
@@ -523,6 +532,8 @@ def _parse_heading_sections(
             i += 1
             continue
 
+        # Skip single-letter headings that form acrostic or decorative runs
+        # (e.g. "A", "B", "C" sub-divisions in reference works).
         if _is_single_letter_subheading(
             row,
             previous_kept_heading=previous_kept_heading,
@@ -533,6 +544,8 @@ def _parse_heading_sections(
             i += 1
             continue
 
+        # Skip bare Roman/Arabic numeral headings at deep rank (h4+) that
+        # form contiguous runs bounded by shallower structural headings.
         if _is_deep_rank_bare_numeral_heading(
             row,
             previous_kept_heading=previous_kept_heading,
@@ -545,6 +558,8 @@ def _parse_heading_sections(
             i += 1
             continue
 
+        # Skip short all-caps stage directions in dramatic works (e.g.
+        # "EXEUNT", "SCENE: A ROOM").
         if _is_short_uppercase_stage_heading(
             row,
             previous_kept_heading=previous_kept_heading,
@@ -556,10 +571,14 @@ def _parse_heading_sections(
             i += 1
             continue
 
+        # Skip title-page subtitle lines (author, translator) that follow
+        # the main title heading.
         if _is_title_page_subtitle(row, previous_kept_row=previous_kept_row):
             i += 1
             continue
 
+        # Skip empty front-matter stubs (e.g. "PREFACE" h4 followed
+        # immediately by a shallower real section with no body text).
         if next_row is not None and _is_empty_front_matter_stub_heading(
             row,
             next_row,
@@ -568,6 +587,8 @@ def _parse_heading_sections(
             i += 1
             continue
 
+        # Skip editorial placeholders like "[not in early editions]"
+        # immediately preceding a structural keyword heading.
         if next_row is not None and _is_editorial_placeholder_heading(
             row,
             next_row,
@@ -576,6 +597,8 @@ def _parse_heading_sections(
             i += 1
             continue
 
+        # Skip a shorter adjacent title repeat (e.g. a decorative re-statement
+        # of the title that follows the kept heading without intervening text).
         if (
             previous_row is previous_kept_row
             and previous_row is not None
@@ -584,6 +607,8 @@ def _parse_heading_sections(
             i += 1
             continue
 
+        # Merge bare number headings ("CHAPTER I") with their subtitle on the
+        # next line ("THE ADVENTURE BEGINS") into a single section heading.
         if _BARE_HEADING_NUMBER_RE.fullmatch(heading_text) and next_row is not None:
             subtitle = _normalized_heading_continuation(
                 row,
