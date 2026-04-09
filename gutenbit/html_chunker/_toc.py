@@ -58,7 +58,7 @@ def _is_toc_context_link(link: Tag) -> bool:
         if cached is not None:
             return cached
 
-    def _cache_result(value: bool) -> bool:
+    def _cache_result(value: bool) -> bool:  # memoize per-paragraph TOC verdict
         if paragraph is not None:
             _toc_context_cache[id(paragraph)] = value
         return value
