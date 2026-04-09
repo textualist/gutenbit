@@ -19,12 +19,12 @@ from gutenbit.html_chunker._common import (
     _BROAD_KEYWORDS,
     _DRAMATIC_BROAD_KEYWORDS,
     _FALLBACK_START_HEADING_RE,
+    _PLAIN_NUMBER_HEADING_RE,
     _REFINEMENT_STOP_HEADING_RE,
     _STANDALONE_STRUCTURAL_RE,
     _Section,
 )
 from gutenbit.html_chunker._headings import (
-    _PLAIN_NUMBER_HEADING_RE,
     _broad_nesting_depth,
     _heading_keyword,
     _is_front_matter_heading,

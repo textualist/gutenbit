@@ -134,6 +134,17 @@ _FALLBACK_START_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Headings that are plain Roman or Arabic numerals (e.g. "V.", "123").
+# Used by _headings, _merging, and _hierarchy.
+_PLAIN_NUMBER_HEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.?$", re.IGNORECASE)
+
+# Headings containing dramatic context keywords (act, scene, prologue, etc.).
+# Used by _headings and _merging.
+_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
+    r"\b(?:act|scene|prologue|epilogue|tragedy|comedy)\b",
+    re.IGNORECASE,
+)
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------

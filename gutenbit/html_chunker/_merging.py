@@ -19,14 +19,14 @@ from bs4 import Tag
 from gutenbit.html_chunker._common import (
     _BARE_HEADING_NUMBER_RE,
     _BROAD_KEYWORDS,
+    _DRAMATIC_CONTEXT_HEADING_RE,
     _HEADING_TAGS,
+    _PLAIN_NUMBER_HEADING_RE,
     _TERMINAL_MARKER_RE,
     _heading_element_or_anchor,
     _Section,
 )
 from gutenbit.html_chunker._headings import (
-    _DRAMATIC_CONTEXT_HEADING_RE,
-    _PLAIN_NUMBER_HEADING_RE,
     _broad_heading_with_enumerated_child,
     _classify_level,
     _heading_key,

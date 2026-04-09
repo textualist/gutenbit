@@ -22,11 +22,13 @@ from gutenbit.html_chunker._common import (
     _BRACKETED_NUMERIC_HEADING_RE,
     _BROAD_KEYWORDS,
     _BROAD_NESTING_DEPTHS,
+    _DRAMATIC_CONTEXT_HEADING_RE,
     _FALLBACK_START_HEADING_RE,
     _FRONT_MATTER_HEADINGS,
     _HEADING_KEYWORD_RE,
     _NON_ALNUM_RE,
     _NUMERIC_LINK_TEXT_RE,
+    _PLAIN_NUMBER_HEADING_RE,
     _PLAY_HEADING_PARAGRAPH_RE,
     _ROMAN_NUMERAL_RE,
     _STANDALONE_STRUCTURAL_RE,
@@ -198,7 +200,6 @@ _STANDALONE_FRONT_MATTER_RE = re.compile(
     r"BIOGRAPHICAL\s+NOTICE|NOTE\s+ON\s+THE\s+TEXT)\.?\s*$",
     re.IGNORECASE,
 )
-_PLAIN_NUMBER_HEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.?$", re.IGNORECASE)
 _VERSE_REFERENCE_HEADING_RE = re.compile(r"^\d+:\d+:\d+")
 _NON_SUBTITLE_HEADING_RE = re.compile(r"^(?:chap(?:ters?)?)\.?$", re.IGNORECASE)
 _SYNOPSIS_SUFFIX_RE = re.compile(r"\s+SYNOPSIS OF\b.*$", re.IGNORECASE)
@@ -221,10 +222,6 @@ _STANDALONE_APPARATUS_HEADING_RE = re.compile(r"^SYNOPSIS OF\b", re.IGNORECASE)
 _NOTE_APPARATUS_HEADING_RE = re.compile(r"^(?:a\s+)?notes?\b", re.IGNORECASE)
 _FONT_SIZE_STYLE_RE = re.compile(
     r"font-size\s*:\s*([0-9.]+)\s*(%|em|rem|px)",
-    re.IGNORECASE,
-)
-_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
-    r"\b(?:act|scene|prologue|epilogue|tragedy|comedy)\b",
     re.IGNORECASE,
 )
 _STRONG_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
