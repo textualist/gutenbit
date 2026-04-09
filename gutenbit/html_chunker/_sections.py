@@ -231,9 +231,7 @@ def _resolve_toc_link(
     # parent and use its text.  Runs before the structural-link filter
     # which would otherwise discard the numeric link.
     cached_heading = page_anchor_headings.get(anchor_id) if enable_page_anchors else None
-    if cached_heading is not None and _tag_within_bounds(
-        cached_heading, tag_positions, bounds
-    ):
+    if cached_heading is not None and _tag_within_bounds(cached_heading, tag_positions, bounds):
         heading_text = _clean_heading_text(_extract_heading_text(cached_heading))
         if heading_text:
             link_text = heading_text

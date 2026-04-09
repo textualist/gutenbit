@@ -135,7 +135,15 @@ _MAX_METADATA_PARA_WORDS = 12
 
 
 # ---------------------------------------------------------------------------
-# Section merging and rank nesting
+# Section merging and deduplication
+#
+# These passes clean up the section list after initial parsing:
+# - _merge_bare_heading_pairs: join "CHAPTER I" + "CHAPTER I THE TITLE"
+# - _merge_adjacent_duplicate_sections: remove/merge consecutive duplicates
+# - _strip_printed_toc_page_runs: filter inline printed-TOC page references
+# - _drop_empty_interior_title_repeats: remove decorative ghost title repeats
+# - _merge_chapter_subtitle_sections: fold subtitles into parent headings
+# - _merge_chapter_description_paragraphs: fold ALL-CAPS descriptions
 # ---------------------------------------------------------------------------
 
 

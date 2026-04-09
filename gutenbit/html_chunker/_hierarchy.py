@@ -63,6 +63,11 @@ _MAX_TITLES_FOR_SINGLE_CONTAINER = 10
 
 # ---------------------------------------------------------------------------
 # Rank nesting
+#
+# Assign parent-child relationships based on HTML heading rank (h1-h6).
+# _respect_heading_rank_nesting: nest children under valid rank-parents
+# _should_skip_same_keyword_nesting / _should_reset_keyword_peer: handle
+#   same-keyword peer boundaries (e.g. multiple CHAPTER headings at same rank)
 # ---------------------------------------------------------------------------
 
 
