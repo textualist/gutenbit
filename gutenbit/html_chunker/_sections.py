@@ -459,6 +459,109 @@ def _normalize_toc_heading_ranks(sections: list[_Section]) -> list[_Section]:
 # ---------------------------------------------------------------------------
 
 
+def _should_skip_heading_row(
+    row: _HeadingRow,
+    *,
+    previous_row: _HeadingRow | None,
+    next_row: _HeadingRow | None,
+    previous_kept_heading: str | None,
+    previous_kept_row: _HeadingRow | None,
+    dramatic_context_active: bool,
+    bare_numeral_run_indices: set[int],
+    row_index: int,
+    doc_index: _DocumentIndex,
+) -> bool:
+    """Return True when a heading row should be excluded from section output.
+
+    Encapsulates the nine filter predicates that decide whether a heading row
+    is decorative, structural noise, or otherwise non-sectional.
+    """
+    # Skip immediate duplicate headings adjacent without intervening content
+    # (e.g. repeated "CHAPTER I" from decorative page headers).
+    if (
+        previous_row is not None
+        and _same_heading_text(previous_row.heading_text, row.heading_text)
+        and not _headings_have_text_between(previous_row, row, doc_index=doc_index)
+    ):
+        return True
+
+    # Skip h5+ dramatic sub-headings under non-chapter sections (e.g.
+    # scene directions nested under ACT headings).
+    if _is_rank5_subheading_under_nonchapter_section(
+        row,
+        previous_kept_heading=previous_kept_heading,
+        dramatic_context_active=dramatic_context_active,
+    ):
+        return True
+
+    # Skip single-letter headings that form acrostic or decorative runs
+    # (e.g. "A", "B", "C" sub-divisions in reference works).
+    if _is_single_letter_subheading(
+        row,
+        previous_kept_heading=previous_kept_heading,
+        previous_row=previous_row,
+        next_row=next_row,
+        doc_index=doc_index,
+    ):
+        return True
+
+    # Skip bare Roman/Arabic numeral headings at deep rank (h4+) that
+    # form contiguous runs bounded by shallower structural headings.
+    if _is_deep_rank_bare_numeral_heading(
+        row,
+        previous_kept_heading=previous_kept_heading,
+        previous_row=previous_row,
+        next_row=next_row,
+        row_index=row_index,
+        bare_numeral_run_indices=bare_numeral_run_indices,
+        doc_index=doc_index,
+    ):
+        return True
+
+    # Skip short all-caps stage directions in dramatic works (e.g.
+    # "EXEUNT", "SCENE: A ROOM").
+    if _is_short_uppercase_stage_heading(
+        row,
+        previous_kept_heading=previous_kept_heading,
+        previous_row=previous_row,
+        next_row=next_row,
+        dramatic_context_active=dramatic_context_active,
+        doc_index=doc_index,
+    ):
+        return True
+
+    # Skip title-page subtitle lines (author, translator) that follow
+    # the main title heading.
+    if _is_title_page_subtitle(row, previous_kept_row=previous_kept_row):
+        return True
+
+    # Skip empty front-matter stubs (e.g. "PREFACE" h4 followed
+    # immediately by a shallower real section with no body text).
+    if next_row is not None and _is_empty_front_matter_stub_heading(
+        row,
+        next_row,
+        doc_index=doc_index,
+    ):
+        return True
+
+    # Skip editorial placeholders like "[not in early editions]"
+    # immediately preceding a structural keyword heading.
+    if next_row is not None and _is_editorial_placeholder_heading(
+        row,
+        next_row,
+        doc_index=doc_index,
+    ):
+        return True
+
+    # Skip a shorter adjacent title repeat (e.g. a decorative re-statement
+    # of the title that follows the kept heading without intervening text).
+    return (
+        previous_row is previous_kept_row
+        and previous_row is not None
+        and _is_shorter_adjacent_title_repeat(row, previous_row, doc_index=doc_index)
+    )
+
+
 def _parse_heading_sections(
     *,
     doc_index: _DocumentIndex,
@@ -512,97 +615,16 @@ def _parse_heading_sections(
         following_row = heading_rows[i + 2] if i + 2 < len(heading_rows) else None
         previous_row = heading_rows[i - 1] if i > start_idx else None
 
-        # Skip immediate duplicate headings adjacent without intervening content
-        # (e.g. repeated "CHAPTER I" from decorative page headers).
-        if (
-            previous_row is not None
-            and _same_heading_text(previous_row.heading_text, heading_text)
-            and not _headings_have_text_between(previous_row, row, doc_index=doc_index)
-        ):
-            i += 1
-            continue
-
-        # Skip h5+ dramatic sub-headings under non-chapter sections (e.g.
-        # scene directions nested under ACT headings).
-        if _is_rank5_subheading_under_nonchapter_section(
+        if _should_skip_heading_row(
             row,
+            previous_row=previous_row,
+            next_row=next_row,
             previous_kept_heading=previous_kept_heading,
+            previous_kept_row=previous_kept_row,
             dramatic_context_active=dramatic_context_active,
-        ):
-            i += 1
-            continue
-
-        # Skip single-letter headings that form acrostic or decorative runs
-        # (e.g. "A", "B", "C" sub-divisions in reference works).
-        if _is_single_letter_subheading(
-            row,
-            previous_kept_heading=previous_kept_heading,
-            previous_row=previous_row,
-            next_row=next_row,
-            doc_index=doc_index,
-        ):
-            i += 1
-            continue
-
-        # Skip bare Roman/Arabic numeral headings at deep rank (h4+) that
-        # form contiguous runs bounded by shallower structural headings.
-        if _is_deep_rank_bare_numeral_heading(
-            row,
-            previous_kept_heading=previous_kept_heading,
-            previous_row=previous_row,
-            next_row=next_row,
-            row_index=i,
             bare_numeral_run_indices=bare_numeral_run_indices,
+            row_index=i,
             doc_index=doc_index,
-        ):
-            i += 1
-            continue
-
-        # Skip short all-caps stage directions in dramatic works (e.g.
-        # "EXEUNT", "SCENE: A ROOM").
-        if _is_short_uppercase_stage_heading(
-            row,
-            previous_kept_heading=previous_kept_heading,
-            previous_row=previous_row,
-            next_row=next_row,
-            dramatic_context_active=dramatic_context_active,
-            doc_index=doc_index,
-        ):
-            i += 1
-            continue
-
-        # Skip title-page subtitle lines (author, translator) that follow
-        # the main title heading.
-        if _is_title_page_subtitle(row, previous_kept_row=previous_kept_row):
-            i += 1
-            continue
-
-        # Skip empty front-matter stubs (e.g. "PREFACE" h4 followed
-        # immediately by a shallower real section with no body text).
-        if next_row is not None and _is_empty_front_matter_stub_heading(
-            row,
-            next_row,
-            doc_index=doc_index,
-        ):
-            i += 1
-            continue
-
-        # Skip editorial placeholders like "[not in early editions]"
-        # immediately preceding a structural keyword heading.
-        if next_row is not None and _is_editorial_placeholder_heading(
-            row,
-            next_row,
-            doc_index=doc_index,
-        ):
-            i += 1
-            continue
-
-        # Skip a shorter adjacent title repeat (e.g. a decorative re-statement
-        # of the title that follows the kept heading without intervening text).
-        if (
-            previous_row is previous_kept_row
-            and previous_row is not None
-            and _is_shorter_adjacent_title_repeat(row, previous_row, doc_index=doc_index)
         ):
             i += 1
             continue
