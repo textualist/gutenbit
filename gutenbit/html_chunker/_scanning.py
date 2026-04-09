@@ -75,10 +75,12 @@ class _DocumentIndex:
 
 
 def _tag_position(tag: Tag, tag_positions: dict[int, int]) -> int | None:
+    """Return the document-order position of *tag*, or *None* if unindexed."""
     return tag_positions.get(id(tag))
 
 
 def _tag_within_bounds(tag: Tag, tag_positions: dict[int, int], bounds: _ContentBounds) -> bool:
+    """Return *True* when *tag* falls within the Gutenberg content bounds."""
     position = _tag_position(tag, tag_positions)
     if position is None:
         return False
@@ -232,7 +234,7 @@ def _scan_document(soup: BeautifulSoup) -> _DocumentIndex:
     start_pos = tag_positions.get(id(start_marker_parent)) if start_marker_parent else None
     end_pos_val = tag_positions.get(id(end_marker_parent)) if end_marker_parent else None
 
-    def _subtree_end(tag: Tag | None) -> int | None:
+    def _subtree_end(tag: Tag | None) -> int | None:  # last position in subtree
         if tag is None:
             return None
         return end_positions.get(id(tag), tag_positions.get(id(tag)))

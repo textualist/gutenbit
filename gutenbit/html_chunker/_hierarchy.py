@@ -19,12 +19,12 @@ from gutenbit.html_chunker._common import (
     _BROAD_KEYWORDS,
     _DRAMATIC_BROAD_KEYWORDS,
     _FALLBACK_START_HEADING_RE,
+    _PLAIN_NUMBER_HEADING_RE,
     _REFINEMENT_STOP_HEADING_RE,
     _STANDALONE_STRUCTURAL_RE,
     _Section,
 )
 from gutenbit.html_chunker._headings import (
-    _PLAIN_NUMBER_HEADING_RE,
     _broad_nesting_depth,
     _heading_keyword,
     _is_front_matter_heading,
@@ -50,6 +50,8 @@ _MAX_ORPHAN_LEVEL_COUNT = 2
 # Minimum ratio of next-level sections to min-level sections required before
 # _equalize_orphan_level_gap will demote the min-level outliers.
 _MIN_MAJORITY_RATIO = 3
+# Shared empty frozenset to avoid repeated allocations in early-return paths.
+_EMPTY_FROZENSET: frozenset[str] = frozenset()
 
 # Maximum number of title-like headings at one level for which a single
 # container (one title with a broad-keyword child) triggers promotion.
@@ -61,6 +63,11 @@ _MAX_TITLES_FOR_SINGLE_CONTAINER = 10
 
 # ---------------------------------------------------------------------------
 # Rank nesting
+#
+# Assign parent-child relationships based on HTML heading rank (h1-h6).
+# _respect_heading_rank_nesting: nest children under valid rank-parents
+# _should_skip_same_keyword_nesting / _should_reset_keyword_peer: handle
+#   same-keyword peer boundaries (e.g. multiple CHAPTER headings at same rank)
 # ---------------------------------------------------------------------------
 
 
@@ -474,7 +481,7 @@ def _broad_keywords_at_modal_rank(
     """
     # TOC-driven sections have anchor_ids → hierarchy is authoritative.
     if any(s.anchor_id for s in sections):
-        return frozenset()
+        return _EMPTY_FROZENSET
 
     all_ranks: Counter[int] = Counter()
     broad_kw_ranks: dict[str, Counter[int]] = {}
@@ -487,13 +494,13 @@ def _broad_keywords_at_modal_rank(
             broad_kw_ranks.setdefault(kw, Counter())[section.heading_rank] += 1
 
     if not all_ranks or len(broad_kw_ranks) != 1:
-        return frozenset()
+        return _EMPTY_FROZENSET
 
     overall_mode = all_ranks.most_common(1)[0][0]
     mode_count = all_ranks[overall_mode]
     total_ranked = sum(all_ranks.values())
     if mode_count < total_ranked * 0.8:
-        return frozenset()
+        return _EMPTY_FROZENSET
 
     return frozenset(
         kw for kw, ranks in broad_kw_ranks.items() if ranks.most_common(1)[0][0] == overall_mode

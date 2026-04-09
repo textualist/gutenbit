@@ -202,6 +202,66 @@ def _truncate_after_apparatus(sections: list[_Section]) -> list[_Section]:
     return sections
 
 
+def _resolve_toc_link(
+    link: Tag,
+    *,
+    doc_index: _DocumentIndex,
+    page_anchor_headings: dict[str, Tag],
+    enable_page_anchors: bool,
+) -> tuple[str, str, Tag] | None:
+    """Resolve a TOC link to ``(link_text, anchor_id, body_anchor)``.
+
+    Returns *None* when the link should be skipped (out of bounds, not
+    structural, unresolvable anchor, or page-number-only target).
+    """
+    tag_positions = doc_index.tag_positions
+    bounds = doc_index.bounds
+    anchor_map = doc_index.anchor_map
+
+    if not _tag_within_bounds(link, tag_positions, bounds):
+        return None
+    raw_link_text = _clean_heading_text(" ".join(link.get_text().split()))
+    link_text = raw_link_text
+
+    href = str(link.get("href", ""))
+    anchor_id = href[1:] if href.startswith("#") else ""
+
+    # Early resolution: when a numeric TOC link targets a page-number
+    # anchor inside a heading, resolve through the cached heading
+    # parent and use its text.  Runs before the structural-link filter
+    # which would otherwise discard the numeric link.
+    cached_heading = page_anchor_headings.get(anchor_id) if enable_page_anchors else None
+    if cached_heading is not None and _tag_within_bounds(cached_heading, tag_positions, bounds):
+        heading_text = _clean_heading_text(_extract_heading_text(cached_heading))
+        if heading_text:
+            link_text = heading_text
+    elif not _is_structural_toc_link(link, raw_link_text, doc_index=doc_index):
+        context_text = _toc_context_text(link)
+        if _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text) and _looks_enumerated_toc_entry(
+            context_text
+        ):
+            link_text = context_text
+        else:
+            return None
+
+    if not anchor_id:
+        return None
+    body_anchor = anchor_map.get(str(anchor_id))
+    if not body_anchor or not _tag_within_bounds(body_anchor, tag_positions, bounds):
+        return None
+
+    # Skip page-number anchors (e.g. illustrated editions use
+    # <span class="pagenum"><a id="page_1">) — these are not sections.
+    if body_anchor.find_parent("span", class_="pagenum"):
+        heading_parent = body_anchor.find_parent(_HEADING_TAGS)
+        if heading_parent and _tag_within_bounds(heading_parent, tag_positions, bounds):
+            body_anchor = heading_parent
+        else:
+            return None
+
+    return link_text, anchor_id, body_anchor
+
+
 def _parse_toc_sections(
     *,
     doc_index: _DocumentIndex,
@@ -213,55 +273,20 @@ def _parse_toc_sections(
     sections: list[_Section] = []
     used_headings: set[int] = set()
 
-    anchor_map = doc_index.anchor_map
-
     _page_anchor_headings, _enable_page_anchors = _prescan_page_anchor_headings(
         doc_index=doc_index,
     )
 
     for link in toc_links:
-        if not _tag_within_bounds(link, tag_positions, bounds):
+        resolved = _resolve_toc_link(
+            link,
+            doc_index=doc_index,
+            page_anchor_headings=_page_anchor_headings,
+            enable_page_anchors=_enable_page_anchors,
+        )
+        if resolved is None:
             continue
-        raw_link_text = _clean_heading_text(" ".join(link.get_text().split()))
-        link_text = raw_link_text
-
-        href = str(link.get("href", ""))
-        anchor_id = href[1:] if href.startswith("#") else ""
-
-        # Early resolution: when a numeric TOC link targets a page-number
-        # anchor inside a heading, resolve through the cached heading
-        # parent and use its text.  Runs before the structural-link filter
-        # which would otherwise discard the numeric link.
-        cached_heading = _page_anchor_headings.get(anchor_id) if _enable_page_anchors else None
-        if cached_heading is not None and _tag_within_bounds(
-            cached_heading, tag_positions, bounds
-        ):
-            heading_text = _clean_heading_text(_extract_heading_text(cached_heading))
-            if heading_text:
-                link_text = heading_text
-        elif not _is_structural_toc_link(link, raw_link_text, doc_index=doc_index):
-            context_text = _toc_context_text(link)
-            if _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text) and _looks_enumerated_toc_entry(
-                context_text
-            ):
-                link_text = context_text
-            else:
-                continue
-
-        if not anchor_id:
-            continue
-        body_anchor = anchor_map.get(str(anchor_id))
-        if not body_anchor or not _tag_within_bounds(body_anchor, tag_positions, bounds):
-            continue
-
-        # Skip page-number anchors (e.g. illustrated editions use
-        # <span class="pagenum"><a id="page_1">) — these are not sections.
-        if body_anchor.find_parent("span", class_="pagenum"):
-            heading_parent = body_anchor.find_parent(_HEADING_TAGS)
-            if heading_parent and _tag_within_bounds(heading_parent, tag_positions, bounds):
-                body_anchor = heading_parent
-            else:
-                continue
+        link_text, anchor_id, body_anchor = resolved
 
         # Find the associated heading element.
         heading_el = body_anchor.find_parent(_HEADING_TAGS)
@@ -287,6 +312,7 @@ def _parse_toc_sections(
                     break
                 skip.add(id(candidate))
 
+        # Deduplicate: skip headings already claimed by an earlier TOC link.
         if not heading_el or id(heading_el) in used_headings:
             continue
         used_headings.add(id(heading_el))
@@ -294,6 +320,8 @@ def _parse_toc_sections(
         heading_text = _clean_heading_text(_extract_heading_text(heading_el))
         if not heading_text:
             continue
+        # Filter apparatus headings (CONTENTS, INDEX, etc.) that appear in
+        # some TOCs but do not represent narrative sections.
         if _is_non_structural_heading_text(heading_text):
             continue
 
@@ -301,6 +329,8 @@ def _parse_toc_sections(
         heading_rank = _heading_tag_rank(heading_el)
         if heading_rank is None:
             continue
+        # Validate that the heading text + rank + emphasis combination
+        # actually represents a structural section, not a decorative heading.
         if not _is_toc_section_heading(
             heading_text,
             link_text=link_text,
@@ -454,6 +484,109 @@ def _normalize_toc_heading_ranks(sections: list[_Section]) -> list[_Section]:
 # ---------------------------------------------------------------------------
 
 
+def _should_skip_heading_row(
+    row: _HeadingRow,
+    *,
+    previous_row: _HeadingRow | None,
+    next_row: _HeadingRow | None,
+    previous_kept_heading: str | None,
+    previous_kept_row: _HeadingRow | None,
+    dramatic_context_active: bool,
+    bare_numeral_run_indices: set[int],
+    row_index: int,
+    doc_index: _DocumentIndex,
+) -> bool:
+    """Return True when a heading row should be excluded from section output.
+
+    Encapsulates the nine filter predicates that decide whether a heading row
+    is decorative, structural noise, or otherwise non-sectional.
+    """
+    # Skip immediate duplicate headings adjacent without intervening content
+    # (e.g. repeated "CHAPTER I" from decorative page headers).
+    if (
+        previous_row is not None
+        and _same_heading_text(previous_row.heading_text, row.heading_text)
+        and not _headings_have_text_between(previous_row, row, doc_index=doc_index)
+    ):
+        return True
+
+    # Skip h5+ dramatic sub-headings under non-chapter sections (e.g.
+    # scene directions nested under ACT headings).
+    if _is_rank5_subheading_under_nonchapter_section(
+        row,
+        previous_kept_heading=previous_kept_heading,
+        dramatic_context_active=dramatic_context_active,
+    ):
+        return True
+
+    # Skip single-letter headings that form acrostic or decorative runs
+    # (e.g. "A", "B", "C" sub-divisions in reference works).
+    if _is_single_letter_subheading(
+        row,
+        previous_kept_heading=previous_kept_heading,
+        previous_row=previous_row,
+        next_row=next_row,
+        doc_index=doc_index,
+    ):
+        return True
+
+    # Skip bare Roman/Arabic numeral headings at deep rank (h4+) that
+    # form contiguous runs bounded by shallower structural headings.
+    if _is_deep_rank_bare_numeral_heading(
+        row,
+        previous_kept_heading=previous_kept_heading,
+        previous_row=previous_row,
+        next_row=next_row,
+        row_index=row_index,
+        bare_numeral_run_indices=bare_numeral_run_indices,
+        doc_index=doc_index,
+    ):
+        return True
+
+    # Skip short all-caps stage directions in dramatic works (e.g.
+    # "EXEUNT", "SCENE: A ROOM").
+    if _is_short_uppercase_stage_heading(
+        row,
+        previous_kept_heading=previous_kept_heading,
+        previous_row=previous_row,
+        next_row=next_row,
+        dramatic_context_active=dramatic_context_active,
+        doc_index=doc_index,
+    ):
+        return True
+
+    # Skip title-page subtitle lines (author, translator) that follow
+    # the main title heading.
+    if _is_title_page_subtitle(row, previous_kept_row=previous_kept_row):
+        return True
+
+    # Skip empty front-matter stubs (e.g. "PREFACE" h4 followed
+    # immediately by a shallower real section with no body text).
+    if next_row is not None and _is_empty_front_matter_stub_heading(
+        row,
+        next_row,
+        doc_index=doc_index,
+    ):
+        return True
+
+    # Skip editorial placeholders like "[not in early editions]"
+    # immediately preceding a structural keyword heading.
+    if next_row is not None and _is_editorial_placeholder_heading(
+        row,
+        next_row,
+        doc_index=doc_index,
+    ):
+        return True
+
+    # Skip a shorter adjacent title repeat (e.g. a decorative re-statement
+    # of the title that follows the kept heading without intervening text).
+    return (
+        previous_row is previous_kept_row
+        and previous_row is not None
+        and _is_shorter_adjacent_title_repeat(row, previous_row, doc_index=doc_index)
+    )
+
+
 def _parse_heading_sections(
     *,
     doc_index: _DocumentIndex,
@@ -507,83 +640,22 @@ def _parse_heading_sections(
         following_row = heading_rows[i + 2] if i + 2 < len(heading_rows) else None
         previous_row = heading_rows[i - 1] if i > start_idx else None
 
-        if (
-            previous_row is not None
-            and _same_heading_text(previous_row.heading_text, heading_text)
-            and not _headings_have_text_between(previous_row, row, doc_index=doc_index)
-        ):
-            i += 1
-            continue
-
-        if _is_rank5_subheading_under_nonchapter_section(
+        if _should_skip_heading_row(
             row,
+            previous_row=previous_row,
+            next_row=next_row,
             previous_kept_heading=previous_kept_heading,
+            previous_kept_row=previous_kept_row,
             dramatic_context_active=dramatic_context_active,
-        ):
-            i += 1
-            continue
-
-        if _is_single_letter_subheading(
-            row,
-            previous_kept_heading=previous_kept_heading,
-            previous_row=previous_row,
-            next_row=next_row,
-            doc_index=doc_index,
-        ):
-            i += 1
-            continue
-
-        if _is_deep_rank_bare_numeral_heading(
-            row,
-            previous_kept_heading=previous_kept_heading,
-            previous_row=previous_row,
-            next_row=next_row,
-            row_index=i,
             bare_numeral_run_indices=bare_numeral_run_indices,
+            row_index=i,
             doc_index=doc_index,
         ):
             i += 1
             continue
 
-        if _is_short_uppercase_stage_heading(
-            row,
-            previous_kept_heading=previous_kept_heading,
-            previous_row=previous_row,
-            next_row=next_row,
-            dramatic_context_active=dramatic_context_active,
-            doc_index=doc_index,
-        ):
-            i += 1
-            continue
-
-        if _is_title_page_subtitle(row, previous_kept_row=previous_kept_row):
-            i += 1
-            continue
-
-        if next_row is not None and _is_empty_front_matter_stub_heading(
-            row,
-            next_row,
-            doc_index=doc_index,
-        ):
-            i += 1
-            continue
-
-        if next_row is not None and _is_editorial_placeholder_heading(
-            row,
-            next_row,
-            doc_index=doc_index,
-        ):
-            i += 1
-            continue
-
-        if (
-            previous_row is previous_kept_row
-            and previous_row is not None
-            and _is_shorter_adjacent_title_repeat(row, previous_row, doc_index=doc_index)
-        ):
-            i += 1
-            continue
-
+        # Merge bare number headings ("CHAPTER I") with their subtitle on the
+        # next line ("THE ADVENTURE BEGINS") into a single section heading.
         if _BARE_HEADING_NUMBER_RE.fullmatch(heading_text) and next_row is not None:
             subtitle = _normalized_heading_continuation(
                 row,

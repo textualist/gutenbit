@@ -134,6 +134,17 @@ _FALLBACK_START_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Headings that are plain Roman or Arabic numerals (e.g. "V.", "123").
+# Used by _headings, _merging, and _hierarchy.
+_PLAIN_NUMBER_HEADING_RE = re.compile(r"^(?:[IVXLCDM]+|[0-9]+)\.?$", re.IGNORECASE)
+
+# Headings containing dramatic context keywords (act, scene, prologue, etc.).
+# Used by _headings and _merging.
+_DRAMATIC_CONTEXT_HEADING_RE = re.compile(
+    r"\b(?:act|scene|prologue|epilogue|tragedy|comedy)\b",
+    re.IGNORECASE,
+)
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -266,10 +277,12 @@ def _clean_heading_text(heading_text: str) -> str:
 
 
 def _heading_tag_rank(tag: Tag) -> int | None:
+    """Return the numeric rank (1-6) for an ``<h1>``-``<h6>`` tag, or *None*."""
     if tag.name and len(tag.name) == 2 and tag.name.startswith("h") and tag.name[1].isdigit():
         return int(tag.name[1])
     return None
 
 
 def _front_matter_heading_key(heading_text: str) -> str:
+    """Normalize *heading_text* to a lowercase key for front-matter deduplication."""
     return " ".join(heading_text.split()).strip().lower().rstrip(" .,:;!?])")
