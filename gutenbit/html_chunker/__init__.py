@@ -63,6 +63,11 @@ from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (
 HTML_PARSER_BACKEND = "lxml"
 CHUNKER_VERSION = 42
 
+# Heuristic thresholds used during section selection and paragraph output.
+_MIN_PARAGRAPH_SECTION_RATIO = 3  # paragraph scan must find >3x heading-scan sections
+_MIN_PARAGRAPHS_FOR_FLAT_OUTPUT = 10  # skip flat output for very short documents
+_MIN_OPENING_PARAGRAPH_LENGTH = 20  # ignore tiny opening paragraphs (page numbers, etc.)
+
 
 def _should_prefer_heading_scan(n_toc: int, n_head: int) -> bool:
     """Return True when the heading scan should replace a sparse TOC.
@@ -161,7 +166,7 @@ def chunk_html(html: str) -> list[Chunk]:
     para_sections: list | None = None
     if sections and len(sections) <= 2:
         para_sections = _parse_paragraph_sections(doc_index=doc_index)
-        if len(para_sections) > 3 * len(sections):
+        if len(para_sections) > _MIN_PARAGRAPH_SECTION_RATIO * len(sections):
             sections = para_sections
     if not sections:
         # Try paragraph-text section scan: some editions encode chapter
@@ -178,7 +183,7 @@ def chunk_html(html: str) -> list[Chunk]:
         sections = _parse_toc_paragraph_sections(soup, doc_index=doc_index)
     if not sections:
         # Final fallback: emit all paragraphs as flat unsectioned text.
-        if len(doc_index.paragraphs) < 10:
+        if len(doc_index.paragraphs) < _MIN_PARAGRAPHS_FOR_FLAT_OUTPUT:
             return []
         chunks: list[Chunk] = []
         for pos_idx, ip in enumerate(doc_index.paragraphs):
@@ -262,7 +267,7 @@ def chunk_html(html: str) -> list[Chunk]:
             doc_index.bounds.start_pos,
             stop_pos,
             heading_texts=heading_texts,
-            min_length=20,
+            min_length=_MIN_OPENING_PARAGRAPH_LENGTH,
             skip_tag_ids=_skip_tag_ids,
         ):
             chunks.append(Chunk(pos, "", "", "", "", text, "text"))
