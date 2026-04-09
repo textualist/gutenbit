@@ -202,6 +202,68 @@ def _truncate_after_apparatus(sections: list[_Section]) -> list[_Section]:
     return sections
 
 
+def _resolve_toc_link(
+    link: Tag,
+    *,
+    doc_index: _DocumentIndex,
+    page_anchor_headings: dict[str, Tag],
+    enable_page_anchors: bool,
+) -> tuple[str, str, Tag] | None:
+    """Resolve a TOC link to ``(link_text, anchor_id, body_anchor)``.
+
+    Returns *None* when the link should be skipped (out of bounds, not
+    structural, unresolvable anchor, or page-number-only target).
+    """
+    tag_positions = doc_index.tag_positions
+    bounds = doc_index.bounds
+    anchor_map = doc_index.anchor_map
+
+    if not _tag_within_bounds(link, tag_positions, bounds):
+        return None
+    raw_link_text = _clean_heading_text(" ".join(link.get_text().split()))
+    link_text = raw_link_text
+
+    href = str(link.get("href", ""))
+    anchor_id = href[1:] if href.startswith("#") else ""
+
+    # Early resolution: when a numeric TOC link targets a page-number
+    # anchor inside a heading, resolve through the cached heading
+    # parent and use its text.  Runs before the structural-link filter
+    # which would otherwise discard the numeric link.
+    cached_heading = page_anchor_headings.get(anchor_id) if enable_page_anchors else None
+    if cached_heading is not None and _tag_within_bounds(
+        cached_heading, tag_positions, bounds
+    ):
+        heading_text = _clean_heading_text(_extract_heading_text(cached_heading))
+        if heading_text:
+            link_text = heading_text
+    elif not _is_structural_toc_link(link, raw_link_text, doc_index=doc_index):
+        context_text = _toc_context_text(link)
+        if _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text) and _looks_enumerated_toc_entry(
+            context_text
+        ):
+            link_text = context_text
+        else:
+            return None
+
+    if not anchor_id:
+        return None
+    body_anchor = anchor_map.get(str(anchor_id))
+    if not body_anchor or not _tag_within_bounds(body_anchor, tag_positions, bounds):
+        return None
+
+    # Skip page-number anchors (e.g. illustrated editions use
+    # <span class="pagenum"><a id="page_1">) — these are not sections.
+    if body_anchor.find_parent("span", class_="pagenum"):
+        heading_parent = body_anchor.find_parent(_HEADING_TAGS)
+        if heading_parent and _tag_within_bounds(heading_parent, tag_positions, bounds):
+            body_anchor = heading_parent
+        else:
+            return None
+
+    return link_text, anchor_id, body_anchor
+
+
 def _parse_toc_sections(
     *,
     doc_index: _DocumentIndex,
@@ -213,55 +275,20 @@ def _parse_toc_sections(
     sections: list[_Section] = []
     used_headings: set[int] = set()
 
-    anchor_map = doc_index.anchor_map
-
     _page_anchor_headings, _enable_page_anchors = _prescan_page_anchor_headings(
         doc_index=doc_index,
     )
 
     for link in toc_links:
-        if not _tag_within_bounds(link, tag_positions, bounds):
+        resolved = _resolve_toc_link(
+            link,
+            doc_index=doc_index,
+            page_anchor_headings=_page_anchor_headings,
+            enable_page_anchors=_enable_page_anchors,
+        )
+        if resolved is None:
             continue
-        raw_link_text = _clean_heading_text(" ".join(link.get_text().split()))
-        link_text = raw_link_text
-
-        href = str(link.get("href", ""))
-        anchor_id = href[1:] if href.startswith("#") else ""
-
-        # Early resolution: when a numeric TOC link targets a page-number
-        # anchor inside a heading, resolve through the cached heading
-        # parent and use its text.  Runs before the structural-link filter
-        # which would otherwise discard the numeric link.
-        cached_heading = _page_anchor_headings.get(anchor_id) if _enable_page_anchors else None
-        if cached_heading is not None and _tag_within_bounds(
-            cached_heading, tag_positions, bounds
-        ):
-            heading_text = _clean_heading_text(_extract_heading_text(cached_heading))
-            if heading_text:
-                link_text = heading_text
-        elif not _is_structural_toc_link(link, raw_link_text, doc_index=doc_index):
-            context_text = _toc_context_text(link)
-            if _NUMERIC_LINK_TEXT_RE.fullmatch(raw_link_text) and _looks_enumerated_toc_entry(
-                context_text
-            ):
-                link_text = context_text
-            else:
-                continue
-
-        if not anchor_id:
-            continue
-        body_anchor = anchor_map.get(str(anchor_id))
-        if not body_anchor or not _tag_within_bounds(body_anchor, tag_positions, bounds):
-            continue
-
-        # Skip page-number anchors (e.g. illustrated editions use
-        # <span class="pagenum"><a id="page_1">) — these are not sections.
-        if body_anchor.find_parent("span", class_="pagenum"):
-            heading_parent = body_anchor.find_parent(_HEADING_TAGS)
-            if heading_parent and _tag_within_bounds(heading_parent, tag_positions, bounds):
-                body_anchor = heading_parent
-            else:
-                continue
+        link_text, anchor_id, body_anchor = resolved
 
         # Find the associated heading element.
         heading_el = body_anchor.find_parent(_HEADING_TAGS)
