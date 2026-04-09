@@ -50,6 +50,8 @@ _MAX_ORPHAN_LEVEL_COUNT = 2
 # Minimum ratio of next-level sections to min-level sections required before
 # _equalize_orphan_level_gap will demote the min-level outliers.
 _MIN_MAJORITY_RATIO = 3
+# Shared empty frozenset to avoid repeated allocations in early-return paths.
+_EMPTY_FROZENSET: frozenset[str] = frozenset()
 
 # Maximum number of title-like headings at one level for which a single
 # container (one title with a broad-keyword child) triggers promotion.
@@ -474,7 +476,7 @@ def _broad_keywords_at_modal_rank(
     """
     # TOC-driven sections have anchor_ids → hierarchy is authoritative.
     if any(s.anchor_id for s in sections):
-        return frozenset()
+        return _EMPTY_FROZENSET
 
     all_ranks: Counter[int] = Counter()
     broad_kw_ranks: dict[str, Counter[int]] = {}
@@ -487,13 +489,13 @@ def _broad_keywords_at_modal_rank(
             broad_kw_ranks.setdefault(kw, Counter())[section.heading_rank] += 1
 
     if not all_ranks or len(broad_kw_ranks) != 1:
-        return frozenset()
+        return _EMPTY_FROZENSET
 
     overall_mode = all_ranks.most_common(1)[0][0]
     mode_count = all_ranks[overall_mode]
     total_ranked = sum(all_ranks.values())
     if mode_count < total_ranked * 0.8:
-        return frozenset()
+        return _EMPTY_FROZENSET
 
     return frozenset(
         kw for kw, ranks in broad_kw_ranks.items() if ranks.most_common(1)[0][0] == overall_mode
