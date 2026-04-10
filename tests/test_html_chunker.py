@@ -5339,3 +5339,54 @@ def test_index_entries_suppressed_as_non_structural():
     assert not any("BAILEY" in t for t in heading_texts)
     assert not any("BRADLEY" in t for t in heading_texts)
     assert not any("CAIRD" in t for t in heading_texts)
+
+
+# ------------------------------------------------------------------
+# id-on-heading anchor resolution
+# ------------------------------------------------------------------
+
+
+def test_toc_links_resolve_when_id_is_on_heading_tag():
+    """TOC ``pginternal`` links must resolve when the target id is placed
+    directly on the heading tag (``<h4 id="s1">Title</h4>``) rather than
+    on a child ``<a>`` element.
+
+    The anchor map previously only recorded ``<a id=...>`` anchors, so a
+    heading whose id was on the h-tag itself was invisible to TOC parsing
+    and the parser collapsed everything into a single section.  A publisher
+    that placed the id directly on the heading has explicitly declared it
+    as a TOC target, so the h4 rank filter should be bypassed in that case.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#s1" class="pginternal">THE FIRST STORY</a></p>
+    <p class="toc"><a href="#s2" class="pginternal">THE SECOND STORY</a></p>
+    <p class="toc"><a href="#s3" class="pginternal">THE THIRD STORY</a></p>
+    <h4 id="s1">THE FIRST STORY</h4>
+    <p>Content of the first story.</p>
+    <h4 id="s2">THE SECOND STORY</h4>
+    <p>Content of the second story.</p>
+    <h4 id="s3">THE THIRD STORY</h4>
+    <p>Content of the third story.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts == ["THE FIRST STORY", "THE SECOND STORY", "THE THIRD STORY"]
+
+
+def test_child_a_anchor_still_preferred_over_heading_tag_id():
+    """When both a child ``<a id=...>`` and the enclosing heading tag have
+    ids, the ``<a>`` anchor must still win.  This preserves the historical
+    behavior for the common PG pattern ``<h2><a id="ch1"></a>CHAPTER I</h2>``.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <h2 id="wrapper1"><a id="ch1"></a>CHAPTER I</h2>
+    <p>Chapter one content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 1
+    assert headings[0].content == "CHAPTER I"

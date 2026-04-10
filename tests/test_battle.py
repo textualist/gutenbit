@@ -2125,21 +2125,25 @@ def test_fathers_and_sons_keeps_introduction_and_twenty_eight_chapters():
     assert h[-1].div1 == "XXVIII"
 
 
-def test_house_of_gentlefolk_keeps_forty_five_chapters_and_epilogue():
-    """PG 5721 — Turgenev's A House of Gentlefolk: 45 chapters + Epilogue.
-
-    Epilogue must appear as a top-level div1 section, not absorbed into
-    the final chapter.
+def test_house_of_gentlefolk_keeps_all_chapters_and_epilogue():
+    """PG 5721 — Turgenev's A House of Gentlefolk: Garnett translation has
+    45 numbered chapters followed by an Epilogue.  The Epilogue must
+    appear as a top-level ``div1`` section, not absorbed into the final
+    chapter as a subtitle.
     """
     h = _headings(5721)
 
-    assert len(h) == 46
+    # Anchor both ends of the chapter range explicitly so a regression
+    # that drops Chapter I or the Epilogue localises the failure.
+    chapter_titles = [c.div2 for c in h if c.div2 and c.div2.startswith("Chapter")]
+    assert "Chapter I" in chapter_titles
+    assert "Chapter XLV" in chapter_titles
+    # 45 is the invariant for the Garnett source.
+    assert len(chapter_titles) == 45
+
+    # The Epilogue must close the book as a standalone section.
     assert h[-1].div1 == "Epilogue"
     assert h[-1].content == "Epilogue"
-
-    # Chapters must be at div2 (nested under an implicit container).
-    chapter_headings = [c for c in h if c.div2 and c.div2.startswith("Chapter")]
-    assert len(chapter_headings) == 45
 
 
 def test_lear_of_steppes_separates_four_works_in_collection():
@@ -2165,25 +2169,43 @@ def test_lear_of_steppes_separates_four_works_in_collection():
     assert len(acia_chapters) == 22
 
 
-def test_best_russian_short_stories_has_twenty_one_story_titles():
-    """PG 13437 — multi-author anthology: Introduction + 20 stories.
-
-    Each story must appear as its own div1 entry.  Multi-chapter stories
-    (Queen of Spades, Hide and Seek, The Revolutionist) must nest chapters
-    at div2.
+def test_best_russian_short_stories_keeps_all_nineteen_story_titles():
+    """PG 13437 — multi-author anthology.  Every one of the 19 stories must
+    appear as its own ``div1`` entry, plus an ``INTRODUCTION`` and the
+    anthology title heading.  Multi-chapter stories (Queen of Spades,
+    Hide and Seek, The Revolutionist) must nest chapters at ``div2``.
     """
     h = _headings(13437)
     div1_values = {c.div1 for c in h if c.div1}
 
-    # All story titles must appear.
-    assert "THE QUEEN OF SPADES" in div1_values
-    assert "THE CLOAK" in div1_values
-    assert "THE DARLING" in div1_values
-    assert "THE BET" in div1_values
-    assert "THE OUTRAGE\u2014A TRUE STORY" in div1_values
-    assert len(div1_values) == 21
+    # Every story title must appear individually.  Enumerating the whole
+    # list makes the test self-documenting and localises failures when a
+    # single story goes missing.
+    expected_stories = {
+        "THE QUEEN OF SPADES",
+        "THE CLOAK",
+        "THE DISTRICT DOCTOR",
+        "THE CHRISTMAS TREE AND THE WEDDING",
+        "GOD SEES THE TRUTH, BUT WAITS",
+        "HOW A MUZHIK FED TWO OFFICIALS BANQUET GIVEN BY THE MAYOR",
+        "THE SHADES, A PHANTASY",
+        "THE SIGNAL",
+        "THE DARLING",
+        "THE BET",
+        "VANKA",
+        "HIDE AND SEEK",
+        "DETHRONED",
+        "THE SERVANT",
+        "ONE AUTUMN NIGHT",
+        "HER LOVER",
+        "LAZARUS",
+        "THE REVOLUTIONIST",
+        "THE OUTRAGE\u2014A TRUE STORY",
+    }
+    assert expected_stories <= div1_values
+    assert "INTRODUCTION" in div1_values
 
-    # Queen of Spades must have sub-chapters.
+    # Queen of Spades must have sub-chapters (the story has 6 parts).
     queen_chapters = [c for c in h if c.div1 == "THE QUEEN OF SPADES" and c.div2]
     assert len(queen_chapters) >= 5
 
@@ -2205,7 +2227,7 @@ def test_chorus_girl_resolves_toc_links_with_id_on_heading_tag():
     assert "AT A COUNTRY HOUSE" in div1_values
     assert "A FATHER" in div1_values
     assert "ON THE ROAD" in div1_values
-    assert "ROTHSCHILD\u2019S FIDDLE" in div1_values or "ROTHSCHILD'S FIDDLE" in div1_values
+    assert "ROTHSCHILD'S FIDDLE" in div1_values
     assert "IVAN MATVEYITCH" in div1_values
     assert "ZINOTCHKA" in div1_values
     assert "BAD WEATHER" in div1_values
