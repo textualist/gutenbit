@@ -397,9 +397,16 @@ def _is_toc_section_heading(
     link_text: str,
     heading_rank: int,
     is_emphasized: bool,
+    anchor_is_heading: bool = False,
 ) -> bool:
     """Return True when a TOC entry points at a real structural section."""
     if is_emphasized or heading_rank <= 2:
+        return True
+    # When the id was placed directly on the heading tag itself (e.g.
+    # ``<h4 id="id00016">THE CHORUS GIRL</h4>``), the publisher has
+    # explicitly declared the heading as a TOC target — trust it regardless
+    # of rank rather than requiring structural keywords.
+    if anchor_is_heading:
         return True
     if _BRACKETED_NUMERIC_HEADING_RE.fullmatch(heading_text):
         return True

@@ -149,6 +149,13 @@ def _scan_document(soup: BeautifulSoup) -> _DocumentIndex:
                         anchor_map[str(aid)] = node
                     if "pginternal" in (node.get("class") or []):
                         toc_links.append(node)
+                elif name in _HEADING_TAG_SET:
+                    # Some PG books place id attributes directly on heading
+                    # tags (e.g. ``<h4 id="id00016">Title</h4>``) instead
+                    # of on a child ``<a>`` element.
+                    hid = node.get("id")
+                    if hid is not None and str(hid) not in anchor_map:
+                        anchor_map[str(hid)] = node
 
                 if in_body and name in ("p", "pre"):
                     blocks.append(node)

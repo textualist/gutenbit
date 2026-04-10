@@ -2188,3 +2188,29 @@ def test_best_russian_short_stories_has_twenty_one_story_titles():
     assert len(queen_chapters) >= 5
 
 
+def test_chorus_girl_resolves_toc_links_with_id_on_heading_tag():
+    """PG 13418 — TOC links point to h4 story headings whose ids are on the
+    heading tag itself (``<h4 id="id00016">THE CHORUS GIRL</h4>``) rather
+    than on a child ``<a>``.  The anchor map previously only recorded
+    ``<a id=...>`` anchors, so these 12 story headings were invisible and
+    all 79k words collapsed into a single section.
+    """
+    h = _headings(13418)
+    div1_values = {c.div1 for c in h if c.div1}
+
+    # All 12 stories from the collection must appear as top-level sections.
+    assert "THE CHORUS GIRL" in div1_values
+    assert "VEROTCHKA" in div1_values
+    assert "MY LIFE" in div1_values
+    assert "AT A COUNTRY HOUSE" in div1_values
+    assert "A FATHER" in div1_values
+    assert "ON THE ROAD" in div1_values
+    assert "ROTHSCHILD\u2019S FIDDLE" in div1_values or "ROTHSCHILD'S FIDDLE" in div1_values
+    assert "IVAN MATVEYITCH" in div1_values
+    assert "ZINOTCHKA" in div1_values
+    assert "BAD WEATHER" in div1_values
+    assert "A GENTLEMAN FRIEND" in div1_values
+    assert "A TRIVIAL INCIDENT" in div1_values
+    assert len(div1_values) == 12
+
+

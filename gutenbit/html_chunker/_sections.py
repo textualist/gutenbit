@@ -288,8 +288,14 @@ def _parse_toc_sections(
             continue
         link_text, anchor_id, body_anchor = resolved
 
-        # Find the associated heading element.
-        heading_el = body_anchor.find_parent(_HEADING_TAGS)
+        # Find the associated heading element.  The anchor may itself be
+        # a heading tag (e.g. ``<h4 id="id00016">THE CHORUS GIRL</h4>``);
+        # ``find_parent`` only searches ancestors, so check the tag first.
+        anchor_is_heading = body_anchor.name in _HEADING_TAGS
+        if anchor_is_heading:
+            heading_el = body_anchor
+        else:
+            heading_el = body_anchor.find_parent(_HEADING_TAGS)
         if heading_el and not _tag_within_bounds(heading_el, tag_positions, bounds):
             heading_el = None
         if not heading_el:
@@ -336,6 +342,7 @@ def _parse_toc_sections(
             link_text=link_text,
             heading_rank=heading_rank,
             is_emphasized=is_emphasized,
+            anchor_is_heading=anchor_is_heading and heading_el is body_anchor,
         ):
             continue
 
