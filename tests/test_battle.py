@@ -2033,3 +2033,158 @@ def test_thackeray_collected_edition_work_titles_equalized():
     assert ch1.div3.startswith("Chapter I.")
 
 
+# ---------------------------------------------------------------------------
+# Chekhov / Gogol / Turgenev battle-test corpus (issue #192)
+# ---------------------------------------------------------------------------
+
+
+def test_chekhov_plays_second_series_nests_acts_under_plays():
+    """PG 7986 — multi-play collection with mix of one-act and multi-act plays.
+
+    One-act plays (On the High Road, The Proposal, etc.) should appear as flat
+    div1 entries.  Multi-act plays (Three Sisters, Cherry Orchard) should nest
+    acts under their play title at div2.
+    """
+    h = _headings(7986)
+    div1_values = {c.div1 for c in h if c.div1}
+
+    # All 8 plays must appear at div1.
+    assert "ON THE HIGH ROAD A DRAMATIC STUDY" in div1_values
+    assert "THE PROPOSAL" in div1_values
+    assert "THE BEAR" in div1_values
+    assert "THE THREE SISTERS A DRAMA IN FOUR ACTS" in div1_values
+    assert "THE CHERRY ORCHARD A COMEDY IN FOUR ACTS" in div1_values
+    assert len(div1_values) == 8
+
+    # Three Sisters must have 4 acts nested at div2.
+    sisters_acts = [c for c in h if c.div1 == "THE THREE SISTERS A DRAMA IN FOUR ACTS" and c.div2]
+    assert len(sisters_acts) == 4
+    assert sisters_acts[0].div2 == "ACT I"
+    assert sisters_acts[3].div2 == "ACT IV"
+
+    # Cherry Orchard must have 4 acts nested at div2.
+    cherry_acts = [c for c in h if c.div1 == "THE CHERRY ORCHARD A COMEDY IN FOUR ACTS" and c.div2]
+    assert len(cherry_acts) == 4
+
+
+def test_dead_souls_nests_chapters_under_two_parts():
+    """PG 1081 — Gogol's Dead Souls has Part I (11 chapters) and Part II (4 chapters).
+
+    Front matter (Introduction, Preparer's Note, Author's Preface) must remain
+    as separate div1 sections, not nest under a part.
+    """
+    h = _headings(1081)
+    div1_values = {c.div1 for c in h if c.div1}
+
+    # Both parts must exist.
+    assert "PART I" in div1_values
+    assert "PART II" in div1_values
+
+    # Part I must have 11 chapters.
+    part1_chapters = [c for c in h if c.div1 == "PART I" and c.div2 and c.div2.startswith("CHAPTER")]
+    assert len(part1_chapters) == 11
+
+    # Part II must have 4 chapters (unfinished work).
+    part2_chapters = [c for c in h if c.div1 == "PART II" and c.div2 and c.div2.startswith("CHAPTER")]
+    assert len(part2_chapters) == 4
+
+    # Front matter must not nest under a part.
+    assert "Introduction By John Cournos" in div1_values
+
+
+def test_lady_with_dog_nests_chapters_under_story_titles():
+    """PG 13415 — Chekhov story collection where multi-chapter stories must
+    nest Roman numeral sub-chapters under the story title at div2.
+    """
+    h = _headings(13415)
+    div1_values = {c.div1 for c in h if c.div1}
+
+    # The Lady with the Dog must have 4 sub-chapters.
+    lady_chapters = [c for c in h if c.div1 == "THE LADY WITH THE DOG" and c.div2]
+    assert len(lady_chapters) == 4
+
+    # An Anonymous Story must have sub-chapters.
+    anon_chapters = [c for c in h if c.div1 == "AN ANONYMOUS STORY" and c.div2]
+    assert len(anon_chapters) >= 10
+
+    # All story titles must appear at div1.
+    assert "THE LADY WITH THE DOG" in div1_values
+    assert "THE HUSBAND" in div1_values
+    assert len(div1_values) == 9
+
+
+def test_fathers_and_sons_keeps_introduction_and_twenty_eight_chapters():
+    """PG 47935 — Turgenev's Fathers and Sons: Introduction + 28 Roman
+    numeral chapters at flat div1 level.
+    """
+    h = _headings(47935)
+
+    assert len(h) == 29
+    assert h[0].div1 == "INTRODUCTION"
+    assert h[1].div1 == "I"
+    assert h[-1].div1 == "XXVIII"
+
+
+def test_house_of_gentlefolk_keeps_forty_five_chapters_and_epilogue():
+    """PG 5721 — Turgenev's A House of Gentlefolk: 45 chapters + Epilogue.
+
+    Epilogue must appear as a top-level div1 section, not absorbed into
+    the final chapter.
+    """
+    h = _headings(5721)
+
+    assert len(h) == 46
+    assert h[-1].div1 == "Epilogue"
+    assert h[-1].content == "Epilogue"
+
+    # Chapters must be at div2 (nested under an implicit container).
+    chapter_headings = [c for c in h if c.div2 and c.div2.startswith("Chapter")]
+    assert len(chapter_headings) == 45
+
+
+def test_lear_of_steppes_separates_four_works_in_collection():
+    """PG 52642 — multi-work volume: Introduction (4 sub-chapters),
+    A Lear of the Steppes (31 entries), Faust (9 letters + parent),
+    Acia (22 chapters + parent).
+    """
+    h = _headings(52642)
+    div1_values = {c.div1 for c in h if c.div1}
+
+    assert "INTRODUCTION" in div1_values
+    assert "A LEAR OF THE STEPPES" in div1_values
+    assert "FAUST A STORY IN NINE LETTERS" in div1_values
+    assert "ACIA" in div1_values
+    assert len(div1_values) == 4
+
+    # A Lear of the Steppes must have sub-chapters.
+    lear_chapters = [c for c in h if c.div1 == "A LEAR OF THE STEPPES" and c.div2]
+    assert len(lear_chapters) == 31
+
+    # Acia must have 22 sub-chapters.
+    acia_chapters = [c for c in h if c.div1 == "ACIA" and c.div2]
+    assert len(acia_chapters) == 22
+
+
+def test_best_russian_short_stories_has_twenty_one_story_titles():
+    """PG 13437 — multi-author anthology: Introduction + 20 stories.
+
+    Each story must appear as its own div1 entry.  Multi-chapter stories
+    (Queen of Spades, Hide and Seek, The Revolutionist) must nest chapters
+    at div2.
+    """
+    h = _headings(13437)
+    div1_values = {c.div1 for c in h if c.div1}
+
+    # All story titles must appear.
+    assert "THE QUEEN OF SPADES" in div1_values
+    assert "THE CLOAK" in div1_values
+    assert "THE DARLING" in div1_values
+    assert "THE BET" in div1_values
+    assert "THE OUTRAGE\u2014A TRUE STORY" in div1_values
+    assert len(div1_values) == 21
+
+    # Queen of Spades must have sub-chapters.
+    queen_chapters = [c for c in h if c.div1 == "THE QUEEN OF SPADES" and c.div2]
+    assert len(queen_chapters) >= 5
+
+
