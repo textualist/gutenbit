@@ -142,20 +142,20 @@ def _scan_document(soup: BeautifulSoup) -> _DocumentIndex:
 
                 if name in _HEADING_TAG_SET:
                     all_heading_tags.append(node)
-
-                if name == "a":
+                    # Record the heading's own id so TOC links resolve
+                    # even when the id sits on the heading tag rather
+                    # than a child ``<a>``.  The ``not in`` guard
+                    # preserves precedence when a child ``<a id=...>``
+                    # was encountered earlier in DFS.
+                    hid = node.get("id")
+                    if hid is not None and str(hid) not in anchor_map:
+                        anchor_map[str(hid)] = node
+                elif name == "a":
                     aid = node.get("id")
                     if aid is not None:
                         anchor_map[str(aid)] = node
                     if "pginternal" in (node.get("class") or []):
                         toc_links.append(node)
-                elif name in _HEADING_TAG_SET:
-                    # Some PG books place id attributes directly on heading
-                    # tags (e.g. ``<h4 id="id00016">Title</h4>``) instead
-                    # of on a child ``<a>`` element.
-                    hid = node.get("id")
-                    if hid is not None and str(hid) not in anchor_map:
-                        anchor_map[str(hid)] = node
 
                 if in_body and name in ("p", "pre"):
                     blocks.append(node)

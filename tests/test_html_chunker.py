@@ -5347,15 +5347,10 @@ def test_index_entries_suppressed_as_non_structural():
 
 
 def test_toc_links_resolve_when_id_is_on_heading_tag():
-    """TOC ``pginternal`` links must resolve when the target id is placed
-    directly on the heading tag (``<h4 id="s1">Title</h4>``) rather than
-    on a child ``<a>`` element.
-
-    The anchor map previously only recorded ``<a id=...>`` anchors, so a
-    heading whose id was on the h-tag itself was invisible to TOC parsing
-    and the parser collapsed everything into a single section.  A publisher
-    that placed the id directly on the heading has explicitly declared it
-    as a TOC target, so the h4 rank filter should be bypassed in that case.
+    """TOC ``pginternal`` links must resolve when the target id sits on
+    the heading tag itself rather than on a child ``<a>`` anchor, even
+    at h3+ rank where the usual keyword/numeric filter would reject an
+    unadorned title.
     """
     html = _make_html("""
     <p class="toc"><a href="#s1" class="pginternal">THE FIRST STORY</a></p>

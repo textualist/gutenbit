@@ -288,11 +288,10 @@ def _parse_toc_sections(
             continue
         link_text, anchor_id, body_anchor = resolved
 
-        # Find the associated heading element.  The anchor may itself be
-        # a heading tag (e.g. ``<h4 id="id00016">THE CHORUS GIRL</h4>``);
-        # ``find_parent`` only searches ancestors, so check the tag first.
-        anchor_is_heading = body_anchor.name in _HEADING_TAGS
-        if anchor_is_heading:
+        # Find the associated heading element.  ``find_parent`` searches
+        # ancestors only, so when the id sits directly on the heading tag
+        # the anchor itself is the heading.
+        if body_anchor.name in _HEADING_TAGS:
             heading_el = body_anchor
         else:
             heading_el = body_anchor.find_parent(_HEADING_TAGS)
@@ -335,14 +334,17 @@ def _parse_toc_sections(
         heading_rank = _heading_tag_rank(heading_el)
         if heading_rank is None:
             continue
-        # Validate that the heading text + rank + emphasis combination
-        # actually represents a structural section, not a decorative heading.
-        if not _is_toc_section_heading(
+        # When the id was placed directly on the heading tag itself
+        # (``<h4 id="id00016">Title</h4>``) the publisher has explicitly
+        # declared the heading as a TOC target, so bypass the rank filter
+        # that would otherwise reject unkeyworded h3+ headings.  The
+        # identity guard ensures the bypass does not leak to rescued
+        # neighbours found via the ``_find_next_heading`` fallback above.
+        if heading_el is not body_anchor and not _is_toc_section_heading(
             heading_text,
             link_text=link_text,
             heading_rank=heading_rank,
             is_emphasized=is_emphasized,
-            anchor_is_heading=anchor_is_heading and heading_el is body_anchor,
         ):
             continue
 
