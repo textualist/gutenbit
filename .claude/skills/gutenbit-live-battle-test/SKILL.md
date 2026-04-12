@@ -70,7 +70,14 @@ long TOC.
 Use `view` and `search` to confirm whether the bad structure also damages navigation or
 search context.
 
-### 3. Structured TOC inspection checklist
+### 3. Two-pass structured TOC inspection
+
+A single smoke-test pass is not enough.  A surprising number of real
+parser bugs hide behind output that looks plausible at a glance — the
+surface structure matches the source HTML while the parser is silently
+dropping, merging, or flattening real structure.  Do both passes.
+
+#### Pass 1 — structural checklist
 
 After running `toc --expand all`, systematically check each of these:
 
@@ -81,7 +88,42 @@ After running `toc --expand all`, systematically check each of these:
 5. **Terminal entries** — Does the TOC end with the right closing matter (APPENDIX, NOTE, GLOSSARY, etc.)?
 6. **Heading text completeness** — For chapters with subtitles or descriptions, is the full heading text present, or was it split into separate TOC entries?
 
-Write down every anomaly before looking at code.
+Write down every anomaly.
+
+#### Pass 2 — UX rating and limitation challenge
+
+Now read the `toc --expand all` output line by line as a user would.
+Rate the work on this scale:
+
+| Rating | Criteria |
+|--------|----------|
+| **PERFECT** | Structure exactly matches what a reader would expect. |
+| **GOOD** | Minor cosmetic issues (empty title sections, trivial noise) that do not impede navigation. |
+| **ACCEPTABLE** | Navigable but with structural quirks (duplicate headings, odd nesting, minor content leak). |
+| **POOR** | Degraded reading experience (flat where it should nest, oversized sections, missing sub-chapters) but content is still reachable. |
+| **BROKEN** | Content is invisible, wildly merged, or reduced to a single giant section. |
+
+**Any work rated POOR or BROKEN triggers a root-cause investigation
+before labeling it "source HTML limitation".**  The classification
+agents in the first round of a batch review default to "source HTML
+limitation" far too easily — a BROKEN rating forces you to prove the
+parser could not have done better.
+
+Before accepting any "source HTML limitation" classification, ask:
+
+1. Does the raw HTML contain structural information the parser is dropping? (Dump `anchor_map`, heading tags, TOC links.)
+2. Is there a generalizable rule that would recover the structure without branching on PG IDs?
+3. Would a competing PG-style parser do better on this input?
+
+If any answer is yes, it is a parser bug, not a source HTML limitation.
+
+#### Triage table (start filling in during Pass 1)
+
+Use this exact shape so results compound into the final step-9 report
+without rework:
+
+| Work | PG | Sections | UX | Issues | Failure family |
+|------|---:|---------:|----|--------|----------------|
 
 ### 4. Compare against raw Gutenberg HTML before forming a fix
 
@@ -126,6 +168,30 @@ Compare these two outputs and confirm:
 - whether the TOC is incomplete and body-heading refinement is required
 - whether fallback heading scanning is over-triggering on speaker names, Roman numerals, or dramatic dialogue labels
 - whether subtitle or description elements following chapter headings were merged or left as orphans
+
+**Anchor-map completeness check.**  When a book has `pginternal` TOC
+links but the parser produces zero or very few sections, the root
+cause is almost always that `anchor_map` does not contain the link
+targets.  Run this diagnostic:
+
+```python
+from gutenbit.html_chunker._scanning import _scan_document
+
+doc_index = _scan_document(soup)
+unresolved = [
+    link for link in doc_index.toc_links
+    if (href := str(link.get("href", ""))).startswith("#")
+    and href[1:] not in doc_index.anchor_map
+]
+print(f"TOC links: {len(doc_index.toc_links)}, unresolved: {len(unresolved)}")
+for link in unresolved[:5]:
+    print(f"  {link.get('href')!r} -> {link.get_text(strip=True)[:60]!r}")
+```
+
+Common causes of unresolved links: the `id` sits on the heading tag
+itself (`<h4 id="...">Title</h4>`) rather than a child `<a>`; the id
+is on a `<span class="pagenum">` wrapper; the target element is
+outside the document bounds.
 
 ### 5. Classify the failure before changing code
 
@@ -174,6 +240,25 @@ Reject fixes that:
 State the intended invariant before editing code. Example: "preserve part-level headings as
 standalone sections instead of merging them into the first chapter heading."
 
+**Iterative fix narrowing.**  When a bug spans multiple parser
+layers, work in widening rings, starting at the data layer:
+
+1. **Data layer** — does the parser even see the structure? Verify
+   `anchor_map`, `toc_links`, raw headings.  If the data is missing,
+   fix the scan (`_scanning.py`) first.
+2. **Resolution layer** — does the right element get selected from
+   the data? Fix the resolver (`_sections.py`, `_toc.py`) second.
+3. **Validation layer** — do filters accept the resolved element?
+   Fix the validator (`_headings.py`) last.
+
+After each change, run the existing corpus tests (`uv run pytest -m
+network`).  If something breaks, the fix is too broad — narrow the
+guard before widening again.  A common failure mode is to relax a
+global threshold (e.g. `heading_rank <= 2` → `<= 4`) and only later
+discover that it damaged an adjacent book's subtitle merging.
+Prefer a guard that is conditional on the specific signal (e.g.
+"the anchor IS the heading tag") over a global threshold relaxation.
+
 ### 7. Add focused regression coverage
 
 Use `tests/test_battle.py` for live Gutenberg regression coverage. Follow the existing style:
@@ -203,6 +288,23 @@ write a synthetic non-network test in `tests/test_html_chunker.py` using `_make_
 construct a minimal HTML fragment that reproduces the parser behavior. Use network tests only
 when the real Gutenberg HTML has structural complexity that a synthetic fixture cannot
 faithfully represent.
+
+**Cover PERFECT cases, not just fixes.**  After writing regression
+tests for the bugs you fixed, add 3–5 **synthetic** fixtures in
+`tests/test_html_chunker.py` that pin the structural invariants of a
+random sample of PERFECT-rated works from the current batch.  These
+are free insurance: they run in <1s and catch silent regressions
+where a future fix quietly damages a case that was already working.
+Network tests only catch regressions in books that happen to still
+be in the active battle-test corpus; synthetic fixtures protect the
+underlying pattern permanently.
+
+When the synthetic parser output does not exactly match the real
+parser output (because the real book has surrounding content the
+fixture lacks), assert the **structural invariant** directly rather
+than pinning the exact `div1`/`div2` layout.  Example: "front matter
+headings must not have `div1` equal to any part name" instead of
+"front matter has `div1 == 'Introduction By John Cournos'`".
 
 ### 8. Verify in widening rings
 
@@ -239,11 +341,24 @@ Treat `uv run pytest -m network` as mandatory before closing the work unless net
 is unavailable. The goal is not only to fix the new book, but to prove the parser still holds
 across the existing live corpus.
 
-**Batch testing.** When battle testing multiple works by the same author (or a themed corpus),
-test all works first and record results in a structured table before beginning fixes. Group
-failures into issue families, then fix one family at a time. After each family fix, re-run
-the full test suite to catch regressions before moving to the next family. This prevents
-cascading regressions and avoids redundant work on issues that share a root cause.
+**Batch testing.** When battle testing a themed corpus of 10+ works,
+split across parallel subagents with roughly 5–15 works each, with
+one agent per cohesive author or work cluster.  Every subagent must
+run the Pass-1 checklist and the Pass-2 UX rating before the batch
+moves on.  Compile the master triage table (see step 3) across all
+agents before beginning any fixes.  Group failures into issue
+families, fix one family at a time, and re-run the full test suite
+between families to catch cascading regressions early.
+
+**Post-fix quality review.**  After the fix passes all tests but
+before committing, run a quality review pass on the changed files.
+The most reliable form is three parallel agents on the same diff
+(reuse, quality, efficiency) — the `/simplify` skill already wires
+this up.  This catches the patterns that accumulate during iterative
+fix narrowing: redundant state, parameter sprawl, dead-weight guards,
+duplicated comments, and weak docstrings.  Address each concrete
+finding before committing.  A common outcome of this pass is
+collapsing a multi-file fix by ~30% without changing behavior.
 
 ### 9. Report the result in parser terms
 
@@ -260,14 +375,25 @@ source HTML.
 
 When reporting results for a batch of works, use structured tables:
 
-- **Clean passes table**: Work | PG | Sections | Notes
-- **Source HTML limitations** (not parser bugs): Work | PG | Issue
-- **Issues found** (grouped by failure family): Work | PG | Issue
+- **UX rating summary**: one row per rating level with a count and
+  the list of PG IDs in that bucket.
+- **PERFECT / GOOD cases**: Work | PG | Sections | Notes
+- **ACCEPTABLE / POOR cases**: Work | PG | Issue | Why not fixable now
+- **BROKEN cases**: Work | PG | Root cause | Fix (or deferred)
 - **Regressions investigated**: Regression | Root cause | Resolution
 
 Post results as a comment on the parent GitHub Issue using `mcp__github__add_issue_comment`.
 If a PR is created to fix the issue families, include `Closes #NNN` in the PR description to
 auto-close the parent issue on merge.
+
+**Deferred issues.**  Any BROKEN or POOR case that is not fixed in
+the current session must be recorded in
+[references/kei-17-corpus.md](references/kei-17-corpus.md) under
+"Deferred issues" with: work, PG ID, root-cause summary, what a fix
+would look like structurally, and why deferring.  This turns the
+corpus document into a living backlog instead of a closed-case log,
+so the next agent working on the parser can pick up where this one
+left off.
 
 ## References
 
