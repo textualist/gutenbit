@@ -249,9 +249,16 @@ def _scan_document(soup: BeautifulSoup) -> _DocumentIndex:
     header_end_pos = _subtree_end(pg_header)
     footer_start_pos = tag_positions.get(id(pg_footer)) if pg_footer else None
 
-    if start_pos is None:
+    # Prefer the tightest boundary when both marker and boilerplate section are
+    # present: Gutenberg HTML typically wraps the ``*** END OF ... ***`` text in
+    # a ``<span>`` inside ``<div id="pg-end-separator">`` inside
+    # ``<section id="pg-footer">``. The span is recorded as ``end_marker_parent``
+    # but its enclosing div still qualifies as a paragraph block with an earlier
+    # position, so using the footer's start position excludes both the marker
+    # and its container. Analogous reasoning applies to the start header.
+    if start_pos is None or (header_end_pos is not None and header_end_pos > start_pos):
         start_pos = header_end_pos
-    if end_pos_val is None:
+    if end_pos_val is None or (footer_start_pos is not None and footer_start_pos < end_pos_val):
         end_pos_val = footer_start_pos
     if start_pos is not None and end_pos_val is not None and end_pos_val <= start_pos:
         if footer_start_pos is not None and footer_start_pos > start_pos:

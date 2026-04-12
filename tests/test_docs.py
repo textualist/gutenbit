@@ -83,5 +83,5 @@ def test_mobile_header_hides_logo_and_restores_title():
     css = (REPO_ROOT / "docs" / "stylesheets" / "extra.css").read_text()
     mobile_header_block = _css_block(css, "@media screen and (max-width: 76.234375em)")
 
-    assert ".md-header__button.md-logo {\n    display: none;\n  }" in mobile_header_block
-    assert ".md-header__title .md-ellipsis {\n    visibility: visible;\n  }" in mobile_header_block
+    assert ".md-header .md-header__button.md-logo { display: none; }" in mobile_header_block
+    assert ".md-header__title { visibility: visible; }" in mobile_header_block

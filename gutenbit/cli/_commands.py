@@ -274,7 +274,7 @@ examples:
     "--delay",
     type=float,
     default=DEFAULT_DOWNLOAD_DELAY,
-    help="seconds between downloads (default: %(default)s)",
+    help="seconds between downloads (default: 2.0)",
 )
 @click.option(
     "--refresh",
@@ -462,7 +462,7 @@ output columns:  ID  AUTHORS  TITLE""",
     "--delay",
     type=float,
     default=DEFAULT_DOWNLOAD_DELAY,
-    help="seconds between downloads in refresh mode (default: %(default)s)",
+    help="seconds between downloads in refresh mode (default: 2.0)",
 )
 @click.option(
     "--force",

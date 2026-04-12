@@ -691,6 +691,38 @@ def test_pg_header_stripped():
     assert "Project Gutenberg" not in all_text
 
 
+def test_pg_end_marker_with_span_wrapper_is_stripped():
+    """Real Gutenberg HTML often wraps the END delimiter text in an inline
+    ``<span>`` inside ``<div id="pg-end-separator">`` inside
+    ``<section id="pg-footer">``. The outer div still qualifies as a paragraph
+    block, so it must be excluded along with the marker text itself."""
+    html = """\
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><title>Test Book</title></head>
+    <body>
+    <section class="pg-boilerplate pgheader" id="pg-header">
+      <div id="pg-start-separator">*** START OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***</div>
+    </section>
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <h2><a id="ch1"></a>CHAPTER I</h2>
+    <p>Content that should appear.</p>
+    <section class="pg-boilerplate pgfooter" id="pg-footer" lang="en">
+    <div id="pg-end-separator">
+    <span>*** END OF THE PROJECT GUTENBERG EBOOK TEST BOOK ***</span>
+    </div>
+    <div>License paragraph that must also be stripped.</div>
+    </section>
+    </body>
+    </html>
+    """
+    chunks = chunk_html(html)
+    all_text = " ".join(c.content for c in chunks)
+    assert "Content that should appear." in all_text
+    assert "END OF THE PROJECT GUTENBERG" not in all_text
+    assert "License paragraph" not in all_text
+
+
 def test_pg_legacy_this_delimiters_bound_content():
     html = _make_html("""
     <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
