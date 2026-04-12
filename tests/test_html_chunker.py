@@ -5339,3 +5339,249 @@ def test_index_entries_suppressed_as_non_structural():
     assert not any("BAILEY" in t for t in heading_texts)
     assert not any("BRADLEY" in t for t in heading_texts)
     assert not any("CAIRD" in t for t in heading_texts)
+
+
+# ------------------------------------------------------------------
+# id-on-heading anchor resolution
+# ------------------------------------------------------------------
+
+
+def test_toc_links_resolve_when_id_is_on_heading_tag():
+    """TOC ``pginternal`` links must resolve when the target id sits on
+    the heading tag itself rather than on a child ``<a>`` anchor, even
+    at h3+ rank where the usual keyword/numeric filter would reject an
+    unadorned title.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#s1" class="pginternal">THE FIRST STORY</a></p>
+    <p class="toc"><a href="#s2" class="pginternal">THE SECOND STORY</a></p>
+    <p class="toc"><a href="#s3" class="pginternal">THE THIRD STORY</a></p>
+    <h4 id="s1">THE FIRST STORY</h4>
+    <p>Content of the first story.</p>
+    <h4 id="s2">THE SECOND STORY</h4>
+    <p>Content of the second story.</p>
+    <h4 id="s3">THE THIRD STORY</h4>
+    <p>Content of the third story.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+    heading_texts = [h.content for h in headings]
+
+    assert heading_texts == ["THE FIRST STORY", "THE SECOND STORY", "THE THIRD STORY"]
+
+
+def test_child_a_anchor_still_preferred_over_heading_tag_id():
+    """When both a child ``<a id=...>`` and the enclosing heading tag have
+    ids, the ``<a>`` anchor must still win.  This preserves the historical
+    behavior for the common PG pattern ``<h2><a id="ch1"></a>CHAPTER I</h2>``.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#ch1" class="pginternal">CHAPTER I</a></p>
+    <h2 id="wrapper1"><a id="ch1"></a>CHAPTER I</h2>
+    <p>Chapter one content.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert len(headings) == 1
+    assert headings[0].content == "CHAPTER I"
+
+
+# ------------------------------------------------------------------
+# Structural patterns covering Chekhov/Gogol/Turgenev corpus (issue #192)
+# These fixtures reproduce the invariants that 20 works parse correctly
+# so regressions surface without a network download.
+# ------------------------------------------------------------------
+
+
+def test_introduction_and_bare_roman_numeral_chapters_stay_flat():
+    """Pattern from Fathers and Sons (PG 47935) and Virgin Soil (PG 2466):
+    a prose ``INTRODUCTION`` followed by bare Roman numeral chapters
+    (``I``..``XXVIII``) with no ``CHAPTER`` keyword must all appear as
+    flat ``div1`` peers, not nest the numerals under the introduction.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#intro" class="pginternal">INTRODUCTION</a></p>
+    <p class="toc"><a href="#c1" class="pginternal">I</a></p>
+    <p class="toc"><a href="#c2" class="pginternal">II</a></p>
+    <p class="toc"><a href="#c3" class="pginternal">III</a></p>
+    <h2><a id="intro"></a>INTRODUCTION</h2>
+    <p>Introductory essay paragraph.</p>
+    <h2><a id="c1"></a>I</h2>
+    <p>First chapter paragraph.</p>
+    <h2><a id="c2"></a>II</h2>
+    <p>Second chapter paragraph.</p>
+    <h2><a id="c3"></a>III</h2>
+    <p>Third chapter paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert [h.content for h in headings] == ["INTRODUCTION", "I", "II", "III"]
+    # Every heading must be at div1 with empty div2 — no nesting.
+    assert all(h.div2 == "" for h in headings)
+    assert {h.div1 for h in headings} == {"INTRODUCTION", "I", "II", "III"}
+
+
+def test_epilogue_stays_sibling_of_final_chapter():
+    """Pattern from A House of Gentlefolk (PG 5721): a closing
+    ``Epilogue`` heading must remain a standalone ``div1`` peer of the
+    numbered chapters, not be merged into the final chapter as a
+    subtitle.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#c1" class="pginternal">Chapter I</a></p>
+    <p class="toc"><a href="#c2" class="pginternal">Chapter II</a></p>
+    <p class="toc"><a href="#c3" class="pginternal">Chapter III</a></p>
+    <p class="toc"><a href="#epi" class="pginternal">Epilogue</a></p>
+    <h2><a id="c1"></a>Chapter I</h2>
+    <p>First chapter paragraph.</p>
+    <h2><a id="c2"></a>Chapter II</h2>
+    <p>Second chapter paragraph.</p>
+    <h2><a id="c3"></a>Chapter III</h2>
+    <p>Final chapter paragraph.</p>
+    <h2><a id="epi"></a>Epilogue</h2>
+    <p>Closing epilogue paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    assert headings[-1].content == "Epilogue"
+    assert headings[-1].div1 == "Epilogue"
+    assert headings[-1].div2 == ""
+
+
+def test_story_collection_nests_roman_sub_chapters_under_story_titles():
+    """Pattern from The Lady with the Dog (PG 13415) and The Duel
+    (PG 13505): a collection where some stories are single-chapter and
+    others have Roman numeral sub-chapters.  Multi-chapter stories must
+    nest their Roman numerals under the story title at ``div2``, while
+    single-chapter stories appear flat at ``div1``.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#s1" class="pginternal">THE LADY WITH THE DOG</a></p>
+    <p class="toc"><a href="#s1c1" class="pginternal">I</a></p>
+    <p class="toc"><a href="#s1c2" class="pginternal">II</a></p>
+    <p class="toc"><a href="#s2" class="pginternal">A DOCTOR'S VISIT</a></p>
+    <p class="toc"><a href="#s3" class="pginternal">THE HUSBAND</a></p>
+    <h2><a id="s1"></a>THE LADY WITH THE DOG</h2>
+    <h3><a id="s1c1"></a>I</h3>
+    <p>First sub-chapter of the lady story.</p>
+    <h3><a id="s1c2"></a>II</h3>
+    <p>Second sub-chapter of the lady story.</p>
+    <h2><a id="s2"></a>A DOCTOR'S VISIT</h2>
+    <p>Doctor story paragraph.</p>
+    <h2><a id="s3"></a>THE HUSBAND</h2>
+    <p>Husband story paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    # Three stories at div1; two sub-chapters nested under the first.
+    div1_values = {h.div1 for h in headings if h.div1}
+    assert div1_values == {"THE LADY WITH THE DOG", "A DOCTOR'S VISIT", "THE HUSBAND"}
+
+    lady_chapters = [h for h in headings if h.div1 == "THE LADY WITH THE DOG" and h.div2]
+    assert [h.div2 for h in lady_chapters] == ["I", "II"]
+
+    # Single-chapter stories must not have any div2 entries.
+    doctor_chapters = [h for h in headings if h.div1 == "A DOCTOR'S VISIT" and h.div2]
+    assert doctor_chapters == []
+
+
+def test_multi_work_volume_keeps_each_work_as_independent_div1():
+    """Pattern from Torrents of Spring (PG 9911) and A Lear of the
+    Steppes (PG 52642): a volume containing multiple distinct works,
+    each with its own Roman numeral sub-chapters.  Every work must be
+    its own ``div1`` container; sub-chapters must not leak between
+    works via sequence continuity.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#w1" class="pginternal">THE TORRENTS OF SPRING</a></p>
+    <p class="toc"><a href="#w1c1" class="pginternal">I</a></p>
+    <p class="toc"><a href="#w1c2" class="pginternal">II</a></p>
+    <p class="toc"><a href="#w2" class="pginternal">FIRST LOVE</a></p>
+    <p class="toc"><a href="#w2c1" class="pginternal">I</a></p>
+    <p class="toc"><a href="#w2c2" class="pginternal">II</a></p>
+    <p class="toc"><a href="#w3" class="pginternal">MUMU</a></p>
+    <h2><a id="w1"></a>THE TORRENTS OF SPRING</h2>
+    <h3><a id="w1c1"></a>I</h3>
+    <p>Torrents chapter I.</p>
+    <h3><a id="w1c2"></a>II</h3>
+    <p>Torrents chapter II.</p>
+    <h2><a id="w2"></a>FIRST LOVE</h2>
+    <h3><a id="w2c1"></a>I</h3>
+    <p>First Love chapter I.</p>
+    <h3><a id="w2c2"></a>II</h3>
+    <p>First Love chapter II.</p>
+    <h2><a id="w3"></a>MUMU</h2>
+    <p>Mumu story content (single section).</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    div1_values = {h.div1 for h in headings if h.div1}
+    assert div1_values == {"THE TORRENTS OF SPRING", "FIRST LOVE", "MUMU"}
+
+    torrents = [h for h in headings if h.div1 == "THE TORRENTS OF SPRING" and h.div2]
+    assert [h.div2 for h in torrents] == ["I", "II"]
+
+    first_love = [h for h in headings if h.div1 == "FIRST LOVE" and h.div2]
+    assert [h.div2 for h in first_love] == ["I", "II"]
+
+    # MUMU is a single-section story — no sub-chapters.
+    mumu = [h for h in headings if h.div1 == "MUMU"]
+    assert all(h.div2 == "" for h in mumu)
+
+
+def test_parts_nest_chapters_without_absorbing_front_matter():
+    """Pattern from Dead Souls (PG 1081): front matter (Introduction,
+    Preface) must not be absorbed into ``PART I`` or ``PART II`` when
+    the parts nest their chapters.  The critical invariant is that
+    ``div1`` of a front-matter heading is never the name of a part,
+    and that Part I's ``CHAPTER I`` and Part II's ``CHAPTER I`` are
+    distinct nested headings that share their ``div2`` text but differ
+    in ``div1``.
+    """
+    html = _make_html("""
+    <p class="toc"><a href="#intro" class="pginternal">Introduction By John Cournos</a></p>
+    <p class="toc"><a href="#pref" class="pginternal">AUTHOR'S PREFACE</a></p>
+    <p class="toc"><a href="#p1" class="pginternal">PART I</a></p>
+    <p class="toc"><a href="#p1c1" class="pginternal">CHAPTER I</a></p>
+    <p class="toc"><a href="#p1c2" class="pginternal">CHAPTER II</a></p>
+    <p class="toc"><a href="#p2" class="pginternal">PART II</a></p>
+    <p class="toc"><a href="#p2c1" class="pginternal">CHAPTER I</a></p>
+    <h2><a id="intro"></a>Introduction By John Cournos</h2>
+    <p>Critic's introduction paragraph.</p>
+    <h2><a id="pref"></a>AUTHOR'S PREFACE</h2>
+    <p>Preface paragraph.</p>
+    <h2><a id="p1"></a>PART I</h2>
+    <h3><a id="p1c1"></a>CHAPTER I</h3>
+    <p>Part I Chapter I paragraph.</p>
+    <h3><a id="p1c2"></a>CHAPTER II</h3>
+    <p>Part I Chapter II paragraph.</p>
+    <h2><a id="p2"></a>PART II</h2>
+    <h3><a id="p2c1"></a>CHAPTER I</h3>
+    <p>Part II Chapter I paragraph.</p>
+    """)
+    chunks = chunk_html(html)
+    headings = [c for c in chunks if c.kind == "heading"]
+
+    # Front matter is never pulled under a part container.
+    intro = next(h for h in headings if "Introduction" in h.content)
+    assert intro.div1 not in {"PART I", "PART II"}
+    preface = next(h for h in headings if "PREFACE" in h.content)
+    assert preface.div1 not in {"PART I", "PART II"}
+
+    # Both parts exist as div1 containers, and their chapters nest.
+    part1_chapters = [h for h in headings if h.div1 == "PART I" and h.div2 and h.div2.startswith("CHAPTER")]
+    assert [h.div2 for h in part1_chapters] == ["CHAPTER I", "CHAPTER II"]
+
+    part2_chapters = [h for h in headings if h.div1 == "PART II" and h.div2 and h.div2.startswith("CHAPTER")]
+    assert [h.div2 for h in part2_chapters] == ["CHAPTER I"]
+
+    # Part I's Chapter I and Part II's Chapter I are distinct: same div2
+    # text but different div1 parents.
+    chapter_ones = [h for h in headings if h.div2 == "CHAPTER I"]
+    assert len(chapter_ones) == 2
+    assert {h.div1 for h in chapter_ones} == {"PART I", "PART II"}

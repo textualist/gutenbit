@@ -61,7 +61,7 @@ from gutenbit.html_chunker._toc import _toc_context_cache  # cleared per-parse (
 # ---------------------------------------------------------------------------
 
 HTML_PARSER_BACKEND = "lxml"
-CHUNKER_VERSION = 42
+CHUNKER_VERSION = 43
 
 # Heuristic thresholds used during section selection and paragraph output.
 _MIN_PARAGRAPH_SECTION_RATIO = 3  # paragraph scan must find >3x heading-scan sections
